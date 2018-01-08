@@ -113,6 +113,7 @@ class TestCanvasGetUserCourses:
         courses = canvas.get_student_courses(61889)
         for course in courses:
             assert course['enrollments'][0]['type'] == 'student'
+            assert course['enrollments'][0]['enrollment_state'] == 'active'
 
     def test_user_not_found(self, app, caplog):
         """logs 404 for unknown user"""
@@ -166,7 +167,7 @@ class TestCanvasGrades:
         assert feed
         assert len(feed) == 43
         assert feed[0]['user_id'] == 9000100
-        assert feed[0]['grades']['current_score'] == 86.0
+        assert feed[0]['grades']['current_score'] == 86.125
         assert feed[42]['user_id'] == 5432100
         assert feed[42]['grades']['current_score'] == 91.0
 
