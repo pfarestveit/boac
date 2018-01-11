@@ -39,14 +39,15 @@
     <div class="cohort-filters-column flex-column-btn">
       <div class="btn-group box-shadow-off"
            uib-dropdown
-           auto-close="disabled"
+           auto-close="outsideClick"
            is-open="search.dropdown.groupCodesOpen"
            keyboard-nav>
         <!-- Dropdown docs at https://angular-ui.github.io/bootstrap/ -->
         <button id="search-filter-teams"
                 type="button"
                 class="btn cohort-filter-dropdown-toggle"
-                uib-dropdown-toggle>
+                uib-dropdown-toggle
+                data-ng-click="toggleFilter($event)">
           <span class="cohort-filter-label">
             Teams
             <span data-ng-if="!isLoading && !isSaving">(<span data-ng-bind="search.count.teamGroups"></span>)</span>
@@ -63,7 +64,7 @@
             class="cohort-filter-list dropdown-menu"
             role="menu"
             uib-dropdown-menu
-            data-ng-if="!isLoading && !isSaving">
+            data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
               data-ng-repeat="teamGroup in search.options.teamGroups">
@@ -80,13 +81,14 @@
     <div class="cohort-filters-column flex-column-btn">
       <div class="btn-group box-shadow-off"
            uib-dropdown
-           auto-close="disabled"
+           auto-close="outsideClick"
            is-open="search.dropdown.levelsOpen"
            keyboard-nav>
         <button id="search-filter-level"
                 type="button"
                 class="btn cohort-filter-dropdown-toggle"
-                uib-dropdown-toggle>
+                uib-dropdown-toggle
+                data-ng-click="toggleFilter($event)">
           <span class="cohort-filter-label">
             Levels
             <span data-ng-if="!isLoading && !isSaving">(<span data-ng-bind="search.count.levels"></span>)</span>
@@ -103,7 +105,7 @@
             class="cohort-filter-list dropdown-menu"
             role="menu"
             uib-dropdown-menu
-            data-ng-if="!isLoading && !isSaving">
+            data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
               data-ng-repeat="level in search.options.levels">
@@ -120,13 +122,14 @@
     <div class="cohort-filters-column flex-column-btn">
       <div class="btn-group box-shadow-off"
            uib-dropdown
-           auto-close="disabled"
+           auto-close="outsideClick"
            is-open="search.dropdown.majorsOpen"
            keyboard-nav>
         <button id="search-filter-majors"
                 type="button"
                 class="btn cohort-filter-dropdown-toggle"
-                uib-dropdown-toggle>
+                uib-dropdown-toggle
+                data-ng-click="toggleFilter($event)">
           <span class="cohort-filter-label">
             Majors
             <span data-ng-if="!isLoading && !isSaving">(<span data-ng-bind="search.count.majors"></span>)</span>
@@ -143,7 +146,7 @@
             class="cohort-filter-list dropdown-menu"
             role="menu"
             uib-dropdown-menu
-            data-ng-if="!isLoading && !isSaving">
+            data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
               data-ng-repeat="major in search.options.majors">
@@ -160,13 +163,14 @@
     <div class="cohort-filters-column flex-column-btn">
       <div class="btn-group box-shadow-off"
            uib-dropdown
-           auto-close="disabled"
+           auto-close="outsideClick"
            is-open="search.dropdown.gpaRangesOpen"
            keyboard-nav>
         <button id="search-filter-gpa-ranges"
                 type="button"
                 class="btn cohort-filter-dropdown-toggle"
-                uib-dropdown-toggle>
+                uib-dropdown-toggle
+                data-ng-click="toggleFilter($event)">
           <span class="cohort-filter-label">
             GPA
             <span data-ng-if="!isLoading && !isSaving">(<span data-ng-bind="search.count.gpaRanges"></span>)</span>
@@ -183,7 +187,7 @@
             class="cohort-filter-list dropdown-menu"
             role="menu"
             uib-dropdown-menu
-            data-ng-if="!isLoading && !isSaving">
+            data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
               data-ng-repeat="gpaRange in search.options.gpaRanges">
@@ -200,13 +204,14 @@
     <div class="cohort-filters-column flex-column-btn" data-ng-if="search.filterByUnitsFeatureEnabled">
       <div class="btn-group box-shadow-off"
            uib-dropdown
-           auto-close="disabled"
+           auto-close="outsideClick"
            is-open="search.dropdown.unitRangesOpen"
            keyboard-nav>
         <button id="search-filter-unit-ranges"
                 type="button"
                 class="btn cohort-filter-dropdown-toggle"
-                uib-dropdown-toggle>
+                uib-dropdown-toggle
+                data-ng-click="toggleFilter($event)">
           <span class="cohort-filter-label">
             Units
             <span data-ng-if="!isLoading && !isSaving">(<span data-ng-bind="search.count.unitRanges"></span>)</span>
@@ -223,7 +228,7 @@
             class="cohort-filter-list dropdown-menu"
             role="menu"
             uib-dropdown-menu
-            data-ng-if="!isLoading && !isSaving">
+            data-ng-show="!isLoading && !isSaving">
           <!-- Pacing units -->
           <li class="cohort-filter-list-section-label" role="menuitem">Pacing (Total)</li>
           <li class="cohort-filter-list-item"
@@ -336,6 +341,9 @@
             <div class="cohort-member-sid" data-ng-bind="student.sid"></div>
             <div class="cohort-member-text" data-ng-bind="student.level"></div>
             <div class="cohort-member-text" data-ng-bind="major" data-ng-repeat="major in student.majors"></div>
+            <div class="cohort-member-teams-container">
+              <div class="cohort-member-teams" data-ng-bind="membership.groupName" data-ng-repeat="membership in student.athletics"></div>
+            </div>
           </div>
           <div class="cohort-member-column">
             <div class="cohort-member-gpa" data-ng-bind="student.cumulativeGPA || '--'"></div>
@@ -375,47 +383,53 @@
           data-ng-click="nextPage()"
           data-ng-if="pagination.enabled && !isCreateCohortMode && (cohort.totalMemberCount > pagination.itemsPerPage)"></ul>
     </div>
-    <div id="cohort-matrix-container" class="cohort-matrix-container" data-ng-show="tabs.selected === 'matrix' && !isLoading && !error">
-      <!-- IMPORTANT: We use data-ng-show because d3 must populate the div before we reveal it to the user. -->
-      <div id="scatterplot" class="cohort-matrix"></div>
-      <div id="cohort-missing-student-data" class="cohort-missing-student-data" data-ng-if="studentsWithoutData.length">
-        <h4>Missing Student Data</h4>
-        <div>For the following students, some classes may only provide partial data or no information is available:</div>
-        <div class="cohort-missing-student-data-header">
-          <div class="cohort-avatar-container"></div>
-          <div class="cohort-member-name-container"></div>
-          <div class="cohort-member-column">Page Views</div>
-          <div class="cohort-member-column"
-               data-ng-bind="yAxisMeasure==='analytics.courseCurrentScore' ? 'Assignment Grades' : 'Assignments on Time'"></div>
-        </div>
-        <ul class="list-group">
-          <a class="list-group-item cohort-member-list-item"
-             data-ng-class="{'list-group-item-info': anchor===student.uid}"
-             href
-             data-ng-click="studentProfile(student.uid)"
-             data-ng-repeat="student in studentsWithoutData">
-            <div class="cohort-avatar-container">
-              <img class="cohort-avatar"
-                   data-ng-src="/api/user/{{student.uid}}/photo"
-                   data-avatar-fallback>
-            </div>
-            <div class="cohort-member-name-container">
-              <h3 class="cohort-member-name" data-ng-bind="student.firstName + ' ' + student.lastName"></h3>
-              <div class="cohort-member-sid">
-                SID: <span data-ng-bind="student.sid"></span>
+    <div id="cohort-matrix-outer" class="cohort-matrix-outer" data-ng-show="tabs.selected === 'matrix' && !isLoading && !error">
+      <div id="cohort-matrix-header" class="cohort-matrix-header">
+        <h4>Student Performance</h4>
+        <div>Current student achievements, comparing assignment grades and page views to the average in each bCourses class site.</div>
+      </div>
+      <div id="cohort-matrix-container" class="cohort-matrix-container">
+        <!-- IMPORTANT: We use data-ng-show because d3 must populate the div before we reveal it to the user. -->
+        <div id="scatterplot" class="cohort-matrix"></div>
+        <div id="cohort-missing-student-data" class="cohort-missing-student-data" data-ng-if="studentsWithoutData.length">
+          <h4>Missing Student Data</h4>
+          <div>For the following students, some bCourses classes may only provide partial data or information is currently unavailable:</div>
+          <div class="cohort-missing-student-data-header">
+            <div class="cohort-avatar-container"></div>
+            <div class="cohort-member-name-container"></div>
+            <div class="cohort-member-column">bCourses Page Views</div>
+            <div class="cohort-member-column"
+                 data-ng-bind="yAxisMeasure==='analytics.courseCurrentScore' ? 'Assignment Grades' : 'Assignments on Time'"></div>
+          </div>
+          <ul class="list-group">
+            <a class="list-group-item cohort-member-list-item"
+               data-ng-class="{'list-group-item-info': anchor===student.uid}"
+               href
+               data-ng-click="studentProfile(student.uid)"
+               data-ng-repeat="student in studentsWithoutData">
+              <div class="cohort-avatar-container">
+                <img class="cohort-avatar"
+                     data-ng-src="/api/user/{{student.uid}}/photo"
+                     data-avatar-fallback>
               </div>
-            </div>
-            <div class="cohort-member-column">
-              <span data-ng-bind-template="{{student.analytics.pageViews | number:1}}%" data-ng-if="student.analytics.pageViews"></span>
-            </div>
-            <div class="cohort-member-column" data-ng-if="yAxisMeasure==='analytics.courseCurrentScore'">
-              <span data-ng-bind-template="{{student.analytics.courseCurrentScore | number:1}}%" data-ng-if="student.analytics.courseCurrentScore"></span>
-            </div>
-            <div class="cohort-member-column" data-ng-if="yAxisMeasure!=='analytics.courseCurrentScore'">
-              <span data-ng-bind-template="{{student.analytics.assignmentsOnTime | number:1}}%" data-ng-if="student.analytics.assignmentsOnTime"></span>
-            </div>
-          </a>
-        </ul>
+              <div class="cohort-member-name-container">
+                <h3 class="cohort-member-name" data-ng-bind="student.firstName + ' ' + student.lastName"></h3>
+                <div class="cohort-member-sid">
+                  SID: <span data-ng-bind="student.sid"></span>
+                </div>
+              </div>
+              <div class="cohort-member-column">
+                <span data-ng-bind-template="{{student.analytics.pageViews.displayPercentile}} percentile" data-ng-if="student.analytics.pageViews"></span>
+              </div>
+              <div class="cohort-member-column" data-ng-if="yAxisMeasure==='analytics.courseCurrentScore'">
+                <span data-ng-bind-template="{{student.analytics.courseCurrentScore.displayPercentile}} percentile" data-ng-if="student.analytics.courseCurrentScore"></span>
+              </div>
+              <div class="cohort-member-column" data-ng-if="yAxisMeasure!=='analytics.courseCurrentScore'">
+                <span data-ng-bind-template="{{student.analytics.assignmentsOnTime.displayPercentile}} percentile" data-ng-if="student.analytics.assignmentsOnTime"></span>
+              </div>
+            </a>
+          </ul>
+        </div>
       </div>
     </div>
   </div>

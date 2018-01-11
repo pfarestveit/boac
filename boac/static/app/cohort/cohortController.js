@@ -20,9 +20,9 @@
   ) {
 
     /**
-     * Used to collapse all dropdown menus (e.g., if user clicks 'Search').
+     * Control show/hide of dropdowns: true -> show, false -> hide
      *
-     * @return {Object}      One entry per dropdown/filter.
+     * @return {Object}                Each filter dropdown (unique key) has state (true/false)
      */
     var defaultDropdownState = function() {
       return {
@@ -66,7 +66,7 @@
       options: [
         {value: 'first_name', label: 'First Name'},
         {value: 'last_name', label: 'Last Name'},
-        {value: 'group_code', label: 'Team'},
+        {value: 'group_name', label: 'Team'},
         {value: 'gpa', label: 'GPA'},
         {value: 'level', label: 'Level'},
         {value: 'major', label: 'Major'},
@@ -146,6 +146,29 @@
     };
 
     /**
+     * Draw boxplots for students in list view.
+     *
+     * @return {void}
+     */
+    var drawBoxplots = function() {
+      // Wait until Angular has finished rendering elements within repeaters.
+      $scope.$$postDigest(function() {
+        _.each($scope.cohort.members, function(student) {
+          _.each(_.get(student, 'currentTerm.enrollments'), function(enrollment) {
+            _.each(_.get(enrollment, 'canvasSites'), function(canvasSite) {
+              var elementId = 'boxplot-' + canvasSite.canvasCourseId + '-' + student.uid + '-pageviews';
+              var dataset = _.get(canvasSite, 'analytics.pageViews');
+              // If the course site has not yet been viewed, then there is nothing to plot.
+              if (dataset && _.get(dataset, 'courseDeciles')) {
+                boxplotService.drawBoxplotCohort(elementId, dataset);
+              }
+            });
+          });
+        });
+      });
+    };
+
+    /**
      * Invoke API to get cohort, team or intensive.
      *
      * @param  {Function}    callback    Follow up activity per caller
@@ -162,6 +185,7 @@
       $scope.isLoading = true;
       getCohort(orderBy, offset, limit).then(function(response) {
         updateCohort(response.data);
+        drawBoxplots();
         return callback();
       }).catch(function(err) {
         $scope.error = err ? {message: err.status + ': ' + err.statusText} : true;
@@ -252,7 +276,8 @@
       // Plot the cohort
       var yAxisMeasure = $scope.yAxisMeasure = $location.search().yAxis || 'analytics.courseCurrentScore';
       var partitions = _.partition($scope.cohort.members, function(member) {
-        return _.isFinite(_.get(member, 'analytics.pageViews')) && _.isFinite(_.get(member, yAxisMeasure));
+        return _.isFinite(_.get(member, 'analytics.pageViews.percentile')) &&
+          _.isFinite(_.get(member, yAxisMeasure + '.percentile'));
       });
       // Pass along a subset of students that have useful data.
       cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
@@ -282,25 +307,6 @@
     };
 
     /**
-     * Draw boxplots for students in list view.
-     *
-     * @return {void}
-     */
-    var drawBoxplots = function() {
-      // Wait until Angular has finished rendering elements within repeaters.
-      $scope.$$postDigest(function() {
-        _.each($scope.cohort.members, function(student) {
-          _.each(_.get(student, 'currentTerm.enrollments'), function(enrollment) {
-            _.each(_.get(enrollment, 'canvasSites'), function(canvasSite) {
-              var elementId = 'boxplot-' + canvasSite.canvasCourseId + '-' + student.uid + '-pageviews';
-              boxplotService.drawBoxplotCohort(elementId, _.get(canvasSite, 'analytics.pageViews'));
-            });
-          });
-        });
-      });
-    };
-
-    /**
      * Invoked when (1) user navigates to next/previous page or (2) search criteria changes.
      *
      * @return {void}
@@ -308,7 +314,6 @@
     var nextPage = $scope.nextPage = function() {
       if ($scope.cohort.code) {
         listViewRefresh(function() {
-          drawBoxplots();
           $scope.isLoading = false;
         });
       } else {
@@ -433,6 +438,13 @@
       $location.path('/student/' + uid).search({r: encodedAbsUrl});
     };
 
+    $scope.toggleFilter = function(event) {
+      // Known issue: https://github.com/angular-ui/bootstrap/issues/6038
+      if (event) {
+        event.stopPropagation();
+      }
+    };
+
     /**
      * Initialize page view.
      *
@@ -471,13 +483,12 @@
             var render = $scope.tabs.selected === 'list' ? listViewRefresh : matrixViewRefresh;
             render(function() {
               initFilters(function() {
-                drawBoxplots();
                 $scope.isLoading = false;
                 if (args.a) {
                   $timeout(function() {
                     // Scroll to anchor if returning from student profile page
                     $scope.anchor = args.a;
-                    $location.search('a', null);
+                    $location.search('a', null).replace();
                     $anchorScroll.yOffset = 50;
                     $anchorScroll(args.a);
                   });

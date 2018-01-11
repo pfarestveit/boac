@@ -65,7 +65,6 @@
   border-color: #66afe9;
   border-radius: 4px;
   box-sizing: border-box;
-  height: 35px;
   padding: 10px 10px 10px 10px;
   width: 100%;
 }
@@ -188,6 +187,15 @@
   font-size: 11px;
   font-weight: bold;
   margin: 5px 0;
+}
+
+.cohort-member-teams {
+  color: #000;
+  font-size: 13px;
+}
+
+.cohort-member-teams-container {
+  margin-top: 5px;
 }
 
 .cohort-member-text {
