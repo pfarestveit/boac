@@ -1,58 +1,64 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
+    <link rel="icon" type="image/png" href="/static/app/favicon.ico" />
     <title>BOAC</title>
 
     <!-- Third-party CSS -->
     <link href="/static/lib/angular-bootstrap/ui-bootstrap-csp.css" rel="stylesheet">
     <link href="/static/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/static/lib/fontawesome/css/font-awesome.css" rel="stylesheet">
+    <link href="/static/lib/fontawesome/css/font-awesome.min.css" rel="stylesheet">
     <link href="/static/lib/oi.select/dist/select.min.css" rel="stylesheet">
 
     <!-- BOAC CSS -->
     <link href="/static/app/main.css" rel="stylesheet">
     <link href="/static/app/cohort/cohort.css" rel="stylesheet">
     <link href="/static/app/cohort/cohortMatrix.css" rel="stylesheet">
-    <link href="/static/app/shared/header.css" rel="stylesheet">
+    <link href="/static/app/landing/landing.css" rel="stylesheet">
     <link href="/static/app/student/student.css" rel="stylesheet">
   </head>
 
   <body ui-view>
     <!-- Third-party: Warning, if the order below is wrong then the app will break. -->
     <script src="/static/lib/angular/angular.min.js"></script>
-    <script src="/static/lib/angular-base64/angular-base64.js"></script>
-    <script src="/static/lib/angular-bootstrap/ui-bootstrap.js"></script>
-    <script src="/static/lib/angular-bootstrap/ui-bootstrap-tpls.js"></script>
+    <script src="/static/lib/angular-base64/angular-base64.min.js"></script>
+    <script src="/static/lib/angular-bootstrap/ui-bootstrap.min.js"></script>
+    <script src="/static/lib/angular-bootstrap/ui-bootstrap-tpls.min.js"></script>
     <script src="/static/lib/angular-ui-router/release/angular-ui-router.min.js"></script>
     <script src="/static/lib/d3/d3.min.js"></script>
     <script src="/static/lib/highcharts-release/adapters/standalone-framework.js"></script>
     <script src="/static/lib/highcharts-release/highcharts.js"></script>
     <script src="/static/lib/highcharts-release/highcharts-more.js"></script>
     <script src="/static/lib/lodash/dist/lodash.min.js"></script>
-    <script src="/static/lib/oi.select/dist/select-tpls.js"></script>
+    <script src="/static/lib/oi.select/dist/select-tpls.min.js"></script>
 
     <!-- BOAC: Warning, keep bootstrap and routes first -->
     <script src="/static/app/bootstrap.js"></script>
     <script src="/static/app/routes.js"></script>
-    <script src="/static/app/auth/authController.js"></script>
-    <script src="/static/app/auth/authFactory.js"></script>
-    <script src="/static/app/auth/authService.js"></script>
     <script src="/static/app/cohort/allCohortsController.js"></script>
     <script src="/static/app/cohort/cohortController.js"></script>
     <script src="/static/app/cohort/cohortFactory.js"></script>
     <script src="/static/app/cohort/cohortService.js"></script>
     <script src="/static/app/cohort/createCohortController.js"></script>
-    <script src="/static/app/cohort/myCohortsDropdownDirective.js"></script>
     <script src="/static/app/cohort/deleteCohortController.js"></script>
     <script src="/static/app/cohort/manageCohortsController.js"></script>
+    <script src="/static/app/cohort/myCohortsDropdownDirective.js"></script>
     <script src="/static/app/landing/landingController.js"></script>
+    <script src="/static/app/landing/sortableAlertsTableDirective.js"></script>
     <script src="/static/app/shared/avatarFallbackDirective.js"></script>
     <script src="/static/app/shared/boxplotService.js"></script>
     <script src="/static/app/shared/utilService.js"></script>
     <script src="/static/app/student/courseSiteMetricsDirective.js"></script>
     <script src="/static/app/student/findStudentDirective.js"></script>
+    <script src="/static/app/student/findStudentFilter.js"></script>
+    <script src="/static/app/student/studentAlertMessageDirective.js"></script>
     <script src="/static/app/student/studentController.js"></script>
     <script src="/static/app/student/studentFactory.js"></script>
+    <script src="/static/app/user/authController.js"></script>
+    <script src="/static/app/user/authFactory.js"></script>
+    <script src="/static/app/user/authService.js"></script>
+    <script src="/static/app/user/watchlistFactory.js"></script>
+    <script src="/static/app/user/watchlistToggleDirective.js"></script>
 
     <!-- Google Analytics (the order below matters) -->
     <script src="/static/app/shared/googleAnalyticsService.js"></script>

@@ -1,6 +1,18 @@
 from boac import std_commit
 from boac.externals import calnet
+from boac.models.json_cache import stow
 from boac.models.student import Student
+
+
+@stow('calnet_user_for_uid_{uid}')
+def get_calnet_user_for_uid(app, uid):
+    persons = calnet.client(app).search_uids([uid])
+    p = persons[0] if len(persons) > 0 else None
+    return {
+        'uid': uid,
+        'firstName': p and p['first_name'],
+        'lastName': p and p['last_name'],
+    }
 
 
 def refresh_cohort_attributes(app, cohorts=None):
@@ -14,10 +26,7 @@ def refresh_cohort_attributes(app, cohorts=None):
     # Search LDAP.
     all_attrs = calnet.client(app).search_csids(csids)
     if len(csids) != len(all_attrs):
-        app.logger.warning('Looked for {} CSIDS but only found {}'.format(
-            len(csids),
-            len(all_attrs),
-        ))
+        app.logger.warning(f'Looked for {len(csids)} CSIDS but only found {len(all_attrs)}')
 
     # Update the DB.
     for attrs in all_attrs:

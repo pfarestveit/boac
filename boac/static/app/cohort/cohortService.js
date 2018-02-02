@@ -112,6 +112,8 @@
         .attr('width', width)
         .attr('height', height);
 
+      var avatarBackgroundPath = '/static/app/shared/avatar-50.png';
+
       function avatar(d) {
         var avatarId = 'avatar_' + d.uid;
         var pattern = defs.append('svg:pattern')
@@ -125,7 +127,7 @@
           .attr('height', 1)
           .attr('preserveAspectRatio', 'xMidYMid slice');
         avatarImage.on('error', function() {
-          avatarImage.attr('xlink:href', '/static/app/shared/avatar-50.png');
+          avatarImage.attr('xlink:href', avatarBackgroundPath);
         });
         return 'url(#' + avatarId + ')';
       }
@@ -156,7 +158,7 @@
         .enter().append('circle')
         .attr('class', 'dot')
         .style('fill', function(d) { return avatar(d); })
-        .style('background-image', 'url(/static/app/shared/avatar-50.png)')
+        .style('background-image', 'url(' + avatarBackgroundPath + ')')
         .style('background-size', 'cover')
         .style('stroke-width', 5)
         .style('stroke', '#ccc')
@@ -206,8 +208,8 @@
 
         var tooltip = container.append('div')
           .attr('class', 'cohort-matrix-tooltip')
-          .style('top', parseInt(selection.attr('cy'), 10) + 30 + 'px')
-          .style('left', parseInt(selection.attr('cx'), 10) - 100 + 'px');
+          .style('top', parseInt(selection.attr('cy'), 10) + 45 + 'px')
+          .style('left', parseInt(selection.attr('cx'), 10) - 120 + 'px');
 
         // The tooltip starts out hidden while inserting data...
         tooltip.style('opacity', 0);
@@ -244,10 +246,6 @@
       dot.on('mouseout', onDotDeselected);
     };
 
-    var getSelected = function(filterOptions, property) {
-      return _.map(_.filter(filterOptions, 'selected'), property);
-    };
-
     var validateCohortLabel = function(cohort, callback) {
       if (cohort.label === 'Intensive') {
         return callback('Sorry, \'Intensive\' is a reserved name. Please choose a different name.');
@@ -268,7 +266,6 @@
 
     return {
       drawScatterplot: drawScatterplot,
-      getSelected: getSelected,
       validateCohortLabel: validateCohortLabel
     };
 

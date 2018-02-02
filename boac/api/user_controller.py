@@ -6,6 +6,7 @@ from boac.lib import util
 from boac.lib.analytics import merge_analytics_for_user
 from boac.lib.berkeley import sis_term_id_for_name
 from boac.lib.http import tolerant_jsonify
+from boac.merged import calnet
 from boac.merged import member_details
 from boac.merged.sis_enrollments import merge_sis_enrollments
 from boac.merged.sis_profile import merge_sis_profile
@@ -17,16 +18,12 @@ from flask_login import current_user, login_required
 
 @app.route('/api/profile')
 def user_profile():
-    canvas_profile = False
+    profile = {
+        'uid': False,
+    }
     if current_user.is_active:
-        uid = current_user.get_id()
-        canvas_profile = load_canvas_profile(uid)
-    else:
-        uid = False
-    return tolerant_jsonify({
-        'uid': uid,
-        'canvasProfile': canvas_profile,
-    })
+        profile = calnet.get_calnet_user_for_uid(app, current_user.get_id())
+    return tolerant_jsonify(profile)
 
 
 @app.route('/api/students/all')
@@ -43,14 +40,20 @@ def get_students():
     group_codes = util.get(params, 'groupCodes')
     levels = util.get(params, 'levels')
     majors = util.get(params, 'majors')
-    unit_ranges_eligibility = util.get(params, 'unitRangesEligibility')
-    unit_ranges_pacing = util.get(params, 'unitRangesPacing')
+    unit_ranges = util.get(params, 'unitRanges')
     order_by = util.get(params, 'orderBy', None)
     offset = util.get(params, 'offset', 0)
     limit = util.get(params, 'limit', 50)
-    results = Student.get_students(gpa_ranges=gpa_ranges, group_codes=group_codes, levels=levels, majors=majors,
-                                   unit_ranges_eligibility=unit_ranges_eligibility,
-                                   unit_ranges_pacing=unit_ranges_pacing, order_by=order_by, offset=offset, limit=limit)
+    results = Student.get_students(
+        gpa_ranges=gpa_ranges,
+        group_codes=group_codes,
+        levels=levels,
+        majors=majors,
+        unit_ranges=unit_ranges,
+        order_by=order_by,
+        offset=offset,
+        limit=limit,
+    )
     member_details.merge_all(results['students'])
     return tolerant_jsonify({
         'members': results['students'],
@@ -89,8 +92,8 @@ def user_analytics(uid):
     for term in enrollment_terms:
         term_id = sis_term_id_for_name(term['termName'])
         for enrollment in term['enrollments']:
-            merge_analytics_for_user(enrollment['canvasSites'], uid, canvas_id, term_id)
-        merge_analytics_for_user(term['unmatchedCanvasSites'], uid, canvas_id, term_id)
+            merge_analytics_for_user(enrollment['canvasSites'], uid, student.sid, canvas_id, term_id)
+        merge_analytics_for_user(term['unmatchedCanvasSites'], uid, student.sid, canvas_id, term_id)
 
     return tolerant_jsonify({
         'uid': uid,

@@ -5,11 +5,14 @@ from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 from boac.models.student import Student
 # Models below are included so that db.create_all will find them.
-from boac.models.db_relationships import cohort_filter_owners, student_athletes # noqa
+from boac.models.alert import Alert # noqa
+from boac.models.db_relationships import AlertView, cohort_filter_owners, student_athletes # noqa
 from boac.models.job_progress import JobProgress # noqa
 from boac.models.json_cache import JsonCache # noqa
 from boac.models.normalized_cache_student import NormalizedCacheStudent # noqa
 from boac.models.normalized_cache_student_major import NormalizedCacheStudentMajor # noqa
+from flask import current_app as app
+from sqlalchemy.sql import text
 
 _default_users_csv = """uid,is_admin,is_director,is_advisor
 2040,true,false,false
@@ -20,6 +23,9 @@ _default_users_csv = """uid,is_admin,is_director,is_advisor
 211159,true,false,false
 242881,true,false,false
 1022796,true,false,false
+1049291,true,false,false
+1081940,true,false,false
+90412,true,false,false
 6446,false,true,true
 """
 
@@ -48,7 +54,7 @@ mens_baseball = {
     'team_name': 'Men\'s Baseball',
 }
 mens_tennis = {
-    'group_code': 'MTE-AA',
+    'group_code': 'MTE',
     'group_name': 'Men\'s Tennis',
     'team_code': 'TNM',
     'team_name': 'Men\'s Tennis',
@@ -62,7 +68,10 @@ womens_tennis = {
 
 
 def clear():
-    db.drop_all()
+    with open(app.config['BASE_DIR'] + '/scripts/db/drop_schema.sql', 'r') as ddlfile:
+        ddltext = ddlfile.read()
+    db.session().execute(text(ddltext))
+    std_commit()
 
 
 def load(cohort_test_data=False):
@@ -70,16 +79,16 @@ def load(cohort_test_data=False):
     load_development_data()
     if cohort_test_data:
         load_student_athletes()
-        load_cohorts()
+        create_cohorts()
     return db
 
 
 def load_schemas():
-    """
-    During early development, create the test DB from Python code.
-    We will convert to SQL scripts before enabling production deployments.
-    """
-    db.create_all()
+    """Create DB schema from SQL file."""
+    with open(app.config['BASE_DIR'] + '/scripts/db/schema.sql', 'r') as ddlfile:
+        ddltext = ddlfile.read()
+    db.session().execute(text(ddltext))
+    std_commit()
 
 
 def load_development_data():
@@ -94,8 +103,12 @@ def load_development_data():
 
 
 def create_team_group(t):
-    athletics = Athletics(group_code=t['group_code'], group_name=t['group_name'], team_code=t['team_code'],
-                          team_name=t['team_name'])
+    athletics = Athletics(
+        group_code=t['group_code'],
+        group_name=t['group_name'],
+        team_code=t['team_code'],
+        team_name=t['team_name'],
+    )
     db.session.add(athletics)
     return athletics
 
@@ -113,6 +126,7 @@ def create_student(sid, uid, first_name, last_name, team_groups, gpa, level, uni
         team_group.athletes.append(student)
     NormalizedCacheStudent.update_profile(sid, gpa=gpa, level=level, units=units)
     NormalizedCacheStudentMajor.update_majors(sid, majors)
+    return student
 
 
 def load_student_athletes():
@@ -123,7 +137,7 @@ def load_student_athletes():
     wfh = create_team_group(womens_field_hockey)
     wt = create_team_group(womens_tennis)
     # Some students are on teams and some are not
-    create_student(
+    brigitte = create_student(
         uid='61889',
         sid='11667051',
         first_name='Brigitte',
@@ -133,7 +147,8 @@ def load_student_athletes():
         level=None,
         units=0,
         majors=['Economics BA'],
-        in_intensive_cohort=True)
+        in_intensive_cohort=True,
+    )
     create_student(
         uid='1022796',
         sid='8901234567',
@@ -144,7 +159,8 @@ def load_student_athletes():
         level='Freshman',
         units=12,
         majors=['Chemistry BS'],
-        in_intensive_cohort=True)
+        in_intensive_cohort=True,
+    )
     create_student(
         uid='2040',
         sid='2345678901',
@@ -154,8 +170,9 @@ def load_student_athletes():
         gpa='3.495',
         level='Junior',
         units=34,
-        majors=['History BA'])
-    create_student(
+        majors=['History BA'],
+    )
+    paul_kerschen = create_student(
         uid='242881',
         sid='3456789012',
         first_name='Paul',
@@ -165,8 +182,9 @@ def load_student_athletes():
         level='Junior',
         units=70,
         majors=['English BA', 'Political Economy BA'],
-        in_intensive_cohort=True)
-    create_student(
+        in_intensive_cohort=True,
+    )
+    sandeep = create_student(
         uid='1133399',
         sid='5678901234',
         first_name='Sandeep',
@@ -175,8 +193,9 @@ def load_student_athletes():
         gpa='3.501',
         level='Senior',
         units=102,
-        majors=['Letters & Sci Undeclared UG'])
-    create_student(
+        majors=['Letters & Sci Undeclared UG'],
+    )
+    paul_farestveit = create_student(
         uid='1049291',
         sid='7890123456',
         first_name='Paul',
@@ -186,18 +205,44 @@ def load_student_athletes():
         level='Senior',
         units=110,
         majors=['History BA'],
-        in_intensive_cohort=True)
+        in_intensive_cohort=True,
+    )
+    schlemiel = create_student(
+        uid='211159',
+        sid='838927492',
+        first_name='Siegfried',
+        last_name='Schlemiel',
+        # 'A mug is a mug in everything.' - Colonel Harrington
+        team_groups=[fdb, fdl, mt, wfh, wt],
+        gpa='0.40',
+        level='Sophomore',
+        units=8,
+        majors=['Mathematics'],
+        in_intensive_cohort=True,
+    )
+    schlemiel.is_active_asc = False
+    schlemiel.status_asc = 'Trouble'
+    db.session.merge(schlemiel)
+    advisor = AuthorizedUser.find_by_uid('6446')
+    advisor.watchlist = [
+        paul_kerschen,
+        sandeep,
+        brigitte,
+        paul_farestveit,
+    ]
+    db.session.add(advisor)
     std_commit(allow_test_environment=True)
 
 
-def load_cohorts():
+def create_cohorts():
     # Oliver's cohorts
-    CohortFilter.create(uid='2040', label='All sports', group_codes=['MFB-DL', 'MFB-DL', 'WFH-AA'])
-    CohortFilter.create(uid='2040', label='Football, Defense', group_codes=['MFB-DL', 'MFB-DL'])
+    CohortFilter.create(uid='2040', label='All sports', group_codes=['MFB-DL', 'WFH-AA'])
+    CohortFilter.create(uid='2040', label='Football, Defense', group_codes=['MFB-DB', 'MFB-DL'])
     CohortFilter.create(uid='2040', label='Field Hockey', group_codes=['WFH-AA'])
     # Sandeep's cohorts
-    CohortFilter.create(uid='1133399', label='All sports', group_codes=['MFB-DL', 'MFB-DL', 'WFH-AA'])
+    CohortFilter.create(uid='1133399', label='All sports', group_codes=['MFB-DL', 'WFH-AA'])
     CohortFilter.create(uid='1133399', label='Football, Defense Backs', group_codes=['MFB-DB'])
+    CohortFilter.create(uid='1133399', label='Undeclared students', majors=['Undeclared'])
     std_commit(allow_test_environment=True)
 
 

@@ -10,10 +10,10 @@ import pytest
 
 @pytest.mark.usefixtures('db_session')
 class TestSisProfile:
-    """TestSisProfile"""
+    """Test SIS profile."""
 
     def test_populates_normalized_cache(self, app):
-        """populates the normalized cache"""
+        """Populates the normalized cache."""
         merge_sis_profile('11667051')
 
         student_rows = NormalizedCacheStudent.query.all()
@@ -28,8 +28,7 @@ class TestSisProfile:
         assert 'Astrophysics BS' in majors
 
     def test_updates_normalized_cache(self, app):
-        """updates the normalized cache"""
-
+        """Updates the normalized cache."""
         # Load default fixture data, clear the JSON cache.
         merge_sis_profile('11667051')
         json_cache.clear('merged_sis_profile_11667051')
@@ -45,17 +44,15 @@ class TestSisProfile:
                 merge_sis_profile('11667051')
 
                 student_rows = NormalizedCacheStudent.query.all()
-                assert len(student_rows) == 6
                 assert student_rows[-1].sid == '11667051'
                 assert student_rows[-1].level == 'Senior'
 
                 student_major_rows = NormalizedCacheStudentMajor.query.all()
-                assert len(student_major_rows) == 8
                 majors = [row.major for row in student_major_rows]
                 assert 'English BA' in majors
                 assert 'Hungarian BA' in majors
 
     def test_skips_concurrent_academic_status(self, app):
-        """skips concurrent academic status"""
+        """Skips concurrent academic status."""
         profile = merge_sis_profile('11667051')
         assert profile['academicCareer'] == 'UGRD'

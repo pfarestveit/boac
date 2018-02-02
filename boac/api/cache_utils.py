@@ -1,22 +1,18 @@
 from threading import Thread
 from boac import db, std_commit
+from boac.api.util import canvas_course_api_feed
+from boac.lib import analytics
 from boac.lib import berkeley
 from boac.merged.sis_profile import merge_sis_profile
+from boac.models.alert import Alert
 from boac.models.job_progress import JobProgress
 from boac.models.json_cache import JsonCache
 from flask import current_app as app
 from sqlalchemy import or_
 
 
-def current_term_id():
-    term_name = app.config['CANVAS_CURRENT_ENROLLMENT_TERM']
-    return berkeley.sis_term_id_for_name(term_name)
-
-
 def refresh_request_handler(term_id, load_only=False):
-    """Handle a start refresh admin request, either by returning an error status or by starting the job on a
-    background thread.
-    """
+    """Handle a start refresh admin request by returning an error status or starting the job on a background thread."""
     job_state = JobProgress().get()
     if job_state is None or (not job_state['start']) or job_state['end']:
         if not load_only:
@@ -42,14 +38,16 @@ def background_thread_refresh(app_arg, term_id):
         load_term(term_id)
 
 
-def refresh_term(term_id=current_term_id()):
+def refresh_term(term_id=berkeley.current_term_id()):
     clear_term(term_id)
     load_term(term_id)
 
 
 def clear_term(term_id):
-    """Deletes term-specific cache entries. When refreshing the current term, also deletes non-term-specific cache
-    entries, since they hold 'current' external data."""
+    """Delete term-specific cache entries.
+
+    When refreshing current term, also deletes non-term-specific cache entries, since they hold 'current' external data.
+    """
     term_name = berkeley.term_name_for_sis_id(term_id)
     filter = JsonCache.key.like('term_{}%'.format(term_name))
     if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
@@ -60,7 +58,7 @@ def clear_term(term_id):
     std_commit()
 
 
-def load_term(term_id=current_term_id()):
+def load_term(term_id=berkeley.current_term_id()):
     from boac.models.student import Student
     success_count = 0
     failures = []
@@ -73,6 +71,14 @@ def load_term(term_id=current_term_id()):
         success_count += s
         failures += f
         JobProgress().update(f'External data loaded for UID {uid}')
+
+    for csid, uid in db.session.query(Student.sid, Student.uid).distinct():
+        load_analytics_feeds(uid, csid, term_id)
+
+    # Given a fresh start with no existing 'normalized' cache, merged profiles must be pre-fetched.
+    # Otherwise all team and cohort searches will return empty arrays in the UX.
+    if term_id == berkeley.current_term_id():
+        load_merged_sis_profiles()
 
     JobProgress().end()
     app.logger.warn('Complete. Fetched {} external feeds.'.format(success_count))
@@ -89,9 +95,7 @@ def load_canvas_externals(uid, term_id):
 
     canvas_user_profile = canvas.get_user_for_uid(uid)
     if canvas_user_profile is None:
-        failures.append('canvas.get_user_for_uid failed for UID {}'.format(
-            uid,
-        ))
+        failures.append(f'canvas.get_user_for_uid failed for UID {uid}')
     elif canvas_user_profile:
         success_count += 1
         sites = canvas.get_student_courses(uid)
@@ -105,31 +109,21 @@ def load_canvas_externals(uid, term_id):
                     continue
                 site_id = site['id']
                 if not canvas.get_course_sections(site_id, term_id):
-                    failures.append('canvas.get_course_sections failed for UID {}, site_id {}'.format(
-                        uid,
-                        site_id,
-                    ))
+                    failures.append(f'canvas.get_course_sections failed for UID {uid}, site_id {site_id}')
                     continue
                 success_count += 1
                 if not canvas.get_student_summaries(site_id, term_id):
-                    failures.append('canvas.get_student_summaries failed for site_id {}'.format(
-                        site_id,
-                    ))
+                    failures.append(f'canvas.get_student_summaries failed for site_id {site_id}')
                     continue
                 success_count += 1
                 # This is a very time-consuming API and might have to managed separately.
                 if not canvas.get_course_enrollments(site_id, term_id):
-                    failures.append('canvas.get_course_enrollments failed for site_id {}'.format(
-                        site_id,
-                    ))
+                    failures.append(f'canvas.get_course_enrollments failed for site_id {site_id}')
                     continue
                 success_count += 1
                 # Do not treat an empty list as a failure.
                 if canvas.get_assignments_analytics(site_id, uid, term_id) is None:
-                    failures.append('canvas.get_assignments_analytics failed for UID {}, site_id {}'.format(
-                        uid,
-                        site_id,
-                    ))
+                    failures.append(f'canvas.get_assignments_analytics failed for UID {uid}, site_id {site_id}')
                     continue
                 success_count += 1
     return success_count, failures
@@ -150,24 +144,41 @@ def load_sis_externals(term_id, csid):
                 if sis_degree_progress_api.get_degree_progress(csid):
                     success_count += 1
                 else:
-                    failures.append('SIS get_degree_progresss failed for CSID {}'.format(csid))
+                    failures.append(f'SIS get_degree_progresss failed for CSID {csid}')
     else:
-        failures.append('SIS get_student failed for CSID {}'.format(csid))
+        failures.append(f'SIS get_student failed for CSID {csid}')
 
     enrollments = sis_enrollments_api.get_enrollments(csid, term_id)
     if enrollments:
         success_count += 1
     elif enrollments is None:
-        failures.append('SIS get_enrollments failed for CSID {}, term_id {}'.format(
-            csid,
-            term_id,
-        ))
+        failures.append(f'SIS get_enrollments failed for CSID {csid}, term_id {term_id}')
     return success_count, failures
 
 
+def load_analytics_feeds(uid, sid, term_id):
+    # Load distilled analytics feeds, one level up from the Canvas APIs already called by load_canvas_externals.
+    # Prior to load, existing assignment alerts for the student and term are deactivated. Alerts still in effect
+    # will be reactivated as feeds are loaded.
+    Alert.deactivate_all(sid=sid, term_id=term_id, alert_types=['late_assignment', 'missing_assignment'])
+    from boac.externals import canvas
+    sites = canvas.get_student_courses(uid)
+    term_name = berkeley.term_name_for_sis_id(term_id)
+    if sites:
+        for site in sites:
+            if site.get('term', {}).get('name') != term_name:
+                continue
+            site_feed = canvas_course_api_feed(site)
+            analytics.analytics_from_canvas_course_assignments(
+                course_id=site_feed['canvasCourseId'],
+                course_code=site_feed['courseCode'],
+                uid=uid,
+                sid=sid,
+                term_id=term_id,
+            )
+
+
 def load_merged_sis_profiles():
-    """TODO For now, pending a general refresh strategy for merged models, this sits to the side of other
-    cache loading methods."""
     from boac.models.student import Student
 
     success_count = 0
@@ -178,5 +189,5 @@ def load_merged_sis_profiles():
         if sis_profile:
             success_count += 1
         else:
-            failures.append('merge_sis_profile failed for SID {}'.format(sid))
+            failures.append(f'merge_sis_profile failed for SID {sid}')
     return success_count, failures

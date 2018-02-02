@@ -1,14 +1,17 @@
 import math
 from statistics import mean
 from boac.externals import canvas
+from boac.models.alert import Alert
+from boac.models.json_cache import stow
 from flask import current_app as app
 import pandas
 
 
-def merge_analytics_for_user(user_courses, uid, canvas_user_id, term_id):
+def merge_analytics_for_user(user_courses, uid, sid, canvas_user_id, term_id):
     if user_courses:
         for course in user_courses:
             canvas_course_id = course['canvasCourseId']
+            course_code = course['courseCode']
             student_summaries = canvas.get_student_summaries(canvas_course_id, term_id)
             if not student_summaries:
                 analytics = {'error': 'Unable to retrieve analytics'}
@@ -16,15 +19,20 @@ def merge_analytics_for_user(user_courses, uid, canvas_user_id, term_id):
                 analytics = analytics_from_summary_feed(student_summaries, canvas_user_id, canvas_course_id)
                 enrollments = canvas.get_course_enrollments(canvas_course_id, term_id)
                 analytics.update(analytics_from_canvas_course_enrollments(enrollments, canvas_user_id))
-                assignments = canvas.get_assignments_analytics(canvas_course_id, uid, term_id)
-                if assignments:
-                    analytics.update(analytics_from_canvas_course_assignments(assignments))
+                assignment_analytics = analytics_from_canvas_course_assignments(
+                    course_id=canvas_course_id,
+                    course_code=course_code,
+                    uid=uid,
+                    sid=sid,
+                    term_id=term_id,
+                )
+                analytics.update(assignment_analytics)
             course['analytics'] = analytics
 
 
-def mean_course_analytics_for_user(user_courses, uid, canvas_user_id, term_id):
-    merge_analytics_for_user(user_courses, uid, canvas_user_id, term_id)
-    meanValues = {}
+def mean_course_analytics_for_user(user_courses, uid, sid, canvas_user_id, term_id):
+    merge_analytics_for_user(user_courses, uid, sid, canvas_user_id, term_id)
+    mean_values = {}
     # TODO Remove misleading assignmentsOnTime metric.
     for metric in ['assignmentsOnTime', 'pageViews', 'participations', 'courseCurrentScore']:
         percentiles = []
@@ -34,15 +42,15 @@ def mean_course_analytics_for_user(user_courses, uid, canvas_user_id, term_id):
                 if percentile and not math.isnan(percentile):
                     percentiles.append(percentile)
         if len(percentiles):
-            meanPercentile = mean(percentiles)
-            meanValues[metric] = {'percentile': meanPercentile, 'displayPercentile': ordinal(meanPercentile)}
+            mean_percentile = mean(percentiles)
+            mean_values[metric] = {'percentile': mean_percentile, 'displayPercentile': ordinal(mean_percentile)}
         else:
-            meanValues[metric] = None
-    return meanValues
+            mean_values[metric] = None
+    return mean_values
 
 
 def analytics_from_summary_feed(summary_feed, canvas_user_id, canvas_course_id):
-    """Given a student summary feed for a Canvas course, return analytics for a given user"""
+    """Given a student summary feed for a Canvas course, return analytics for a given user."""
     # TODO Remove misleading tardiness_breakdown stats.
     df = pandas.DataFrame(summary_feed, columns=['id', 'page_views', 'participations', 'tardiness_breakdown'])
     df['on_time'] = [row['on_time'] for row in df['tardiness_breakdown']]
@@ -70,7 +78,11 @@ def analytics_from_canvas_course_enrollments(feed, canvas_user_id):
     }
 
 
-def analytics_from_canvas_course_assignments(feed):
+@stow('analytics_from_canvas_course_assignments_{course_id}_{uid}', for_term=True)
+def analytics_from_canvas_course_assignments(course_id, course_code, uid, sid, term_id):
+    assignments = canvas.get_assignments_analytics(course_id, uid, term_id)
+    if not assignments:
+        return {}
     data = {
         'assignmentTotals': {
             'floating': 0,
@@ -81,7 +93,7 @@ def analytics_from_canvas_course_assignments(feed):
         },
         'assignments': [],
     }
-    for assignment in feed:
+    for assignment in assignments:
         data['assignmentTotals']['all'] += 1
         total_type = assignment['status']
         if total_type == 'on_time':
@@ -91,12 +103,26 @@ def analytics_from_canvas_course_assignments(feed):
         data['assignmentTotals'][total_type] += 1
 
         # If there is no submission, the Canvas API may return a nil-valued 'submission' property or may leave it out.
-        submission = assignment.get('submission', {
-            'score': None,
-            'submitted_at': None,
-        })
+        submission = assignment.get(
+            'submission',
+            {
+                'score': None,
+                'submitted_at': None,
+            },
+        )
+
+        if assignment['status'] in ['late', 'missing']:
+            Alert.update_assignment_alerts(
+                sid=sid,
+                term_id=term_id,
+                assignment_id=assignment['assignment_id'],
+                due_at=assignment['due_at'],
+                status=assignment['status'],
+                course_site_name=course_code,
+            )
 
         assignment_data = {
+            'id': assignment['assignment_id'],
             'name': assignment['title'],
             'dueDate': assignment['due_at'],
             'pointsPossible': assignment['points_possible'],
@@ -183,12 +209,13 @@ def ordinal(nbr):
 
 
 def quantiles(series, count):
-    """Return a given number of evenly spaced quantiles for a given series"""
+    """Return a given number of evenly spaced quantiles for a given series."""
     return [round(series.quantile(n / count)) for n in range(0, count + 1)]
 
 
 def rounded_up_percentile(dataframe, student_row):
     """Given a dataframe and an individual student row, return a more easily understood meaning of percentile.
+
     Z-score percentile is useful in a scatterplot to spot outliers in the overall population across contexts.
     (If 90% of the course's students received a score of '5', then one student with a '5' is not called out.)
     Rounded-up matches what non-statisticians would expect when viewing one particular student in one
@@ -201,7 +228,7 @@ def rounded_up_percentile(dataframe, student_row):
 
 
 def zptile(z_score):
-    """Derive percentile from zscore"""
+    """Derive percentile from zscore."""
     if z_score is None:
         return None
     else:
@@ -209,7 +236,7 @@ def zptile(z_score):
 
 
 def zscore(dataframe, value):
-    """Given a dataframe and an individual value, return a zscore"""
+    """Given a dataframe and an individual value, return a zscore."""
     if dataframe.std(ddof=0) == 0:
         return None
     else:

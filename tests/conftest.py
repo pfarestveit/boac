@@ -1,6 +1,7 @@
 import json
 import os
 import boac.factory
+from boac.models.alert import Alert
 import pytest
 
 
@@ -47,7 +48,6 @@ def app(request):
 @pytest.fixture(scope='session')
 def db(app, request):
     """Fixture database object, shared by all tests."""
-
     from boac.models import development_db
     # Drop all tables before re-loading the schemas.
     # If we dropped at teardown instead, an interrupted test run would block the next test run.
@@ -59,9 +59,9 @@ def db(app, request):
 
 @pytest.fixture(scope='function', autouse=True)
 def db_session(db, request):
-    """
-    Fixture database session used for the scope of a single test. All executions are wrapped
-    in a session and then rolled back to keep individual tests isolated.
+    """Fixture database session used for the scope of a single test.
+
+    All executions are wrapped in a session and then rolled back to keep individual tests isolated.
     """
     # Mixing SQL-using test fixtures with SQL-using decorators seems to cause timing issues with pytest's
     # fixture finalizers. Instead of using a finalizer to roll back the session and close connections,
@@ -86,10 +86,37 @@ def db_session(db, request):
 
 @pytest.fixture(scope='function')
 def fake_auth(app, db, client):
-    """
-    Shortcut to start an authenticated session.
-    """
+    """Shortcut to start an authenticated session."""
     return FakeAuth(app, client)
+
+
+@pytest.fixture()
+def create_alerts(db_session):
+    """Create three canned alerts for the current term and one for the previous term."""
+    Alert.create(
+        sid='11667051',
+        alert_type='late_assignment',
+        key='2172_100900300',
+        message='Week 5 homework in LATIN 100 is late.',
+    )
+    Alert.create(
+        sid='11667051',
+        alert_type='late_assignment',
+        key='2178_800900300',
+        message='Week 5 homework in RUSSIAN 13 is late.',
+    )
+    Alert.create(
+        sid='11667051',
+        alert_type='missing_assignment',
+        key='2178_500600700',
+        message='Week 6 homework in PORTUGUESE 12 is missing.',
+    )
+    Alert.create(
+        sid='2345678901',
+        alert_type='late_assignment',
+        key='2178_100200300',
+        message='Week 5 homework in BOSCRSR 27B is late.',
+    )
 
 
 def pytest_itemcollected(item):

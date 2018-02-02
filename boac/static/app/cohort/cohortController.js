@@ -3,13 +3,13 @@
   'use strict';
 
   angular.module('boac').controller('CohortController', function(
-    authService,
     boxplotService,
     cohortFactory,
     cohortService,
     googleAnalyticsService,
     studentFactory,
     utilService,
+    watchlistFactory,
     $anchorScroll,
     $base64,
     $location,
@@ -58,19 +58,18 @@
         unitRanges: 0
       },
       dropdown: defaultDropdownState(),
-      filterByUnitsFeatureEnabled: false,
       options: {}
     };
 
     $scope.orderBy = {
       options: [
-        {value: 'first_name', label: 'First Name'},
-        {value: 'last_name', label: 'Last Name'},
-        {value: 'group_name', label: 'Team'},
-        {value: 'gpa', label: 'GPA'},
-        {value: 'level', label: 'Level'},
-        {value: 'major', label: 'Major'},
-        {value: 'units', label: 'Units'}
+        {name: 'First Name', value: 'first_name'},
+        {name: 'Last Name', value: 'last_name'},
+        {name: 'Team', value: 'group_name'},
+        {name: 'GPA', value: 'gpa'},
+        {name: 'Level', value: 'level'},
+        {name: 'Major', value: 'major'},
+        {name: 'Units', value: 'units'}
       ],
       selected: 'first_name'
     };
@@ -78,7 +77,7 @@
     // More info: https://angular-ui.github.io/bootstrap/
     $scope.pagination = {
       enabled: true,
-      currentPage: 0,
+      currentPage: 1,
       itemsPerPage: 50,
       noLimit: Number.MAX_SAFE_INTEGER
     };
@@ -97,10 +96,6 @@
     /**
      * Use selected filter options to query students API.
      *
-     * TODO: The search-by-unit-ranges feature is disabled and likely to change
-     * var unitRangesEligibility = cohortService.getSelected(opts.unitRangesEligibility, 'value');
-     * var unitRangesPacing = cohortService.getSelected(opts.unitRangesPacing, 'value');
-     *
      * @param  {String}      orderBy                     Requested sort order
      * @param  {Number}      offset                      As used in SQL query
      * @param  {Number}      limit                       As used in SQL query
@@ -109,18 +104,22 @@
      */
     var getStudents = function(orderBy, offset, limit, updateBrowserLocation) {
       var opts = $scope.search.options;
-      var gpaRanges = cohortService.getSelected(opts.gpaRanges, 'value');
-      var groupCodes = cohortService.getSelected(opts.teamGroups, 'groupCode');
-      var levels = cohortService.getSelected(opts.levels, 'name');
-      var majors = cohortService.getSelected(opts.majors, 'name');
+      var getValues = utilService.getValuesSelected;
+      // Get values where selected=true
+      var gpaRanges = getValues(opts.gpaRanges);
+      var groupCodes = getValues(opts.teamGroups, 'groupCode');
+      var levels = getValues(opts.levels);
+      var majors = getValues(opts.majors);
+      var unitRanges = getValues(opts.unitRanges);
       if (updateBrowserLocation) {
         $location.search('c', 'search');
         $location.search('g', gpaRanges);
         $location.search('t', groupCodes);
         $location.search('l', levels);
         $location.search('m', majors);
+        $location.search('u', unitRanges);
       }
-      return studentFactory.getStudents(gpaRanges, groupCodes, levels, majors, [], [], orderBy, offset, limit);
+      return studentFactory.getStudents(gpaRanges, groupCodes, levels, majors, unitRanges, orderBy, offset, limit);
     };
 
     /**
@@ -168,6 +167,10 @@
       });
     };
 
+    var isPaginationEnabled = function() {
+      return _.includes(['search', 'intensive'], $scope.cohort.code) || !isNaN($scope.cohort.code);
+    };
+
     /**
      * Invoke API to get cohort, team or intensive.
      *
@@ -176,14 +179,13 @@
      */
     var listViewRefresh = function(callback) {
       // Pagination is not used on teams because the member count is always reasonable.
-      $scope.pagination.enabled = _.includes(['search', 'intensive'], $scope.cohort.code) || !isNaN($scope.cohort.code);
-      var page = $scope.pagination.enabled ? $scope.pagination.currentPage : 0;
-      var orderBy = $scope.orderBy.selected;
+      $scope.pagination.enabled = isPaginationEnabled();
+      var page = $scope.pagination.enabled ? $scope.pagination.currentPage : 1;
       var limit = $scope.pagination.enabled ? $scope.pagination.itemsPerPage : Number.MAX_SAFE_INTEGER;
       var offset = page === 0 ? 0 : (page - 1) * limit;
 
       $scope.isLoading = true;
-      getCohort(orderBy, offset, limit).then(function(response) {
+      getCohort($scope.orderBy.selected, offset, limit).then(function(response) {
         updateCohort(response.data);
         drawBoxplots();
         return callback();
@@ -205,11 +207,113 @@
     var preset = function(filterName, key, selectedValues) {
       if (!_.isEmpty(selectedValues)) {
         _.each($scope.search.options[filterName], function(option) {
-          if (_.includes(selectedValues, option[key])) {
+          if (option && _.includes(selectedValues, option[key])) {
             option.selected = true;
             $scope.search.count[filterName] += 1;
           }
         });
+      }
+    };
+
+    /**
+     * @param  {Array}     allOptions     All options of dropdown
+     * @param  {Function}  isSelected     Determines value of 'selected' property
+     * @return {void}
+     */
+    var setSelected = function(allOptions, isSelected) {
+      _.each(allOptions, function(option) {
+        if (option) {
+          option.selected = isSelected(option);
+        }
+      });
+    };
+
+    /**
+     * @param  {String}    menuName     For example, 'gpaRanges'
+     * @param  {Object}    option       Has been selected or deselected
+     * @return {void}
+     */
+    var onClickOption = function(menuName, option) {
+      var delta = option.selected ? 1 : -1;
+      var existingValue = _.get($scope.search.count, menuName, 0);
+      _.set($scope.search.count, menuName, existingValue + delta);
+    };
+
+    /**
+     * Ordinarily, the value of 'selected' (per dropdown menu option) is managed by uib-dropdown-toggle in the
+     * template. However, we sometimes want to alter option 'selected' behind the scenes.
+     *
+     * @param  {String}    menuName         For example, 'majors'
+     * @param  {String}    optionName       For example, the option group 'Declared'
+     * @param  {Boolean}   value            The value used to update 'selected' property
+     * @return {void}
+     */
+    var manualSetSelected = function(menuName, optionName, value) {
+      var allMenuOptions = _.get($scope.search.options, menuName);
+      var match = _.find(allMenuOptions, {name: optionName});
+      if (match && !!match.selected !== !!value) {
+        match.selected = value;
+        onClickOption(menuName, match);
+      }
+    };
+
+    /**
+     * @param  {String}    menuName      For example, 'majors'
+     * @param  {Object}    optionGroup   Menu represents a group of options (see option-group definition)
+     * @return {void}
+     */
+    var onClickOptionGroup = function(menuName, optionGroup) {
+      if (menuName === 'majors') {
+        if (optionGroup.selected) {
+          if (optionGroup.name === 'Declared') {
+            // If user selects "Declared" then all other checkboxes are deselected
+            $scope.search.count.majors = 1;
+            setSelected($scope.search.options.majors, function(major) {
+              return major.name === optionGroup.name;
+            });
+          } else if (optionGroup.name === 'Undeclared') {
+            // If user selects "Undeclared" then "Declared" is deselected
+            manualSetSelected(menuName, 'Declared', false);
+            onClickOption(menuName, optionGroup);
+          }
+        } else {
+          onClickOption(menuName, optionGroup);
+        }
+      }
+    };
+
+    /**
+     * @param  {String}    menuName     Always 'majors'
+     * @param  {Object}    option       Has been selected or deselected
+     * @return {void}
+     */
+    var onClickSpecificMajor = function(menuName, option) {
+      manualSetSelected('majors', 'Declared', false);
+      onClickOption(menuName, option);
+    };
+
+    var getCohortCriteria = function(property) {
+      return $scope.cohort.filterCriteria ? _.get($scope.cohort, 'filterCriteria.' + property, []) : null;
+    };
+
+    /**
+     * @param  {String}     menuName            For example, 'gpaRanges' or 'majors'
+     * @param  {String}     valueRef            Key to use when looking up menu option values
+     * @param  {Object}     selectedSet         Pre-selected cohort filter criteria per search or db record
+     * @param  {Function}   onClickFunction     The function we add to object will be invoked onClick.
+     * @return {void}
+     */
+    var initFilter = function(menuName, valueRef, selectedSet, onClickFunction) {
+      if (selectedSet !== null) {
+        $scope.search.count[menuName] = selectedSet.length;
+        _.map($scope.search.options[menuName], function(option) {
+          if (option) {
+            option.selected = _.includes(selectedSet, option[valueRef]);
+          }
+        });
+      }
+      if (onClickFunction) {
+        _.map($scope.search.options[menuName], function(option) { option.onClick = onClickFunction; });
       }
     };
 
@@ -220,48 +324,22 @@
      * @return {void}
      */
     var initFilters = function(callback) {
-      if ($scope.cohort.filterCriteria || $scope.cohort.teamGroups) {
-        // GPA ranges
-        var selectedGpaRanges = _.get($scope.cohort, 'filterCriteria.gpaRanges', []);
-        $scope.search.count.gpaRanges = selectedGpaRanges.length;
-        _.map($scope.search.options.gpaRanges, function(gpaRange) {
-          gpaRange.selected = _.includes(selectedGpaRanges, gpaRange.value);
-        });
-        // If we hit the cohort view with a team code then we populate filter with the team's group codes.
-        var selectedGroupCodes = [];
-        if ($scope.cohort.teamGroups) {
-          selectedGroupCodes = _.map($scope.cohort.teamGroups, 'groupCode');
-        } else {
-          selectedGroupCodes = _.get($scope.cohort, 'filterCriteria.groupCodes', []);
+      // GPA ranges
+      initFilter('gpaRanges', 'value', getCohortCriteria('gpaRanges'), onClickOption);
+      // Teams (if we receive a teamCode then init filter with groupCodes of that team)
+      var selectedCodes = $scope.cohort.teamGroups ? _.map($scope.cohort.teamGroups, 'groupCode') : getCohortCriteria('groupCodes');
+      initFilter('teamGroups', 'groupCode', selectedCodes, onClickOption);
+      // Levels
+      initFilter('levels', 'name', getCohortCriteria('levels'), onClickOption);
+      // Majors (the 'Declared' and 'Undeclared' options are special)
+      _.map($scope.search.options.majors, function(option) {
+        if (option) {
+          option.onClick = option.onClick || onClickSpecificMajor;
         }
-        $scope.search.count.teamGroups = selectedGroupCodes.length;
-        _.map($scope.search.options.teamGroups, function(teamGroup) {
-          teamGroup.selected = _.includes(selectedGroupCodes, teamGroup.groupCode);
-        });
-        // Class levels
-        var selectedLevels = _.get($scope.cohort, 'filterCriteria.levels', []);
-        $scope.search.count.levels = selectedLevels.length;
-        _.map($scope.search.options.levels, function(level) {
-          level.selected = _.includes(selectedLevels, level.name);
-        });
-        // Majors
-        var selectedMajors = _.get($scope.cohort, 'filterCriteria.majors', []);
-        $scope.search.count.majors = selectedMajors.length;
-        _.map($scope.search.options.majors, function(major) {
-          major.selected = _.includes(selectedMajors, major.name);
-        });
-        // Units, eligibility
-        var selectedUnitRangesE = _.get($scope.cohort, 'filterCriteria.unitRangesEligibility', []);
-        _.map($scope.search.options.unitRangesEligibility, function(unitRange) {
-          unitRange.selected = _.includes(selectedUnitRangesE, unitRange.value);
-        });
-        // Units, pacing
-        var selectedUnitRangesP = _.get($scope.cohort, 'filterCriteria.unitRangesPacing', []);
-        _.map($scope.search.options.unitRangesPacing, function(unitRange) {
-          unitRange.selected = _.includes(selectedUnitRangesP, unitRange.value);
-        });
-        $scope.search.count.unitRanges = selectedUnitRangesE.length + selectedUnitRangesP.length;
-      }
+      });
+      initFilter('majors', 'name', getCohortCriteria('majors'));
+      // Units
+      initFilter('unitRanges', 'value', getCohortCriteria('unitRanges'), onClickOption);
       // Ready for the world!
       return callback();
     };
@@ -281,7 +359,9 @@
       });
       // Pass along a subset of students that have useful data.
       cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
-        var encodedAbsUrl = $base64.encode($location.absUrl());
+        var absUrl = $location.absUrl();
+        $location.state(absUrl);
+        var encodedAbsUrl = encodeURIComponent($base64.encode(absUrl));
         $state.go('user', {uid: uid, r: encodedAbsUrl});
       });
       // List of students-without-data is rendered below the scatterplot.
@@ -328,7 +408,7 @@
           $scope.error = err ? {message: err.status + ': ' + err.statusText} : true;
         };
         var page = $scope.pagination.currentPage;
-        var offset = page === 0 ? 0 : (page - 1) * $scope.pagination.itemsPerPage;
+        var offset = page < 2 ? 0 : (page - 1) * $scope.pagination.itemsPerPage;
 
         // Perform the query
         $scope.isLoading = true;
@@ -350,6 +430,7 @@
         preset('teamGroups', 'groupCode', args.t);
         preset('levels', 'name', args.l);
         preset('majors', 'name', args.m);
+        preset('unitRanges', 'value', args.u);
       }
       if (args.o && _.find($scope.orderBy.options, ['value', args.o])) {
         $scope.orderBy.selected = args.o;
@@ -363,19 +444,6 @@
       if (args.p && !isNaN(args.p)) {
         $scope.pagination.currentPage = parseInt(args.p, 10);
       }
-    };
-
-    /**
-     * The search form must reflect the team codes of the saved cohort.
-     *
-     * @param  {String}    type     Dropdown name
-     * @param  {Number}    option   Has been selected or deselected
-     * @return {void}
-     */
-    $scope.updateSelected = function(type, option) {
-      var delta = option.selected ? 1 : -1;
-      var existingValue = _.get($scope.search.count, type, 0);
-      _.set($scope.search.count, type, existingValue + delta);
     };
 
     /**
@@ -393,6 +461,12 @@
           $scope.isLoading = false;
         });
       } else if (tabName === 'list') {
+        // Restore pagination; fortunately, 'currentPage' persists.
+        $scope.pagination.enabled = isPaginationEnabled();
+        if ($scope.pagination.enabled && $scope.pagination.currentPage > 1 && $scope.cohort.members.length > 50) {
+          var start = ($scope.pagination.currentPage - 1) * 50;
+          $scope.cohort.members = _.slice($scope.cohort.members, start, start + 50);
+        }
         drawBoxplots();
       }
     };
@@ -407,7 +481,7 @@
       $scope.search.dropdown = defaultDropdownState();
       // Refresh search results
       $scope.cohort.code = 'search';
-      $scope.pagination.currentPage = 0;
+      $scope.pagination.currentPage = 1;
       $location.search('c', $scope.cohort.code);
       $location.search('p', $scope.pagination.currentPage);
       if ($scope.tabs.selected === 'list') {
@@ -422,7 +496,7 @@
     $scope.$watch('orderBy.selected', function(value) {
       if (value && !$scope.isLoading) {
         $location.search('o', $scope.orderBy.selected);
-        $scope.pagination.currentPage = 0;
+        $scope.pagination.currentPage = 1;
         nextPage();
       }
     });
@@ -434,7 +508,7 @@
     });
 
     $scope.studentProfile = function(uid) {
-      var encodedAbsUrl = $base64.encode($location.absUrl());
+      var encodedAbsUrl = encodeURIComponent($base64.encode($location.absUrl()));
       $location.path('/student/' + uid).search({r: encodedAbsUrl});
     };
 
@@ -445,12 +519,32 @@
       }
     };
 
+    var getMajors = function(callback) {
+      studentFactory.getRelevantMajors().then(function(majorsResponse) {
+        var majors = _.map(majorsResponse.data, function(name) {
+          return {name: name};
+        });
+        majors.unshift(
+          {
+            name: 'Declared',
+            onClick: onClickOptionGroup
+          },
+          {
+            name: 'Undeclared',
+            onClick: onClickOptionGroup
+          },
+          null
+        );
+        return callback(majors);
+      });
+    };
+
     /**
      * Initialize page view.
      *
      * @return {void}
      */
-    var init = authService.authWrap(function() {
+    var init = function() {
       var args = _.clone($location.search());
       // Create-new-cohort mode if code='new'. Search-mode (ie, unsaved cohort) if code='search'.
       var code = $scope.cohort.code || args.c || 'search';
@@ -460,17 +554,15 @@
       cohortFactory.getAllTeamGroups().then(function(teamsResponse) {
         var teamGroups = teamsResponse.data;
 
-        studentFactory.getRelevantMajors().then(function(response) {
-          var majors = _.map(response.data, function(name) {
-            return {name: name};
-          });
+        getMajors(function(majors) {
+          var decorate = utilService.decorateOptions;
+          // 'decorate' is used to standardize (eg, assign 'id' property) each set of menu options
           $scope.search.options = {
-            gpaRanges: studentFactory.getGpaRanges(),
-            levels: studentFactory.getStudentLevels(),
-            majors: majors,
-            teamGroups: teamGroups,
-            unitRangesEligibility: studentFactory.getUnitRangesEligibility(),
-            unitRangesPacing: studentFactory.getUnitRangesPacing()
+            gpaRanges: decorate(studentFactory.getGpaRanges(), 'name'),
+            levels: decorate(studentFactory.getStudentLevels(), 'name'),
+            majors: decorate(majors, 'name'),
+            teamGroups: decorate(teamGroups, 'groupName'),
+            unitRanges: decorate(studentFactory.getUnitRanges(), 'name')
           };
           // Filter options to 'selected' per request args
           presetSearchFilters(args);
@@ -481,30 +573,34 @@
             });
           } else {
             var render = $scope.tabs.selected === 'list' ? listViewRefresh : matrixViewRefresh;
-            render(function() {
-              initFilters(function() {
-                $scope.isLoading = false;
-                if (args.a) {
-                  $timeout(function() {
-                    // Scroll to anchor if returning from student profile page
-                    $scope.anchor = args.a;
-                    $location.search('a', null).replace();
-                    $anchorScroll.yOffset = 50;
-                    $anchorScroll(args.a);
-                  });
-                }
-                // Track view event
-                if (isNaN($scope.cohort.code)) {
-                  googleAnalyticsService.track('team', 'view', $scope.cohort.code + ': ' + $scope.cohort.name);
-                } else {
-                  googleAnalyticsService.track('cohort', 'view', $scope.cohort.name, $scope.cohort.code);
-                }
+            watchlistFactory.getMyWatchlist().then(function(response) {
+              $scope.myWatchlist = response.data;
+              render(function() {
+                initFilters(function() {
+                  $scope.isLoading = false;
+
+                  if (args.a) {
+                    $timeout(function() {
+                      // Scroll to anchor if returning from student profile page
+                      $scope.anchor = args.a;
+                      $location.search('a', null).replace();
+                      $anchorScroll.yOffset = 50;
+                      $anchorScroll(args.a);
+                    });
+                  }
+                  // Track view event
+                  if (isNaN($scope.cohort.code)) {
+                    googleAnalyticsService.track('team', 'view', $scope.cohort.code + ': ' + $scope.cohort.name);
+                  } else {
+                    googleAnalyticsService.track('cohort', 'view', $scope.cohort.name, $scope.cohort.code);
+                  }
+                });
               });
             });
           }
         });
       });
-    });
+    };
 
     /**
      * Reload page with newly created cohort.

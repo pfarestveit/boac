@@ -67,17 +67,17 @@
             data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
-              data-ng-repeat="teamGroup in search.options.teamGroups">
-            <input id="search-option-team-{{teamGroup.groupCode}}"
+              data-ng-repeat="option in search.options.teamGroups">
+            <input id="search-option-team-{{option.id}}"
                    type="checkbox"
-                   data-ng-model="teamGroup.selected"
-                   aria-label="{{teamGroup.groupName}}"
-                   data-ng-click="updateSelected('teamGroups', teamGroup)"/>
-            <span data-ng-bind="teamGroup.groupName"></span></li>
+                   data-ng-model="option.selected"
+                   aria-label="{{option.name}}"
+                   data-ng-click="option.onClick('teamGroups', option)"/>
+            <span data-ng-bind="option.name"></span></li>
         </ul>
       </div>
     </div>
-    <!-- Class levels -->
+    <!-- Levels -->
     <div class="cohort-filters-column flex-column-btn">
       <div class="btn-group box-shadow-off"
            uib-dropdown
@@ -108,13 +108,13 @@
             data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
-              data-ng-repeat="level in search.options.levels">
-            <input id="search-option-level-{{level.name}}"
+              data-ng-repeat="option in search.options.levels">
+            <input id="search-option-level-{{option.id}}"
                    type="checkbox"
-                   data-ng-model="level.selected"
-                   aria-label="{{level.name}}"
-                   data-ng-click="updateSelected('levels', level)"/>
-            <span data-ng-bind="level.name"></span></li>
+                   data-ng-model="option.selected"
+                   aria-label="{{option.name}}"
+                   data-ng-click="option.onClick('levels', option)"/>
+            <span data-ng-bind="option.name"></span></li>
         </ul>
       </div>
     </div>
@@ -148,14 +148,17 @@
             uib-dropdown-menu
             data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
+              data-ng-class="{'divider': !option}"
               role="menuitem"
-              data-ng-repeat="major in search.options.majors">
-            <input id="search-option-major-{{major.name}}"
+              data-ng-repeat="option in search.options.majors">
+            <input id="search-option-major-{{option.id}}"
                    type="checkbox"
-                   data-ng-model="major.selected"
-                   aria-label="{{major.name}}"
-                   data-ng-click="updateSelected('majors', major)"/>
-            <span data-ng-bind="major.name"></span></li>
+                   data-ng-model="option.selected"
+                   aria-label="{{option.name}}"
+                   data-ng-click="option.onClick('majors', option)"
+                   data-ng-if="option"/>
+            <span data-ng-bind="option.name" data-ng-if="option"></span>
+          </li>
         </ul>
       </div>
     </div>
@@ -190,18 +193,18 @@
             data-ng-show="!isLoading && !isSaving">
           <li class="cohort-filter-list-item"
               role="menuitem"
-              data-ng-repeat="gpaRange in search.options.gpaRanges">
-            <input id="search-option-gpa-range-{{$index}}"
+              data-ng-repeat="option in search.options.gpaRanges">
+            <input id="search-option-gpa-range-{{option.id}}"
                    type="checkbox"
-                   data-ng-model="gpaRange.selected"
-                   aria-label="{{gpaRange.name}}"
-                   data-ng-click="updateSelected('gpaRanges', gpaRange)"/>
-            <span data-ng-bind="gpaRange.name"></span></li>
+                   data-ng-model="option.selected"
+                   aria-label="{{option.name}}"
+                   data-ng-click="option.onClick('gpaRanges', option)"/>
+            <span data-ng-bind="option.name"></span></li>
         </ul>
       </div>
     </div>
     <!-- Units -->
-    <div class="cohort-filters-column flex-column-btn" data-ng-if="search.filterByUnitsFeatureEnabled">
+    <div class="cohort-filters-column flex-column-btn">
       <div class="btn-group box-shadow-off"
            uib-dropdown
            auto-close="outsideClick"
@@ -229,29 +232,15 @@
             role="menu"
             uib-dropdown-menu
             data-ng-show="!isLoading && !isSaving">
-          <!-- Pacing units -->
-          <li class="cohort-filter-list-section-label" role="menuitem">Pacing (Total)</li>
           <li class="cohort-filter-list-item"
             role="menuitem"
-            data-ng-repeat="unitRange in search.options.unitRangesPacing">
-          <input id="search-option-unit-range-pacing-{{$index}}"
+            data-ng-repeat="option in search.options.unitRanges">
+          <input id="search-option-unit-range-{{option.id}}"
                  type="checkbox"
-                 data-ng-model="unitRange.selected"
-                 aria-label="{{unitRange.name}}"
-                 data-ng-click="updateSelected('unitRanges', unitRange)"/>
-          <span data-ng-bind="unitRange.name"></span></li>
-          <!-- Eligibility units -->
-          <li class="divider"></li>
-          <li class="cohort-filter-list-section-label" role="menuitem">Eligibility (Per Term/Year)</li>
-          <li class="cohort-filter-list-item"
-              role="menuitem"
-              data-ng-repeat="unitRange in search.options.unitRangesEligibility">
-            <input id="search-option-unit-range-eligibility-{{$index}}"
-                   type="checkbox"
-                   data-ng-model="unitRange.selected"
-                   aria-label="{{unitRange.name}}"
-                   data-ng-click="updateSelected('unitRanges', unitRange)"/>
-            <span data-ng-bind="unitRange.name"></span></li>
+                 data-ng-model="option.selected"
+                 aria-label="{{option.name}}"
+                 data-ng-click="option.onClick('unitRanges', option)"/>
+          <span data-ng-bind="option.name"></span></li>
         </ul>
       </div>
     </div>
@@ -264,8 +253,7 @@
                                  !search.count.teamGroups &&
                                  !search.count.levels &&
                                  !search.count.majors &&
-                                 !search.count.unitRangesEligibility &&
-                                 !search.count.unitRangesPacing) || isLoading || isSaving"
+                                 !search.count.unitRanges) || isLoading || isSaving"
               data-ng-click="executeSearch()">Search</button>
     </div>
     <div class="cohort-filters-column flex-column-btn">
@@ -276,8 +264,7 @@
                                    !search.count.teamGroups &&
                                    !search.count.levels &&
                                    !search.count.majors &&
-                                   !search.count.unitRangesEligibility &&
-                                   !search.count.unitRangesPacing) || isLoading || isSaving"
+                                   !search.count.unitRanges) || isLoading || isSaving"
                 data-ng-click="openCreateCohortModal(search.options)">
           Save Cohort
         </button>
@@ -294,7 +281,7 @@
 
   <div class="cohort-column-results">
     <div class="flex-container flex-space-between"
-         data-ng-if="!isLoading && !error && cohort.totalMemberCount">
+         data-ng-if="!isLoading && !error && (tabs.selected === 'matrix' || cohort.totalMemberCount)">
       <div class="cohort-sort-column">
         <div class="btn-group cohort-btn-group" role="group" aria-label="Select results view">
           <button type="button"
@@ -318,7 +305,7 @@
         <select id="cohort-sort-by"
                 class="form-control"
                 data-ng-model="orderBy.selected"
-                data-ng-options="o.value as o.label for o in orderBy.options">
+                data-ng-options="o.value as o.name for o in orderBy.options">
         </select>
       </div>
     </div>
@@ -337,12 +324,21 @@
                  data-avatar-fallback>
           </div>
           <div class="cohort-member-name-container">
-            <h3 class="cohort-member-name" data-ng-bind="student.firstName + ' ' + student.lastName"></h3>
+            <div class="flex-container">
+              <h3 class="cohort-member-name">
+                {{student.firstName}} {{student.lastName}}
+              </h3>
+              <watchlist-toggle data-sid="student.sid"
+                                data-fa-size="fa-1x"
+                                data-watchlist="myWatchlist"></watchlist-toggle>
+            </div>
             <div class="cohort-member-sid" data-ng-bind="student.sid"></div>
             <div class="cohort-member-text" data-ng-bind="student.level"></div>
             <div class="cohort-member-text" data-ng-bind="major" data-ng-repeat="major in student.majors"></div>
             <div class="cohort-member-teams-container">
-              <div class="cohort-member-teams" data-ng-bind="membership.groupName" data-ng-repeat="membership in student.athletics"></div>
+              <div class="cohort-member-teams"
+                   data-ng-bind="membership.groupName"
+                   data-ng-repeat="membership in student.athletics"></div>
             </div>
           </div>
           <div class="cohort-member-column">
@@ -413,7 +409,14 @@
                      data-avatar-fallback>
               </div>
               <div class="cohort-member-name-container">
-                <h3 class="cohort-member-name" data-ng-bind="student.firstName + ' ' + student.lastName"></h3>
+                <div class="flex-container">
+                  <h3 class="flex-container cohort-member-name">
+                    {{student.firstName}} {{student.lastName}}
+                  </h3>
+                  <watchlist-toggle data-sid="student.sid"
+                                    data-fa-size="fa-1x"
+                                    data-watchlist="myWatchlist"></watchlist-toggle>
+                </div>
                 <div class="cohort-member-sid">
                   SID: <span data-ng-bind="student.sid"></span>
                 </div>

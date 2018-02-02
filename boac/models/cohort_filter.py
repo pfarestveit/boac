@@ -1,14 +1,9 @@
-"""
-This package integrates with Flask-Login to determine who can use the app,
-and which privileges they have. It will probably end up as a DB table, but is
-simply mocked-out a la "demo mode" for now.
-"""
-
 import json
 import re
 from boac import db, std_commit
 from boac.api.errors import InternalServerError
 from boac.lib import util
+from boac.models.alert import Alert
 from boac.models.athletics import Athletics
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.authorized_user import cohort_filter_owners
@@ -39,11 +34,23 @@ class CohortFilter(Base, UserMixin):
         )
 
     @classmethod
-    def create(cls, uid, label, gpa_ranges=None, group_codes=None, levels=None, majors=None,
-               unit_ranges_eligibility=None, unit_ranges_pacing=None):
-        criteria = cls.compose_filter_criteria(gpa_ranges=gpa_ranges, group_codes=group_codes, levels=levels,
-                                               majors=majors, unit_ranges_eligibility=unit_ranges_eligibility,
-                                               unit_ranges_pacing=unit_ranges_pacing)
+    def create(
+            cls,
+            uid,
+            label,
+            gpa_ranges=None,
+            group_codes=None,
+            levels=None,
+            majors=None,
+            unit_ranges=None,
+    ):
+        criteria = cls.compose_filter_criteria(
+            gpa_ranges=gpa_ranges,
+            group_codes=group_codes,
+            levels=levels,
+            majors=majors,
+            unit_ranges=unit_ranges,
+        )
         cf = CohortFilter(label=label, filter_criteria=json.dumps(criteria))
         user = AuthorizedUser.find_by_uid(uid)
         user.cohort_filters.append(cf)
@@ -75,9 +82,12 @@ class CohortFilter(Base, UserMixin):
         return [construct_cohort(cf, include_students=False) for cf in CohortFilter.query.all()]
 
     @classmethod
-    def all_owned_by(cls, uid):
+    def all_owned_by(cls, uid, include_alerts=False):
         filters = CohortFilter.query.filter(CohortFilter.owners.any(uid=uid)).order_by(CohortFilter.label).all()
-        return [construct_cohort(cohort_filter, include_students=False) for cohort_filter in filters]
+        kwargs = {'include_students': False}
+        if include_alerts:
+            kwargs['include_alerts_for_uid'] = uid
+        return [construct_cohort(cohort_filter, **kwargs) for cohort_filter in filters]
 
     @classmethod
     def find_by_id(cls, cohort_id, order_by=None, offset=0, limit=50):
@@ -91,15 +101,21 @@ class CohortFilter(Base, UserMixin):
         std_commit()
 
     @classmethod
-    def compose_filter_criteria(cls, gpa_ranges=None, group_codes=None, levels=None, majors=None,
-                                unit_ranges_eligibility=None, unit_ranges_pacing=None):
-        if not gpa_ranges and not group_codes and not levels and not majors and not unit_ranges_eligibility and not unit_ranges_pacing:
+    def compose_filter_criteria(
+            cls,
+            gpa_ranges=None,
+            group_codes=None,
+            levels=None,
+            majors=None,
+            unit_ranges=None,
+    ):
+        if not gpa_ranges and not group_codes and not levels and not majors and not unit_ranges:
             raise InternalServerError('CohortFilter creation requires one or more non-empty criteria.')
         # Validate
-        for arg in [gpa_ranges, group_codes, levels, majors, unit_ranges_eligibility, unit_ranges_pacing]:
+        for arg in [gpa_ranges, group_codes, levels, majors, unit_ranges]:
             if arg and not isinstance(arg, list):
                 raise InternalServerError('All \'filter_criteria\' objects must be instance of \'list\' type.')
-        group_code_syntax = re.compile('^[A-Z]+\-[A-Z]+$')
+        group_code_syntax = re.compile('^[A-Z\-]+$')
         if group_codes and any(not group_code_syntax.match(code) for code in group_codes):
             raise InternalServerError('\'group_codes\' arg has invalid data: ' + str(group_codes))
         level_syntax = re.compile('^[A-Z][a-z]+$')
@@ -109,20 +125,20 @@ class CohortFilter(Base, UserMixin):
             raise InternalServerError('\'majors\' arg has invalid data: ' + str(majors))
         # The 'numrange' syntax is based on https://www.postgresql.org/docs/9.3/static/rangetypes.html
         numrange_syntax = re.compile('^numrange\([0-9\.NUL]+, [0-9\.NUL]+, \'..\'\)$')
-        for r in (gpa_ranges or []) + (unit_ranges_eligibility or []) + (unit_ranges_pacing or []):
+        for r in (gpa_ranges or []) + (unit_ranges or []):
             if not numrange_syntax.match(r):
-                raise InternalServerError('Range argument \'{}\' does not match expected \'numrange\' syntax: {}'.format(r, numrange_syntax.pattern))
+                msg = f'Range argument \'{r}\' does not match expected \'numrange\' syntax: {numrange_syntax.pattern}'
+                raise InternalServerError(msg)
         return {
             'groupCodes': group_codes or [],
             'levels': levels or [],
             'majors': majors or [],
             'gpaRanges': gpa_ranges or [],
-            'unitRangesEligibility': unit_ranges_eligibility or [],
-            'unitRangesPacing': unit_ranges_pacing or [],
+            'unitRanges': unit_ranges or [],
         }
 
 
-def construct_cohort(cf, order_by=None, offset=0, limit=50, include_students=True):
+def construct_cohort(cf, order_by=None, offset=0, limit=50, include_students=True, include_alerts_for_uid=None):
     cohort = {
         'id': cf.id,
         'code': cf.id,
@@ -136,12 +152,18 @@ def construct_cohort(cf, order_by=None, offset=0, limit=50, include_students=Tru
     group_codes = util.get(c, 'groupCodes', []) or util.get(c, 'team_group_codes', [])
     levels = util.get(c, 'levels', [])
     majors = util.get(c, 'majors', [])
-    unit_ranges_eligibility = util.get(c, 'unitRangesEligibility', [])
-    unit_ranges_pacing = util.get(c, 'unitRangesPacing', [])
-    results = Student.get_students(gpa_ranges=gpa_ranges, group_codes=group_codes, levels=levels, majors=majors,
-                                   unit_ranges_eligibility=unit_ranges_eligibility,
-                                   unit_ranges_pacing=unit_ranges_pacing, order_by=order_by, offset=offset, limit=limit,
-                                   only_total_student_count=not include_students)
+    unit_ranges = util.get(c, 'unitRanges', [])
+    results = Student.get_students(
+        gpa_ranges=gpa_ranges,
+        group_codes=group_codes,
+        levels=levels,
+        majors=majors,
+        unit_ranges=unit_ranges,
+        order_by=order_by,
+        offset=offset,
+        limit=limit,
+        sids_only=not include_students,
+    )
     team_groups = Athletics.get_team_groups(group_codes) if group_codes else []
     cohort.update({
         'filterCriteria': {
@@ -149,8 +171,7 @@ def construct_cohort(cf, order_by=None, offset=0, limit=50, include_students=Tru
             'groupCodes': group_codes,
             'levels': levels,
             'majors': majors,
-            'unitRangesEligibility': unit_ranges_eligibility,
-            'unitRangesPacing': unit_ranges_pacing,
+            'unitRanges': unit_ranges,
         },
         'teamGroups': team_groups,
         'totalMemberCount': results['totalStudentCount'],
@@ -159,4 +180,11 @@ def construct_cohort(cf, order_by=None, offset=0, limit=50, include_students=Tru
         cohort.update({
             'members': results['students'],
         })
+    if include_alerts_for_uid:
+        viewer = AuthorizedUser.find_by_uid(include_alerts_for_uid)
+        if viewer:
+            alert_counts = Alert.current_alert_counts_for_sids(viewer.id, results['sids'])
+            cohort.update({
+                'alerts': alert_counts,
+            })
     return cohort

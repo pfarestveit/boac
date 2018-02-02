@@ -7,13 +7,27 @@
     boxplotService,
     googleAnalyticsService,
     studentFactory,
+    watchlistFactory,
     $base64,
     $location,
     $scope,
     $stateParams
   ) {
 
-    var loadAnalytics = function(uid) {
+    $scope.dismissAlert = function(alertId) {
+      studentFactory.dismissAlert(alertId).then(function() {
+        var dismissed = _.remove($scope.alerts.shown, {id: alertId});
+        Array.prototype.push.apply($scope.alerts.dismissed, dismissed);
+      }).catch(function(error) {
+        if (error.data) {
+          $scope.error = _.truncate(error.data.message, {length: 200}) || 'An unexpected server error occurred.';
+        } else {
+          throw error;
+        }
+      });
+    };
+
+    var loadStudent = function(uid) {
       $scope.student.isLoading = true;
       studentFactory.analyticsPerUser(uid).then(function(analytics) {
         $scope.student = analytics.data;
@@ -26,6 +40,11 @@
         var athleticsProfile = $scope.student.athleticsProfile;
         if (athleticsProfile) {
           athleticsProfile.fullName = athleticsProfile.firstName + ' ' + athleticsProfile.lastName;
+          if (athleticsProfile.sid) {
+            studentFactory.getAlerts(athleticsProfile.sid).then(function(alerts) {
+              $scope.alerts = alerts.data;
+            });
+          }
         }
         $scope.student.isLoading = false;
       });
@@ -35,17 +54,22 @@
       var encodedReturnUrl = $location.search().r;
       if (!_.isEmpty(encodedReturnUrl)) {
         $location.search('r', null).replace();
-        var url = $base64.decode(encodedReturnUrl);
+        var url = $base64.decode(decodeURIComponent(encodedReturnUrl));
         var separator = _.includes(url, '?') ? '&' : '?';
         $scope.returnUrl = url + separator + 'a=' + uid;
       }
     };
 
-    var init = authService.authWrap(function() {
+    var init = function() {
       var uid = $stateParams.uid;
-      loadAnalytics(uid);
+      loadStudent(uid);
       prepareReturnUrl(uid);
-    });
+      $scope.isWatchlistLoading = true;
+      watchlistFactory.getMyWatchlist().then(function(response) {
+        $scope.myWatchlist = response.data;
+        $scope.isWatchlistLoading = false;
+      });
+    };
 
     $scope.student = {
       canvasProfile: null,
@@ -70,6 +94,7 @@
     };
 
     $scope.showAllTerms = false;
+    $scope.showDismissedAlerts = false;
 
     init();
   });

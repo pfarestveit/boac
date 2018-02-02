@@ -1,9 +1,16 @@
-import boac.lib.util as util
+from boac.lib import util
 
 
 class TestUtil:
-    """Generic utilities"""
+    """Generic utilities."""
 
     def test_vacuum_whitespace(self):
-        """cleans up leading, trailing, and repeated whitespace"""
+        """Cleans up leading, trailing, and repeated whitespace."""
         assert util.vacuum_whitespace('  Firstname    Lastname   ') == 'Firstname Lastname'
+
+    def test_tolerant_remove(self):
+        """Ignores error if item not found in list."""
+        assert not util.tolerant_remove([], 'foo')
+        a = ['foo', 'bar', 'baz']
+        assert util.tolerant_remove(a, 'bar') is True
+        assert a == ['foo', 'baz']

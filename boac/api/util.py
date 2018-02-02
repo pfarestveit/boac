@@ -1,18 +1,19 @@
 """Utility module containing standard API-feed translations of data objects."""
 
 
+def canvas_course_api_feed(course):
+    return {
+        'canvasCourseId': course.get('id'),
+        'courseName': course.get('name'),
+        'courseCode': course.get('course_code'),
+        'courseTerm': course.get('term', {}).get('name'),
+    }
+
+
 def canvas_courses_api_feed(courses):
     if not courses:
         return []
-
-    def course_api_values(course):
-        return {
-            'canvasCourseId': course.get('id'),
-            'courseName': course.get('name'),
-            'courseCode': course.get('course_code'),
-            'courseTerm': course.get('term', {}).get('name'),
-        }
-    return [course_api_values(course) for course in courses]
+    return [canvas_course_api_feed(course) for course in courses]
 
 
 def sis_enrollment_class_feed(enrollment):
@@ -26,12 +27,12 @@ def sis_enrollment_class_feed(enrollment):
 
 
 def sis_enrollment_section_feed(enrollment):
-    sectionData = enrollment.get('classSection', {})
+    section_data = enrollment.get('classSection', {})
     grades = enrollment.get('grades', [])
     return {
-        'ccn': sectionData.get('id'),
-        'component': sectionData.get('component', {}).get('code'),
-        'sectionNumber': sectionData.get('number'),
+        'ccn': section_data.get('id'),
+        'component': section_data.get('component', {}).get('code'),
+        'sectionNumber': section_data.get('number'),
         'enrollmentStatus': enrollment.get('enrollmentStatus', {}).get('status', {}).get('code'),
         'units': enrollment.get('enrolledUnits', {}).get('taken'),
         'gradingBasis': translate_grading_basis(enrollment.get('gradingBasis', {}).get('code')),
@@ -48,6 +49,8 @@ def student_to_json(student):
         'lastName': student.last_name,
         'name': student.first_name + ' ' + student.last_name,
         'inIntensiveCohort': student.in_intensive_cohort,
+        'isActiveAsc': student.is_active_asc,
+        'statusAsc': student.status_asc,
     }
 
 

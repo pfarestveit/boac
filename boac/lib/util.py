@@ -1,4 +1,13 @@
-"""Generic utilities"""
+"""Generic utilities."""
+
+
+def camelize(string):
+    def lower_then_capitalize():
+        yield str.lower
+        while True:
+            yield str.capitalize
+    string_transform = lower_then_capitalize()
+    return ''.join(next(string_transform)(segment) for segment in string.split('_'))
 
 
 def get(_dict, key, default_value=None):
@@ -18,3 +27,12 @@ def vacuum_whitespace(str):
     if not str:
         return None
     return ' '.join(str.split())
+
+
+def tolerant_remove(_list, item):
+    """Remove item from list. Return True if item was present, otherwise False."""
+    try:
+        _list.remove(item)
+        return True
+    except ValueError:
+        return False

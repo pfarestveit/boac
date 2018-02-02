@@ -1,4 +1,4 @@
-"""Helper utils for cohort controller"""
+"""Helper utils for cohort controller."""
 
 from boac.api.util import canvas_courses_api_feed
 from boac.externals import canvas
@@ -36,17 +36,16 @@ def merged_data(uid, csid):
         data['cumulativeGPA'] = sis_profile.get('cumulativeGPA')
         data['cumulativeUnits'] = sis_profile.get('cumulativeUnits')
         data['level'] = sis_profile.get('level', {}).get('description')
-        data['majors'] = [plan.get('description') for plan in sis_profile.get('plans', [])]
+        data['majors'] = sorted(plan.get('description') for plan in sis_profile.get('plans', []))
     canvas_profile = canvas.get_user_for_uid(uid)
     if canvas_profile:
         student_courses = canvas.get_student_courses(uid) or []
         current_term = app.config.get('CANVAS_CURRENT_ENROLLMENT_TERM')
         term_id = sis_term_id_for_name(current_term)
-        student_courses_in_current_term = [course for course in student_courses if
-                                           course.get('term', {}).get('name') == current_term]
+        student_courses_in_current_term = [course for course in student_courses if course.get('term', {}).get('name') == current_term]
         canvas_courses = canvas_courses_api_feed(student_courses_in_current_term)
         # Decorate the Canvas courses list with per-course statistics, and return summary statistics.
-        data['analytics'] = mean_course_analytics_for_user(canvas_courses, uid, canvas_profile['id'], term_id)
+        data['analytics'] = mean_course_analytics_for_user(canvas_courses, uid, csid, canvas_profile['id'], term_id)
         # Associate those course sites with campus enrollments.
         data['currentTerm'] = merge_sis_enrollments_for_term(canvas_courses, csid, current_term)
     return data
