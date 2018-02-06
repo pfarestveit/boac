@@ -130,8 +130,8 @@ class TestCohortDetail:
         response = client.get('/api/cohort/{}'.format(cohort_id))
         athlete = response.json['members'][0]
         assert len(athlete['athletics']) == 2
-        tennis = next(membership for membership in athlete['athletics'] if membership['groupCode'] == 'WTE-AA')
-        field_hockey = next(membership for membership in athlete['athletics'] if membership['groupCode'] == 'WFH-AA')
+        tennis = next(membership for membership in athlete['athletics'] if membership['groupCode'] == 'WTE')
+        field_hockey = next(membership for membership in athlete['athletics'] if membership['groupCode'] == 'WFH')
         assert tennis['groupName'] == 'Women\'s Tennis'
         assert tennis['teamCode'] == 'TNW'
         assert tennis['teamName'] == 'Women\'s Tennis'
@@ -144,19 +144,6 @@ class TestCohortDetail:
         response = client.get('/api/cohort/99999999')
         assert response.status_code == 404
         assert 'No cohort found' in str(response.data)
-
-    def test_get_intensive_cohort(self, authenticated_session, client):
-        """Returns the canned 'intensive' cohort, available to all authenticated users."""
-        response = client.get('/api/intensive_cohort')
-        assert response.status_code == 200
-        cohort = json.loads(response.data)
-        assert cohort['code'] == 'intensive'
-        assert cohort['label'] == 'Intensive'
-        assert 'members' in cohort
-        assert cohort['totalMemberCount'] == len(cohort['members']) == 4
-        assert 'teamGroups' not in cohort
-        active_student = response.json['members'][0]
-        assert active_student['isActiveAsc']
 
     def test_get_inactive_cohort(self, authenticated_session, client):
         """Returns the canned 'inactive' cohort, available to all authenticated users."""
@@ -171,25 +158,6 @@ class TestCohortDetail:
         inactive_student = response.json['members'][0]
         assert not inactive_student['isActiveAsc']
         assert inactive_student['statusAsc'] == 'Trouble'
-
-    def test_order_by_with_intensive_cohort(self, authenticated_session, client):
-        """Returns the canned 'intensive' cohort, available to all authenticated users."""
-        all_expected_order = {
-            'first_name': ['61889', '1022796', '1049291', '242881'],
-            'gpa': ['1022796', '242881', '1049291', '61889'],
-            'group_name': ['242881', '1049291', '61889', '1022796'],
-            'last_name': ['1022796', '1049291', '242881', '61889'],
-            'level': ['1022796', '242881', '1049291', '61889'],
-            'major': ['1022796', '61889', '242881', '1049291'],
-            'units': ['61889', '1022796', '242881', '1049291'],
-        }
-        for order_by, expected_uid_list in all_expected_order.items():
-            response = client.get(f'/api/intensive_cohort?orderBy={order_by}')
-            assert response.status_code == 200, f'Non-200 response where order_by={order_by}'
-            cohort = json.loads(response.data)
-            assert cohort['totalMemberCount'] == 4, f'Wrong count where order_by={order_by}'
-            uid_list = [s['uid'] for s in cohort['members']]
-            assert uid_list == expected_uid_list, f'Unmet expectation where order_by={order_by}'
 
     def test_offset_and_limit(self, authenticated_session, client):
         """Returns a well-formed response with custom cohort."""
@@ -210,7 +178,7 @@ class TestCohortDetail:
     def test_create_cohort(self, authenticated_session, client):
         """Creates custom cohort, owned by current user."""
         label = 'Tennis'
-        group_codes = ['MTE', 'WTE-AA']
+        group_codes = ['MTE', 'WTE']
         majors = ['Bioengineering BS', 'Undeclared']
         data = {
             'label': label,
@@ -292,6 +260,7 @@ class TestCohortDetail:
             'levels': levels,
             'majors': majors,
             'unitRanges': [],
+            'inIntensiveCohort': False,
         }
         client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
         response = client.get('/api/cohorts/my')
@@ -305,12 +274,12 @@ class TestCohortDetail:
         """Orders custom cohorts alphabetically."""
         z_team_data = {
             'label': 'Zteam',
-            'groupCodes': ['MTE-AA', 'WWP-AA'],
+            'groupCodes': ['MTE', 'WWP'],
         }
         client.post('/api/cohort/create', data=json.dumps(z_team_data), content_type='application/json')
         a_team_data = {
             'label': 'Ateam',
-            'groupCodes': ['MWP-AA', 'WTE-AA'],
+            'groupCodes': ['MWP', 'WTE'],
         }
         client.post('/api/cohort/create', data=json.dumps(a_team_data), content_type='application/json')
 
@@ -330,7 +299,7 @@ class TestCohortDetail:
 
     def test_delete_cohort_wrong_user(self, client, fake_auth):
         """Custom cohort deletion is only available to owners."""
-        cohort = CohortFilter.create(uid=test_uid, label='Badminton teams', group_codes=['WWP-AA', 'MWP-AA'])
+        cohort = CohortFilter.create(uid=test_uid, label='Badminton teams', group_codes=['WWP', 'MWP'])
         assert cohort and 'id' in cohort
 
         # This user does not own the custom cohort above
@@ -342,7 +311,7 @@ class TestCohortDetail:
     def test_delete_cohort(self, authenticated_session, client):
         """Deletes existing custom cohort while enforcing rules of ownership."""
         label = 'Water polo teams'
-        cohort = CohortFilter.create(uid=test_uid, label=label, group_codes=['WWP-AA', 'MWP-AA'])
+        cohort = CohortFilter.create(uid=test_uid, label=label, group_codes=['WWP', 'MWP'])
 
         assert cohort and 'id' in cohort
         id_of_created_cohort = cohort['id']

@@ -13,7 +13,7 @@ class TestCohortFilter:
         assert not CohortFilter.all_owned_by('88888888')
 
     def test_cohort_update(self):
-        group_codes = ['MSW-AA', 'MSW-DV', 'MSW-SW']
+        group_codes = ['MSW', 'MSW-DV', 'MSW-SW']
         cohort = CohortFilter.create(uid='2040', label='Swimming, Men\'s', group_codes=group_codes)
         foosball_label = 'Foosball teams'
         cohort = CohortFilter.update(cohort['id'], foosball_label)
@@ -36,6 +36,7 @@ class TestCohortFilter:
             label='All criteria, all the time',
             gpa_ranges=gpa_ranges,
             group_codes=group_codes,
+            in_intensive_cohort=None,
             levels=levels,
             majors=majors,
             unit_ranges=unit_ranges,
@@ -44,6 +45,7 @@ class TestCohortFilter:
         expected = {
             'gpaRanges': gpa_ranges,
             'groupCodes': group_codes,
+            'inIntensiveCohort': None,
             'levels': levels,
             'majors': majors,
             'unitRanges': unit_ranges,

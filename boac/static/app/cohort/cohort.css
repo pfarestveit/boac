@@ -119,6 +119,19 @@
   margin: 10px 0 10px 0;
 }
 
+.cohort-checkbox-label {
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.cohort-checkbox-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 4px 0 0 20px;
+  text-align: center;
+}
+
 .filters-section-separator {
   margin: 0 0 0 0;
 }
