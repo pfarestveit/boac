@@ -1,9 +1,35 @@
+"""
+Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+
+Permission to use, copy, modify, and distribute this software and its documentation
+for educational, research, and not-for-profit purposes, without fee and without a
+signed licensing agreement, is hereby granted, provided that the above copyright
+notice, this paragraph and the following two paragraphs appear in all copies,
+modifications, and distributions.
+
+Contact The Office of Technology Licensing, UC Berkeley, 2150 Shattuck Avenue,
+Suite 510, Berkeley, CA 94720-1620, (510) 643-7201, otl@berkeley.edu,
+http://ipira.berkeley.edu/industry-info for commercial licensing opportunities.
+
+IN NO EVENT SHALL REGENTS BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF
+THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF REGENTS HAS BEEN ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+REGENTS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
+"AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+ENHANCEMENTS, OR MODIFICATIONS.
+"""
+
+
 from datetime import datetime
 
 from boac import db, std_commit
 from boac.api.errors import BadRequestError
 from boac.lib.berkeley import current_term_id
-from boac.lib.util import camelize
+from boac.lib.util import camelize, utc_timestamp_to_localtime
 from boac.models.base import Base
 from boac.models.db_relationships import AlertView
 from sqlalchemy import text
@@ -99,7 +125,7 @@ class Alert(Base):
         results = db.session.execute(query, {'viewer_id': viewer_id, 'key': current_term_id() + '_%', 'sids': sids})
 
         def result_to_dict(result):
-            return {camelize(key): result[key] for key in ['sid', 'uid', 'first_name', 'last_name', 'alert_count']}
+            return {camelize(key): result[key] for key in ['sid', 'uid', 'first_name', 'last_name', 'is_active_asc', 'alert_count']}
         return [result_to_dict(result) for result in results]
 
     @classmethod
@@ -162,6 +188,12 @@ class Alert(Base):
     def update_assignment_alerts(cls, sid, term_id, assignment_id, due_at, status, course_site_name):
         alert_type = status + '_assignment'
         key = f'{term_id}_{assignment_id}'
-        due_at_date = datetime.strptime(due_at, '%Y-%m-%dT%H:%M:%SZ').strftime('%b %-d, %Y')
+        due_at_date = utc_timestamp_to_localtime(due_at).strftime('%b %-d, %Y')
         message = f'{course_site_name} assignment due on {due_at_date}.'
         cls.create_or_activate(sid=sid, alert_type=alert_type, key=key, message=message)
+
+    @classmethod
+    def update_midterm_grade_alerts(cls, sid, term_id, section_id, class_name, grade):
+        key = f'{term_id}_{section_id}'
+        message = f'{class_name} midterm grade of {grade}.'
+        cls.create_or_activate(sid=sid, alert_type='midterm', key=key, message=message)

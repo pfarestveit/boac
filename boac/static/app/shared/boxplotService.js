@@ -1,3 +1,28 @@
+/**
+ * Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+ *
+ * Permission to use, copy, modify, and distribute this software and its documentation
+ * for educational, research, and not-for-profit purposes, without fee and without a
+ * signed licensing agreement, is hereby granted, provided that the above copyright
+ * notice, this paragraph and the following two paragraphs appear in all copies,
+ * modifications, and distributions.
+ *
+ * Contact The Office of Technology Licensing, UC Berkeley, 2150 Shattuck Avenue,
+ * Suite 510, Berkeley, CA 94720-1620, (510) 643-7201, otl@berkeley.edu,
+ * http://ipira.berkeley.edu/industry-info for commercial licensing opportunities.
+ *
+ * IN NO EVENT SHALL REGENTS BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+ * INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF
+ * THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF REGENTS HAS BEEN ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * REGENTS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ * SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
+ * "AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+ * ENHANCEMENTS, OR MODIFICATIONS.
+ */
+
 (function(angular) {
 
   'use strict';
@@ -186,27 +211,27 @@
      */
     var drawBoxplotStudent = function(elementId, dataset) {
       // Options specific to a student-view boxplot and the provided dataset.
-      var tooltipHeaderFormat = '<div class="student-profile-boxplot-container-tooltip-header">' +
-                                '<div class="student-profile-boxplot-container-tooltip-label">User Score</div>' +
-                                '<div class="student-profile-boxplot-container-tooltip-value">' + dataset.student.raw + '</div>' +
+      var tooltipHeaderFormat = '<div class="student-profile-tooltip-header">' +
+                                '<div class="student-profile-tooltip-label">User Score</div>' +
+                                '<div class="student-profile-tooltip-value">' + dataset.student.raw + '</div>' +
                                 '</div>';
 
-      var tooltipBodyFormat = '<div class="student-profile-boxplot-container-tooltip-content">' +
-                              '<div class="student-profile-boxplot-container-tooltip-row">' +
-                              '<div class="student-profile-boxplot-container-tooltip-label">Maximum</div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-value">' + dataset.courseDeciles[10] + '</div></div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-row">' +
-                              '<div class="student-profile-boxplot-container-tooltip-label">70th Percentile</div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-value">' + dataset.courseDeciles[7] + '</div></div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-row">' +
-                              '<div class="student-profile-boxplot-container-tooltip-label">50th Percentile</div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-value">' + dataset.courseDeciles[5] + '</div></div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-row">' +
-                              '<div class="student-profile-boxplot-container-tooltip-label">30th Percentile</div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-value">' + dataset.courseDeciles[3] + '</div></div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-row">' +
-                              '<div class="student-profile-boxplot-container-tooltip-label">Minimum</div>' +
-                              '<div class="student-profile-boxplot-container-tooltip-value">' + dataset.courseDeciles[0] + '</div></div>' +
+      var tooltipBodyFormat = '<div class="student-profile-tooltip-content">' +
+                              '<div class="student-profile-tooltip-row">' +
+                              '<div class="student-profile-tooltip-label">Maximum</div>' +
+                              '<div class="student-profile-tooltip-value">' + dataset.courseDeciles[10] + '</div></div>' +
+                              '<div class="student-profile-tooltip-row">' +
+                              '<div class="student-profile-tooltip-label">70th Percentile</div>' +
+                              '<div class="student-profile-tooltip-value">' + dataset.courseDeciles[7] + '</div></div>' +
+                              '<div class="student-profile-tooltip-row">' +
+                              '<div class="student-profile-tooltip-label">50th Percentile</div>' +
+                              '<div class="student-profile-tooltip-value">' + dataset.courseDeciles[5] + '</div></div>' +
+                              '<div class="student-profile-tooltip-row">' +
+                              '<div class="student-profile-tooltip-label">30th Percentile</div>' +
+                              '<div class="student-profile-tooltip-value">' + dataset.courseDeciles[3] + '</div></div>' +
+                              '<div class="student-profile-tooltip-row">' +
+                              '<div class="student-profile-tooltip-label">Minimum</div>' +
+                              '<div class="student-profile-tooltip-value">' + dataset.courseDeciles[0] + '</div></div>' +
                               '</div>';
 
       var boxplotOptions = {

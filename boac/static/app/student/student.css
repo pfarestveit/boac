@@ -1,3 +1,81 @@
+/**
+ * Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+ *
+ * Permission to use, copy, modify, and distribute this software and its documentation
+ * for educational, research, and not-for-profit purposes, without fee and without a
+ * signed licensing agreement, is hereby granted, provided that the above copyright
+ * notice, this paragraph and the following two paragraphs appear in all copies,
+ * modifications, and distributions.
+ *
+ * Contact The Office of Technology Licensing, UC Berkeley, 2150 Shattuck Avenue,
+ * Suite 510, Berkeley, CA 94720-1620, (510) 643-7201, otl@berkeley.edu,
+ * http://ipira.berkeley.edu/industry-info for commercial licensing opportunities.
+ *
+ * IN NO EVENT SHALL REGENTS BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+ * INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF
+ * THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF REGENTS HAS BEEN ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * REGENTS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ * SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
+ * "AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+ * ENHANCEMENTS, OR MODIFICATIONS.
+ */
+
+.accordion-heading {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.accordion-heading-end {
+  display: flex;
+}
+
+.accordion-heading-grade {
+  white-space: nowrap;
+}
+
+.accordion-heading-grades {
+  display: flex;
+  flex-direction: column;
+  width: 10%;
+}
+
+.accordion-heading-sections {
+  display: flex;
+  flex-wrap: nowrap;
+  font-style: italic;
+  justify-content: space-between;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+.accordion-heading-start {
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-heading-start .fa {
+  color: #337ab7;
+}
+
+.accordion-heading-start-inner {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.accordion-heading-caret {
+  margin-right: 5px;
+  width: 10px;
+}
+
+.accordion-heading-units {
+  padding-right: 50px;
+  white-space: nowrap;
+}
+
 .return-to-cohort {
   padding: 10px 0 0 5px;
 }
@@ -71,45 +149,17 @@
   width: auto !important;
 }
 
-.student-profile-boxplot-container-tooltip-content {
-  color: #000;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 14px;
-  font-weight: 400;
-  margin: 0;
-  padding: 8px 15px;
-}
-
-.student-profile-boxplot-container-tooltip-header {
-  background: #eee;
-  border-bottom: 1px solid #ddd;
-  display: flex;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  font-weight: 400;
-  margin-bottom: 0;
-  padding: 8px 15px;
-  text-align: left;
-}
-
-.student-profile-boxplot-container-tooltip-label {
-  flex: 0.8;
-}
-
-.student-profile-boxplot-container-tooltip-row {
-  display: flex;
-  line-height: 1.5em;
-}
-
-.student-profile-boxplot-container-tooltip-value {
-  flex: 0.2;
-  font-weight: bold;
-  text-align: right;
-}
-
 .student-profile-class {
   border-top: 1px solid #999;
   margin-top: 20px;
+}
+
+.student-profile-class a {
+  text-decoration: none;
+}
+
+.student-profile-class .panel-title {
+  width: 100%;
 }
 
 .student-profile-class-grade {
@@ -119,10 +169,6 @@
 .student-profile-class-grading-basis {
   color: #666;
   font-style: italic;
-}
-
-.student-profile-class-grades {
-  flex: 0.12;
 }
 
 .student-profile-class-heading {
@@ -139,6 +185,7 @@
 
 .student-profile-class-notation {
   color: #999;
+  margin-bottom: 10px;
 }
 
 .student-profile-class-sections {
@@ -146,8 +193,11 @@
 }
 
 .student-profile-class-title {
-  font-size: 18px;
+  color: #337ab7;
+  font-size: 16px;
   margin: 0;
+  padding: 0 5px 0 5px;
+  white-space: nowrap;
 }
 
 .student-profile-class-title-outer {
@@ -155,14 +205,10 @@
   margin-bottom: 30px;
 }
 
-.student-profile-class-units {
-  flex: 0.12;
-}
-
 .student-profile-classes-header {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 400;
-  margin: 0 0 15px 0;
+  margin: 20px 0 15px 0;
   color: #999;
 }
 
@@ -202,12 +248,26 @@
   padding: 5px 0;
 }
 
-.student-profile-dropped-section {
-  margin-top: 25px;
+.panel {
+  -webkit-box-shadow: none;
+  box-shadow: 0;
 }
 
-.student-profile-dropped-section-icon {
-  color: #f0ad4e;
+.student-profile-class .panel-body {
+  padding: 0;
+}
+
+.student-profile-class .panel,
+.panel-group .panel-heading + .panel-collapse > .panel-body {
+  border: none;
+}
+
+.student-profile-class .panel-heading {
+  padding: 10px 0;
+}
+
+.student-profile-dropped-section {
+  margin-top: 25px;
 }
 
 .student-profile-dropped-section-title {
@@ -247,11 +307,22 @@
   text-align: center;
 }
 
+.student-profile-header-status-box-units {
+  display: flex;
+}
+
 .student-profile-header-status-legend {
   color: #999;
   font-size: 13px;
   font-weight: 300;
   text-transform: uppercase;
+}
+
+.student-profile-header-status-legend-units {
+  color: #000;
+  font-weight: 600;
+  padding-left: 5px;
+  text-align: left;
 }
 
 .student-profile-header-status-number {
@@ -260,7 +331,7 @@
 }
 
 .student-profile-sidebar {
-  margin: 20px;
+  margin: 10px 10px 0 0;
 }
 
 .student-profile-sidebar-box {
@@ -320,6 +391,105 @@
   padding: 15px 0 3px 0;
 }
 
+.student-profile-tooltip-content {
+  color: #000;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  margin: 0;
+  padding: 8px 15px;
+}
+
+.student-profile-tooltip-header {
+  background: #eee;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  margin-bottom: 0;
+  padding: 8px 15px;
+  text-align: left;
+}
+
+.student-profile-tooltip-label {
+  flex: 0.8;
+}
+
+.student-profile-tooltip-row {
+  align-items: center;
+  display: flex;
+  line-height: 1.5em;
+}
+
+.student-profile-tooltip-swatch {
+  height: 13px;
+  margin-right: 5px;
+  width: 13px;
+}
+
+.student-profile-tooltip-value {
+  flex: 0.2;
+  font-weight: bold;
+  text-align: right;
+}
+
+#student-profile-units-chart-container {
+  height: 60px;
+  margin-top: 10px;
+  min-width: 170px;
+  width: 170px;
+}
+
+.student-profile-units-chart-container .highcharts-container {
+  overflow: visible !important;
+}
+
+.student-profile-units-chart-container .highcharts-series rect {
+  stroke-width: 0;
+}
+
+.student-profile-units-chart-container .highcharts-tooltip {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  line-height: 1.4em;
+  min-width: 240px;
+  padding: 0;
+}
+
+.student-profile-units-chart-container .highcharts-tooltip::after {
+  background: #fff;
+  border: 1px solid #aaa;
+  border-width: 0 0 1px 1px;
+  content: "";
+  display: block;
+  height: 10px;
+  position: absolute;
+  top: -6px;
+  left: 40px;
+  transform: rotate(135deg);
+  width: 10px;
+  z-index: 1;
+}
+
+.student-profile-units-chart-container g.highcharts-tooltip {
+  display: none !important;
+}
+
+.student-profile-units-chart-container .highcharts-tooltip span {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: auto !important;
+}
+
+.student-profile-units-chart-outer {
+  border-left: 1px solid #999;
+  margin-left: 10px;
+  padding-left: 10px;
+}
+
 .student-profile-view-previous-semesters {
   margin: 0;
   padding: 0;
@@ -331,11 +501,9 @@
 
 .student-profile-term {
   border-bottom: 1px solid #999;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
 }
 
 .student-profile-terms {
   flex: 1;
-  margin: 20px;
+  margin-left: 20px;
 }

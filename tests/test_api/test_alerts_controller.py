@@ -1,3 +1,29 @@
+"""
+Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+
+Permission to use, copy, modify, and distribute this software and its documentation
+for educational, research, and not-for-profit purposes, without fee and without a
+signed licensing agreement, is hereby granted, provided that the above copyright
+notice, this paragraph and the following two paragraphs appear in all copies,
+modifications, and distributions.
+
+Contact The Office of Technology Licensing, UC Berkeley, 2150 Shattuck Avenue,
+Suite 510, Berkeley, CA 94720-1620, (510) 643-7201, otl@berkeley.edu,
+http://ipira.berkeley.edu/industry-info for commercial licensing opportunities.
+
+IN NO EVENT SHALL REGENTS BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF
+THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF REGENTS HAS BEEN ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+REGENTS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
+"AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+ENHANCEMENTS, OR MODIFICATIONS.
+"""
+
+
 from boac.models.alert import Alert
 
 advisor_1_uid = '2040'
@@ -76,17 +102,3 @@ class TestAlertsController:
         assert len(advisor_2_brigitte_alerts['shown']) == 1
         assert advisor_2_brigitte_alerts['shown'][0]['key'] == '2178_500600700'
         assert len(advisor_2_brigitte_alerts['dismissed']) == 0
-
-    def test_alerts_from_assignments(self, fake_auth, client):
-        """Surfaces alerts derived from assignment analytics."""
-        fake_auth.login(advisor_1_uid)
-        client.get('/api/user/61889/analytics')
-        response = client.get('/api/alerts/current/11667051')
-        assert len(response.json['dismissed']) == 0
-        assert len(response.json['shown']) == 2
-        assert response.json['shown'][0]['alertType'] == 'late_assignment'
-        assert response.json['shown'][0]['key'] == '2178_331896'
-        assert response.json['shown'][0]['message'] == 'MED ST 205 assignment due on Oct 6, 2017.'
-        assert response.json['shown'][1]['alertType'] == 'missing_assignment'
-        assert response.json['shown'][1]['key'] == '2178_331897'
-        assert response.json['shown'][1]['message'] == 'MED ST 205 assignment due on Nov 3, 2017.'

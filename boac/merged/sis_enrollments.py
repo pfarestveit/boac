@@ -1,8 +1,35 @@
+"""
+Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+
+Permission to use, copy, modify, and distribute this software and its documentation
+for educational, research, and not-for-profit purposes, without fee and without a
+signed licensing agreement, is hereby granted, provided that the above copyright
+notice, this paragraph and the following two paragraphs appear in all copies,
+modifications, and distributions.
+
+Contact The Office of Technology Licensing, UC Berkeley, 2150 Shattuck Avenue,
+Suite 510, Berkeley, CA 94720-1620, (510) 643-7201, otl@berkeley.edu,
+http://ipira.berkeley.edu/industry-info for commercial licensing opportunities.
+
+IN NO EVENT SHALL REGENTS BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF
+THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF REGENTS HAS BEEN ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+REGENTS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
+"AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+ENHANCEMENTS, OR MODIFICATIONS.
+"""
+
+
 import re
 
 import boac.api.util as api_util
 from boac.externals import canvas, sis_enrollments_api
 from boac.lib.berkeley import sis_term_id_for_name
+from boac.models.alert import Alert
 from flask import current_app as app
 
 
@@ -35,49 +62,7 @@ def merge_sis_enrollments_for_term(canvas_course_sites, cs_id, term_name, includ
     enrollments = sis_enrollments_api.get_enrollments(cs_id, term_id)
 
     if enrollments:
-        enrollments_by_class = {}
-        term_section_ids = {}
-        enrolled_units = 0
-        for enrollment in enrollments.get('studentEnrollments', []):
-            # Skip this class section if we've seen it already.
-            section_id = enrollment.get('classSection').get('id')
-            if section_id in term_section_ids:
-                continue
-
-            term_section_ids[section_id] = True
-            section_feed = api_util.sis_enrollment_section_feed(enrollment)
-
-            # The SIS enrollments API gives us no better unique identifier than the course display name.
-            class_name = enrollment.get('classSection', {}).get('class', {}).get('course', {}).get('displayName')
-            # If we haven't seen this class name before, we create a new feed entry for it.
-            if class_name not in enrollments_by_class:
-                enrollments_by_class[class_name] = api_util.sis_enrollment_class_feed(enrollment)
-
-            if is_enrolled_primary_section(section_feed):
-                class_name = check_for_multiple_primary_sections(enrollment, class_name, enrollments_by_class, section_feed)
-
-            enrollments_by_class[class_name]['sections'].append(section_feed)
-            if is_enrolled_primary_section(section_feed):
-                enrolled_units += section_feed['units']
-            # Since only one enrolled primary section is allowed per class, it's safe to associate units and grade information
-            # with the class as well as the section. If a primary section is waitlisted, do the same association unless we've
-            # already done it with a different section (this case may not arise in practice).
-            if is_enrolled_primary_section(section_feed) or (is_primary_section(section_feed) and 'units' not in enrollments_by_class[class_name]):
-                enrollments_by_class[class_name]['grade'] = section_feed['grade']
-                enrollments_by_class[class_name]['gradingBasis'] = section_feed['gradingBasis']
-                enrollments_by_class[class_name]['midtermGrade'] = section_feed['midtermGrade']
-                enrollments_by_class[class_name]['units'] = section_feed['units']
-
-        enrollments_feed = sorted(enrollments_by_class.values(), key=lambda x: x['displayName'])
-        sort_sections(enrollments_feed)
-
-        term_feed = {
-            'termId': term_id,
-            'termName': term_name,
-            'enrollments': enrollments_feed,
-            'enrolledUnits': enrolled_units,
-            'unmatchedCanvasSites': [],
-        }
+        term_feed = merge_enrollment(cs_id, enrollments, term_id, term_name)
     else:
         return
 
@@ -93,6 +78,56 @@ def merge_sis_enrollments_for_term(canvas_course_sites, cs_id, term_name, includ
 
     sort_canvas_course_sites(term_feed)
 
+    return term_feed
+
+
+def merge_enrollment(cs_id, enrollments, term_id, term_name):
+    enrollments_by_class = {}
+    term_section_ids = {}
+    enrolled_units = 0
+    for enrollment in enrollments.get('studentEnrollments', []):
+        # Skip this class section if we've seen it already.
+        section_id = enrollment.get('classSection').get('id')
+        if section_id in term_section_ids:
+            continue
+
+        term_section_ids[section_id] = True
+        section_feed = api_util.sis_enrollment_section_feed(enrollment)
+
+        # The SIS enrollments API gives us no better unique identifier than the course display name.
+        class_name = enrollment.get('classSection', {}).get('class', {}).get('course', {}).get('displayName')
+        # If we haven't seen this class name before, we create a new feed entry for it.
+        if class_name not in enrollments_by_class:
+            enrollments_by_class[class_name] = api_util.sis_enrollment_class_feed(enrollment)
+
+        if is_enrolled_primary_section(section_feed):
+            class_name = check_for_multiple_primary_sections(enrollment, class_name, enrollments_by_class, section_feed)
+
+        enrollments_by_class[class_name]['sections'].append(section_feed)
+        if is_enrolled_primary_section(section_feed):
+            enrolled_units += section_feed['units']
+        # Since only one enrolled primary section is allowed per class, it's safe to associate units and grade information
+        # with the class as well as the section. If a primary section is waitlisted, do the same association unless we've
+        # already done it with a different section (this case may not arise in practice).
+        if is_enrolled_primary_section(section_feed) or (
+                is_primary_section(section_feed) and 'units' not in enrollments_by_class[class_name]):
+            enrollments_by_class[class_name]['grade'] = section_feed['grade']
+            enrollments_by_class[class_name]['gradingBasis'] = section_feed['gradingBasis']
+            enrollments_by_class[class_name]['units'] = section_feed['units']
+
+            midterm_grade = section_feed['midtermGrade']
+            enrollments_by_class[class_name]['midtermGrade'] = midterm_grade
+            if midterm_grade:
+                Alert.update_midterm_grade_alerts(cs_id, term_id, section_id, class_name, midterm_grade)
+    enrollments_feed = sorted(enrollments_by_class.values(), key=lambda x: x['displayName'])
+    sort_sections(enrollments_feed)
+    term_feed = {
+        'termId': term_id,
+        'termName': term_name,
+        'enrollments': enrollments_feed,
+        'enrolledUnits': enrolled_units,
+        'unmatchedCanvasSites': [],
+    }
     return term_feed
 
 

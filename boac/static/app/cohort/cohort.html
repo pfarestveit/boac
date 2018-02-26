@@ -138,14 +138,25 @@
           </div>
           <div class="cohort-member-name-container">
             <div class="flex-container">
-              <h3 class="cohort-member-name">
+              <h3 class="cohort-member-name"
+                  data-ng-class="{'demo-mode-blur': demoMode}"
+                  data-ng-if="orderBy.selected !== 'first_name'">
+                {{student.lastName}}, {{student.firstName}}
+              </h3>
+              <h3 class="cohort-member-name"
+                  data-ng-class="{'demo-mode-blur': demoMode}"
+                  data-ng-if="orderBy.selected === 'first_name'">
                 {{student.firstName}} {{student.lastName}}
               </h3>
               <watchlist-toggle data-sid="student.sid"
                                 data-fa-size="fa-1x"
                                 data-watchlist="myWatchlist"></watchlist-toggle>
             </div>
-            <div class="cohort-member-sid" data-ng-bind="student.sid"></div>
+            <div class="cohort-member-sid"
+                 data-ng-class="{'demo-mode-blur': demoMode}">
+              {{student.sid}}
+              <span class="cohort-member-inactive" data-ng-if="!student.isActiveAsc">INACTIVE</span>
+            </div>
             <div class="cohort-member-text" data-ng-bind="student.level"></div>
             <div class="cohort-member-text" data-ng-bind="major" data-ng-repeat="major in student.majors"></div>
             <div class="cohort-member-teams-container">
@@ -166,8 +177,10 @@
           </div>
           <div class="cohort-member-course-activity-wrapper">
             <div class="cohort-member-course-activity-row">
-              <div class="cohort-member-column cohort-member-text">CLASSES</div>
+              <div class="cohort-member-column cohort-member-text">CLASS</div>
               <div class="cohort-member-column cohort-member-text">PAGE VIEWS</div>
+              <div class="cohort-member-column-grade cohort-member-text">MID</div>
+              <div class="cohort-member-column-grade cohort-member-text">FINAL</div>
             </div>
             <div class="cohort-member-course-activity-row" data-ng-repeat="enrollment in student.currentTerm.enrollments">
               <div class="cohort-member-column">
@@ -179,6 +192,16 @@
                        class="cohort-boxplot">
                   </div>
                 </div>
+              </div>
+              <div class="cohort-member-column-grade">
+                <span class="cohort-grade" data-ng-bind="enrollment.midtermGrade" data-ng-if="enrollment.midtermGrade"></span>
+                <i class="fa fa-exclamation-triangle boac-exclamation" data-ng-if="isAlertGrade(enrollment.midtermGrade)"></i>
+                <span data-ng-if="!enrollment.midtermGrade">&mdash;</span>
+              </div>
+              <div class="cohort-member-column-grade">
+                <span class="cohort-grade" data-ng-bind="enrollment.grade" data-ng-if="enrollment.grade"></span>
+                <i class="fa fa-exclamation-triangle boac-exclamation" data-ng-if="isAlertGrade(enrollment.grade)"></i>
+                <span class="cohort-grading-basis" data-ng-bind="enrollment.gradingBasis" data-ng-if="!enrollment.grade"></span>
               </div>
             </div>
           </div>
@@ -215,7 +238,7 @@
                data-ng-class="{'list-group-item-info': anchor===student.uid}"
                href
                data-ng-click="studentProfile(student.uid)"
-               data-ng-repeat="student in studentsWithoutData">
+               data-ng-repeat="student in studentsWithoutData | orderBy:['lastName','firstName']">
               <div class="cohort-avatar-container">
                 <img class="cohort-avatar"
                      data-ng-src="/api/user/{{student.uid}}/photo"
@@ -223,14 +246,16 @@
               </div>
               <div class="cohort-member-name-container">
                 <div class="flex-container">
-                  <h3 class="flex-container cohort-member-name">
-                    {{student.firstName}} {{student.lastName}}
+                  <h3 class="flex-container cohort-member-name"
+                      data-ng-class="{'demo-mode-blur': demoMode}">
+                    {{student.lastName}}, {{student.firstName}}
                   </h3>
                   <watchlist-toggle data-sid="student.sid"
                                     data-fa-size="fa-1x"
                                     data-watchlist="myWatchlist"></watchlist-toggle>
                 </div>
-                <div class="cohort-member-sid">
+                <div class="cohort-member-sid"
+                     data-ng-class="{'demo-mode-blur': demoMode}">
                   SID: <span data-ng-bind="student.sid"></span>
                 </div>
               </div>

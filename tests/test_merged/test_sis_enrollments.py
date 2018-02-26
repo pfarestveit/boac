@@ -24,49 +24,25 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
-from boac import db
-from boac.externals import data_loch
-from boac.lib.http import tolerant_jsonify
-from flask import current_app as app
-from flask_login import current_user
+from boac.merged.sis_enrollments import merge_sis_enrollments_for_term
+from boac.models.alert import Alert
+import pytest
 
 
-@app.route('/api/ping')
-def app_status():
-    def db_status():
-        try:
-            db.session.execute('SELECT 1')
-            return True
-        except Exception:
-            app.logger.exception('Database connection error')
-            return False
+@pytest.mark.usefixtures('db_session')
+class TestMergedSisEnrollments:
 
-    def data_loch_status():
-        try:
-            data_loch.execute('SELECT 1')
-            return True
-        except Exception:
-            app.logger.exception('Data Loch connection error')
-            return False
-
-    resp = {
-        'app': True,
-        'db': db_status(),
-        'data_loch': data_loch_status(),
-    }
-    return tolerant_jsonify(resp)
-
-
-@app.route('/api/status')
-def user_status():
-    uid = current_user.get_id()
-    authn_state = {
-        'is_authenticated': current_user.is_authenticated,
-        'is_active': current_user.is_active,
-        'is_anonymous': current_user.is_anonymous,
-        'uid': uid,
-    }
-    resp = {
-        'authenticated_as': authn_state,
-    }
-    return tolerant_jsonify(resp)
+    def test_creates_alert_for_midterm_grade(self, app):
+        feed = merge_sis_enrollments_for_term([], '11667051', app.config['CANVAS_CURRENT_ENROLLMENT_TERM'])
+        assert '2178' == feed['termId']
+        enrollments = feed['enrollments']
+        assert 3 == len(enrollments)
+        assert 'D+' == enrollments[0]['midtermGrade']
+        assert 'BURMESE 1A' == enrollments[0]['displayName']
+        assert 90100 == enrollments[0]['sections'][0]['ccn']
+        alerts = Alert.current_alerts_for_sid(sid='11667051', viewer_id='2040')['shown']
+        assert 1 == len(alerts)
+        assert 0 < alerts[0]['id']
+        assert 'midterm' == alerts[0]['alertType']
+        assert '2178_90100' == alerts[0]['key']
+        assert 'BURMESE 1A midterm grade of D+.' == alerts[0]['message']

@@ -1,3 +1,29 @@
+"""
+Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+
+Permission to use, copy, modify, and distribute this software and its documentation
+for educational, research, and not-for-profit purposes, without fee and without a
+signed licensing agreement, is hereby granted, provided that the above copyright
+notice, this paragraph and the following two paragraphs appear in all copies,
+modifications, and distributions.
+
+Contact The Office of Technology Licensing, UC Berkeley, 2150 Shattuck Avenue,
+Suite 510, Berkeley, CA 94720-1620, (510) 643-7201, otl@berkeley.edu,
+http://ipira.berkeley.edu/industry-info for commercial licensing opportunities.
+
+IN NO EVENT SHALL REGENTS BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF
+THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF REGENTS HAS BEEN ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+REGENTS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
+"AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+ENHANCEMENTS, OR MODIFICATIONS.
+"""
+
+
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 import pytest
@@ -27,10 +53,15 @@ class TestCohortDetail:
         assert len(cohorts[1]['teamGroups']) == 1
         assert cohorts[1]['totalMemberCount'] == 2
 
-    def test_my_cohorts_includes_alert_counts(self, create_alerts, authenticated_session, client):
+    def test_my_cohorts_includes_students_with_alert_counts(self, create_alerts, authenticated_session, client):
         cohorts = client.get('/api/cohorts/my').json
+        print(cohorts)
         assert len(cohorts[0]['alerts']) == 2
         assert cohorts[0]['alerts'][0]['sid'] == '2345678901'
+        assert cohorts[0]['alerts'][0]['uid']
+        assert cohorts[0]['alerts'][0]['firstName']
+        assert cohorts[0]['alerts'][0]['lastName']
+        assert cohorts[0]['alerts'][0]['isActiveAsc']
         assert cohorts[0]['alerts'][0]['alertCount'] == 1
         assert cohorts[0]['alerts'][1]['sid'] == '11667051'
         assert cohorts[0]['alerts'][1]['alertCount'] == 2
@@ -100,7 +131,7 @@ class TestCohortDetail:
         cohort_id = user.cohort_filters[0].id
         response = client.get('/api/cohort/{}'.format(cohort_id))
         assert response.status_code == 200
-        athlete = response.json['members'][0]
+        athlete = next(m for m in response.json['members'] if m['lastName'] == 'Lin')
         assert athlete['cumulativeGPA'] == 3.8
         assert athlete['cumulativeUnits'] == 101.3
         assert athlete['level'] == 'Junior'
@@ -112,7 +143,7 @@ class TestCohortDetail:
         cohort_id = user.cohort_filters[0].id
         response = client.get('/api/cohort/{}?orderBy=firstName'.format(cohort_id))
         assert response.status_code == 200
-        athlete = response.json['members'][0]
+        athlete = next(m for m in response.json['members'] if m['lastName'] == 'Lin')
         assert athlete['currentTerm']['termName'] == 'Fall 2017'
         assert athlete['currentTerm']['enrolledUnits'] == 12.5
         assert len(athlete['currentTerm']['enrollments']) == 3
@@ -128,7 +159,7 @@ class TestCohortDetail:
         user = AuthorizedUser.find_by_uid(test_uid)
         cohort_id = user.cohort_filters[0].id
         response = client.get('/api/cohort/{}'.format(cohort_id))
-        athlete = response.json['members'][0]
+        athlete = next(m for m in response.json['members'] if m['lastName'] == 'Lin')
         assert len(athlete['athletics']) == 2
         tennis = next(membership for membership in athlete['athletics'] if membership['groupCode'] == 'WTE')
         field_hockey = next(membership for membership in athlete['athletics'] if membership['groupCode'] == 'WFH')
