@@ -184,6 +184,15 @@
         $scope.student = analytics.data;
         // Track view event
         var preferredName = $scope.student.sisProfile && $scope.student.sisProfile.preferredName;
+        _.each($scope.student.enrollmentTerms, function(term) {
+          _.each(term.enrollments, function(course) {
+            _.each(course.sections, function(section) {
+              course.waitlisted = section.enrollmentStatus === 'W';
+              // Break if waitlisted
+              return !course.waitlisted;
+            });
+          });
+        });
         googleAnalyticsService.track('student', 'view-profile', preferredName, parseInt(uid, 10));
       }).catch(function(error) {
         $scope.error = _.truncate(error.data.message, {length: 200}) || 'An unexpected server error occurred.';
@@ -205,10 +214,20 @@
     var prepareReturnUrl = function(uid) {
       var encodedReturnUrl = $location.search().r;
       if (!_.isEmpty(encodedReturnUrl)) {
+        // Parse referring URL, remove CAS login param if present, and add anchor param with current UID.
         $location.search('r', null).replace();
         var url = $base64.decode(decodeURIComponent(encodedReturnUrl));
-        var separator = _.includes(url, '?') ? '&' : '?';
-        $scope.returnUrl = url + separator + 'a=' + uid;
+        var anchorParam = 'a=' + uid;
+        var urlComponents = url.split('?');
+        if (urlComponents.length > 1) {
+          url = urlComponents.shift();
+          var query = urlComponents.join('?');
+          query = query.replace(/&?casLogin=true/, '');
+          if (query.length) {
+            anchorParam = query + '&' + anchorParam;
+          }
+        }
+        $scope.returnUrl = url + '?' + anchorParam;
         $scope.hideFeedbackLink = true;
       }
     };

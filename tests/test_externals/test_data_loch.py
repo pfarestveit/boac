@@ -23,43 +23,29 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-from boac.lib.mockingdata import fixture
-from boac.models.json_cache import stow
-from flask import current_app as app
-import sqlalchemy
-from sqlalchemy import create_engine
-from sqlalchemy.sql import text
+
+import io
+
+from boac.externals import data_loch
+from boac.lib.mockingdata import MockRows, register_mock
+import pytest
 
 
-# Lazy init to support testing.
-data_loch_db = None
+@pytest.mark.usefixtures('db_session')
+class TestDataLoch:
 
+    def test_course_page_views_fixture(self, app):
+        data = data_loch._get_course_page_views(7654321)
+        assert len(data) > 0
+        assert {'uid': '61889', 'canvas_user_id': 9000100, 'loch_page_views': 766} in data
 
-def safe_execute(string):
-    global data_loch_db
-    if data_loch_db is None:
-        data_loch_db = create_engine(app.config['DATA_LOCH_URI'])
-    try:
-        s = text(string)
-        dbresp = data_loch_db.execute(s)
-    except sqlalchemy.exc.SQLAlchemyError as err:
-        app.logger.error(f'SQL {s} threw {err}')
-        return None
-    rows = dbresp.fetchall()
-    return [dict(r) for r in rows]
+    def test_override_fixture(self, app):
+        mr = MockRows(io.StringIO('uid,canvas_user_id,loch_page_views\n2040,99999,13'))
+        with register_mock(data_loch._get_course_page_views, mr):
+            data = data_loch._get_course_page_views(123)
+        assert len(data) == 1
+        assert {'uid': '2040', 'canvas_user_id': 99999, 'loch_page_views': 13} == data[0]
 
-
-@stow('loch_page_views_{course_id}.csv', for_term=True)
-def get_course_page_views(course_id, term_id):
-    return _get_course_page_views(course_id)
-
-
-@fixture('loch_page_views_{course_id}.csv')
-def _get_course_page_views(course_id):
-    sql = f"""SELECT
-            sis_login_id AS uid, canvas_user_id, user_page_views AS loch_page_views
-              FROM boac_analytics.page_views_zscore
-              WHERE canvas_course_id={course_id}
-              ORDER BY sis_login_id
-        """
-    return safe_execute(sql)
+    def test_fixture_not_found(self, app):
+        no_db = data_loch._get_course_page_views(0)
+        assert no_db is None

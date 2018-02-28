@@ -29,6 +29,11 @@
   width: 100%;
 }
 
+.accordion-heading-caret {
+  margin-right: 5px;
+  width: 10px;
+}
+
 .accordion-heading-end {
   display: flex;
 }
@@ -64,11 +69,6 @@
 .accordion-heading-start-inner {
   display: flex;
   justify-content: flex-start;
-}
-
-.accordion-heading-caret {
-  margin-right: 5px;
-  width: 10px;
 }
 
 .accordion-heading-units {
@@ -248,6 +248,10 @@
   padding: 5px 0;
 }
 
+.student-waitlisted {
+  padding-left: 5px;
+}
+
 .panel {
   -webkit-box-shadow: none;
   box-shadow: 0;
@@ -263,11 +267,15 @@
 }
 
 .student-profile-class .panel-heading {
-  padding: 10px 0;
+  padding: 5px 0 10px 0;
 }
 
 .student-profile-dropped-section {
-  margin-top: 25px;
+  margin-top: 15px;
+}
+
+.student-profile-dropped-section-icon {
+  color: #f0ad4e;
 }
 
 .student-profile-dropped-section-title {
@@ -501,6 +509,10 @@
 
 .student-profile-term {
   border-bottom: 1px solid #999;
+}
+
+.student-profile-term .panel-group {
+  margin-bottom: 10px;
 }
 
 .student-profile-terms {
