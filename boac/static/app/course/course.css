@@ -23,43 +23,79 @@
  * ENHANCEMENTS, OR MODIFICATIONS.
  */
 
-(function(angular) {
+.course-column-assignment-data {
+  font-size: 12px;
+  margin-left: 0 !important;
+}
 
-  'use strict';
+.course-column-header {
+  color: #aaa;
+  font-size: 12px;
+  text-align: center;
+  word-wrap: break-word;
+}
 
-  angular.module('boac').directive('courseSiteMetrics', function() {
-    return {
-      restrict: 'E',
-      scope: {
-        canvasSite: '=',
-        courseName: '=',
-        drawBoxplot: '=',
-        termId: '='
-      },
-      templateUrl: '/static/app/student/courseSiteMetrics.html',
-      link: function(scope) {
-        scope.metrics = [
-          {
-            dataset: scope.canvasSite.analytics.assignmentsOnTime,
-            id: 'assignmentsOnTime',
-            label: 'Online Assignments on Time',
-            missingLabel: 'No Assignments'
-          },
-          {
-            dataset: scope.canvasSite.analytics.courseCurrentScore,
-            id: 'courseCurrentScore',
-            label: 'Assignment Grades',
-            missingLabel: 'No Grades'
-          },
-          {
-            dataset: scope.canvasSite.analytics.pageViews,
-            id: 'pageViews',
-            label: 'Page Views',
-            missingLabel: 'No Page Views'
-          }
-        ];
-      }
-    };
-  });
+.course-column-header-boxplot {
+  padding-right: 70px;
+}
 
-}(window.angular));
+.course-column-header-grade {
+  padding-right: 30px;
+}
+
+.course-column-header-left {
+  min-width: 300px;
+}
+
+.course-column-headers {
+  align-content: flex-end;
+  align-items: flex-start;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.course-details-meetings {
+  font-size: 16px;
+}
+
+.course-details-section {
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.course-instructors-header {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.course-section-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.course-sidebar-header {
+  color: #999;
+  font-size: 18px;
+  font-weight: bold;
+  margin: 0 0 5px 0;
+}
+
+.course-student-name-container {
+  flex: 0.8;
+  margin-left: 20px;
+  min-width: 200px;
+}
+
+.course-student-name-container button {
+  padding: 2px 0 0 5px;
+}
+
+.course-student-name {
+  color: #49b;
+  font-size: 16px;
+  margin: 0;
+  max-width: 150px;
+  padding: 0;
+}

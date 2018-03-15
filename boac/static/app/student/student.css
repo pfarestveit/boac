@@ -30,6 +30,7 @@
 }
 
 .accordion-heading-caret {
+  color: #337ab7;
   margin-right: 5px;
   width: 10px;
 }
@@ -62,10 +63,6 @@
   flex-direction: column;
 }
 
-.accordion-heading-start .fa {
-  color: #337ab7;
-}
-
 .accordion-heading-start-inner {
   display: flex;
   justify-content: flex-start;
@@ -95,6 +92,18 @@
   align-items: center;
   display: flex;
   flex: 0 0 60px;
+}
+
+.student-avatar-large {
+  border-radius: 50px;
+  height: 100px;
+  width: 100px;
+}
+
+.student-avatar-large-container {
+  align-items: center;
+  display: flex;
+  flex: 0 0 100px;
 }
 
 .student-column {

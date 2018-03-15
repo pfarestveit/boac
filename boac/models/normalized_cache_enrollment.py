@@ -24,8 +24,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
+import re
 from boac import db, std_commit
-from boac.lib.berkeley import term_name_for_sis_id
+from boac.lib.berkeley import sis_term_id_for_name, term_name_for_sis_id
 from boac.models.base import Base
 from boac.models.json_cache import JsonCache, update_jsonb_row
 from boac.models.student import Student
@@ -50,11 +51,13 @@ class NormalizedCacheEnrollment(Base):
 
     @classmethod
     def update_enrollments(cls, term_id, sid, sections):
+        term_id = int(term_id)
         # Previous enrollments might have been dropped
         cls.query.filter_by(term_id=term_id, sid=sid).delete()
+        std_commit()
         # Add fresh enrollment data
         for section in sections:
-            enrollment = cls(term_id=int(term_id), section_id=int(section['id']), sid=sid)
+            enrollment = cls(term_id=term_id, section_id=int(section['id']), sid=sid)
             db.session.add(enrollment)
         std_commit()
         cls._refresh_course_enrollments(term_id=term_id, sections=sections)
@@ -68,6 +71,20 @@ class NormalizedCacheEnrollment(Base):
             sids = NormalizedCacheEnrollment.get_enrolled_sids(term_id=term_id, section_id=section_id)
             course_section['students'] = Student.find_students(sids)
         return course_section or None
+
+    @classmethod
+    def summarize_sections_in_cache(cls):
+        key_like = JsonCache.key.like('%-sis_course_section_summary_%')
+        rows = db.session.query(JsonCache.key).filter(key_like).order_by(JsonCache.key).all()
+        summary = {}
+        for row in rows:
+            m = re.search('term_(.+)-sis_course_section_summary_(.+)', row.key)
+            if m:
+                term_id = sis_term_id_for_name(m.group(1))
+                if term_id not in summary:
+                    summary[term_id] = []
+                summary[term_id].append(int(m.group(2)))
+        return summary
 
     @classmethod
     def _refresh_course_enrollments(cls, term_id, sections):
@@ -84,4 +101,4 @@ class NormalizedCacheEnrollment(Base):
     @classmethod
     def _course_section_cache_key(cls, term_id, section_id):
         term_name = term_name_for_sis_id(term_id)
-        return f'term_{term_name}-course_section_{section_id}'
+        return f'term_{term_name}-sis_course_section_summary_{section_id}'

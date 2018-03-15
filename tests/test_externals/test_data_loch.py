@@ -39,6 +39,16 @@ class TestDataLoch:
         assert len(data) > 0
         assert {'uid': '61889', 'canvas_user_id': 9000100, 'loch_page_views': 766} in data
 
+    def test_course_scores_fixture(self, app):
+        data = data_loch._get_course_scores(7654321)
+        assert len(data) > 0
+        assert {'canvas_user_id': 9000100, 'current_score': 84} in data
+
+    def test_on_time_submissions_relative_to_user_fixture(self, app):
+        data = data_loch._get_on_time_submissions_relative_to_user(7654321, 9000100)
+        assert len(data) > 0
+        assert {'canvas_user_id': 9000100, 'on_time_submissions': 7} in data
+
     def test_override_fixture(self, app):
         mr = MockRows(io.StringIO('uid,canvas_user_id,loch_page_views\n2040,99999,13'))
         with register_mock(data_loch._get_course_page_views, mr):

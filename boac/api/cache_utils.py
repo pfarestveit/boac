@@ -66,9 +66,15 @@ def refresh_request_handler(term_id, load_only=False, import_asc=False):
 
 def background_thread_refresh(app_arg, term_id, import_asc):
     with app_arg.app_context():
-        if import_asc:
-            do_import_asc()
-        load_term(term_id)
+        try:
+            if import_asc:
+                do_import_asc()
+            load_term(term_id)
+        except Exception as e:
+            app.logger.exception(e)
+            app.logger.error('Background thread is stopping')
+            JobProgress().update(f'An unexpected error occured: {e}')
+            raise e
 
 
 def refresh_term(term_id=berkeley.current_term_id()):
@@ -180,6 +186,9 @@ def load_canvas_externals(uid, term_id):
 
 def load_sis_externals(term_id, csid):
     from boac.externals import sis_degree_progress_api, sis_enrollments_api, sis_student_api
+    from boac.merged.sis_enrollments import merge_enrollment
+
+    term_name = berkeley.term_name_for_sis_id(term_id)
 
     success_count = 0
     failures = []
@@ -199,6 +208,8 @@ def load_sis_externals(term_id, csid):
 
     enrollments = sis_enrollments_api.get_enrollments(csid, term_id)
     if enrollments:
+        # Perform higher-level enrollments feed processing; update NormalizedCacheEnrollment.
+        merge_enrollment(csid, enrollments, term_id, term_name)
         success_count += 1
     elif enrollments is None:
         failures.append(f'SIS get_enrollments failed for CSID {csid}, term_id {term_id}')
@@ -210,7 +221,8 @@ def load_analytics_feeds(uid, sid, term_id):
     # Prior to load, existing assignment alerts for the student and term are deactivated. Alerts still in effect
     # will be reactivated as feeds are loaded.
     Alert.deactivate_all(sid=sid, term_id=term_id, alert_types=['late_assignment', 'missing_assignment'])
-    from boac.externals import canvas
+    from boac.externals import canvas, data_loch
+    canvas_user_profile = canvas.get_user_for_uid(uid)
     student_courses = canvas.get_student_courses(uid)
     canvas_courses_feed = canvas_courses_api_feed(student_courses)
     # Route the course site feed through our SIS enrollments merge, so that site selection logic (e.g., filtering
@@ -227,6 +239,10 @@ def load_analytics_feeds(uid, sid, term_id):
                 sid=sid,
                 term_id=term_id,
             )
+            data_loch.get_course_page_views(site['canvasCourseId'], term_id)
+            canvas_user_id = canvas_user_profile.get('id')
+            if canvas_user_id:
+                data_loch.get_on_time_submissions_relative_to_user(site['canvasCourseId'], canvas_user_id, term_id)
     if merged_term_feed:
         for enrollment in merged_term_feed['enrollments']:
             load_analytics_for_sites(enrollment['canvasSites'])

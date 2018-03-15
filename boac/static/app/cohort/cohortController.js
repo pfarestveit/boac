@@ -28,7 +28,6 @@
   'use strict';
 
   angular.module('boac').controller('CohortController', function(
-    boxplotService,
     cohortFactory,
     cohortService,
     config,
@@ -40,14 +39,10 @@
     $base64,
     $location,
     $rootScope,
-    $scope,
-    $state,
-    $timeout
+    $scope
   ) {
 
     $scope.demoMode = config.demoMode;
-
-    $scope.studentProfile = utilService.studentProfile;
 
     var filters = {
       gpaRanges: 'g',
@@ -58,9 +53,7 @@
     };
 
     /**
-     * Control show/hide of dropdowns: true -> show, false -> hide
-     *
-     * @return {Object}                Each filter dropdown (unique key) has state (true/false)
+     * @return {Object}                Each dropdown has open or closed state
      */
     var defaultDropdownState = function() {
       return {
@@ -76,12 +69,7 @@
     $scope.isCreateCohortMode = false;
     $scope.showIntensiveCheckbox = false;
     $scope.showInactiveCheckbox = false;
-
-    $scope.tabs = {
-      all: ['list', 'matrix'],
-      defaultTab: 'list',
-      selected: 'list'
-    };
+    $scope.tab = 'list';
 
     $scope.cohort = {
       code: null,
@@ -181,8 +169,9 @@
       if (updateBrowserLocation) {
         $location.search('c', 'search');
         $location.search('g', gpaRanges);
-        $location.search('i', opts.intensive);
-        $location.search('inactive', opts.inactive);
+        // Use string 'true' rather than boolean so that the value persists in browser location.
+        $location.search('i', opts.intensive ? 'true' : null);
+        $location.search('inactive', opts.inactive ? 'true' : null);
         $location.search('l', levels);
         $location.search('m', majors);
         $location.search('t', groupCodes);
@@ -222,29 +211,6 @@
       return promise;
     };
 
-    /**
-     * Draw boxplots for students in list view.
-     *
-     * @return {void}
-     */
-    var drawBoxplots = function() {
-      // Wait until Angular has finished rendering elements within repeaters.
-      $scope.$$postDigest(function() {
-        _.each($scope.cohort.members, function(student) {
-          _.each(_.get(student, 'currentTerm.enrollments'), function(enrollment) {
-            _.each(_.get(enrollment, 'canvasSites'), function(canvasSite) {
-              var elementId = 'boxplot-' + canvasSite.canvasCourseId + '-' + student.uid + '-pageviews';
-              var dataset = _.get(canvasSite, 'analytics.pageViews');
-              // If the course site has not yet been viewed, then there is nothing to plot.
-              if (dataset && _.get(dataset, 'courseDeciles')) {
-                boxplotService.drawBoxplotCohort(elementId, dataset);
-              }
-            });
-          });
-        });
-      });
-    };
-
     var isPaginationEnabled = function() {
       return _.includes([ 'search' ], $scope.cohort.code) || !isNaN($scope.cohort.code);
     };
@@ -263,10 +229,9 @@
       $scope.isLoading = true;
       getCohort($scope.orderBy.selected, offset, limit).then(function(response) {
         updateCohort(response.data);
-        drawBoxplots();
         return callback();
       }).catch(function(err) {
-        $scope.error = err ? {message: err.status + ': ' + err.statusText} : true;
+        $scope.error = utilService.parseError(err);
         return callback(null);
       });
     };
@@ -400,6 +365,15 @@
       return callback();
     };
 
+    var goToStudent = $scope.goToStudent = function(uid) {
+      var referringPageName = 'search';
+      if ($scope.cohort.name) {
+        // If 'id' is NOT null then it's a saved cohort (not a team) and we append suffix
+        referringPageName = $scope.cohort.id ? '\'' + $scope.cohort.name + '\' cohort' : $scope.cohort.name;
+      }
+      utilService.goTo('/student/' + uid, referringPageName);
+    };
+
     /**
      * Draw scatterplot graph.
      *
@@ -415,10 +389,8 @@
       });
       // Pass along a subset of students that have useful data.
       cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
-        var absUrl = $location.absUrl();
-        $location.state(absUrl);
-        var encodedAbsUrl = encodeURIComponent($base64.encode(absUrl));
-        $state.go('user', {uid: uid, r: encodedAbsUrl});
+        $location.state($location.absUrl());
+        goToStudent(uid);
       });
       // List of students-without-data is rendered below the scatterplot.
       $scope.studentsWithoutData = partitions[1];
@@ -437,7 +409,7 @@
         scatterplotRefresh();
         return callback();
       }).catch(function(err) {
-        $scope.error = err ? {message: err.status + ': ' + err.statusText} : true;
+        $scope.error = utilService.parseError(err);
         return callback();
       });
     };
@@ -457,11 +429,10 @@
 
         var handleSuccess = function(response) {
           updateCohort(response.data);
-          drawBoxplots();
         };
 
         var handleError = function(err) {
-          $scope.error = err ? {message: err.status + ': ' + err.statusText} : true;
+          $scope.error = utilService.parseError(err);
         };
         var page = $scope.pagination.currentPage;
         var offset = page < 2 ? 0 : (page - 1) * $scope.pagination.itemsPerPage;
@@ -523,8 +494,8 @@
       if (args.p && !isNaN(args.p)) {
         $scope.pagination.currentPage = parseInt(args.p, 10);
       }
-      if (args.v && _.includes($scope.tabs.all, args.v)) {
-        $scope.tabs.selected = args.v;
+      if (args.v && _.includes(['list', 'matrix'], args.v)) {
+        $scope.tab = args.v;
       }
     };
 
@@ -535,8 +506,8 @@
      * @return {void}
      */
     $scope.onTab = function(tabName) {
-      $scope.tabs.selected = tabName;
-      $location.search('v', $scope.tabs.selected);
+      $scope.tab = tabName;
+      $location.search('v', $scope.tab);
       // Lazy load matrix data
       if (tabName === 'matrix' && !$scope.matrix) {
         matrixViewRefresh(function() {
@@ -549,7 +520,6 @@
           var start = ($scope.pagination.currentPage - 1) * 50;
           $scope.cohort.members = _.slice($scope.cohort.members, start, start + 50);
         }
-        drawBoxplots();
       }
     };
 
@@ -565,10 +535,11 @@
       $scope.search.dropdown = defaultDropdownState();
       // Refresh search results
       $scope.cohort.code = 'search';
+      $rootScope.pageTitle = 'Search';
       $scope.pagination.currentPage = 1;
       $location.search('c', $scope.cohort.code);
       $location.search('p', $scope.pagination.currentPage);
-      if ($scope.tabs.selected === 'list') {
+      if ($scope.tab === 'list') {
         nextPage();
       } else {
         matrixViewRefresh(function() {
@@ -595,8 +566,8 @@
       // Disable button if page is loading or no search criterion is selected
       var count = $scope.search.count;
       return $scope.isLoading || $scope.isSaving || (!count.gpaRanges && !count.groupCodes && !count.levels &&
-        !count.majors && !count.unitRanges && ($scope.showIntensiveCheckbox && !$scope.search.options.intensive) &&
-        ($scope.showInactiveCheckbox && !$scope.search.options.inactive));
+        !count.majors && !count.unitRanges && (!$scope.showIntensiveCheckbox || !$scope.search.options.intensive) &&
+        (!$scope.showInactiveCheckbox || !$scope.search.options.inactive));
     };
 
     var getMajors = function(callback) {
@@ -665,21 +636,18 @@
               $scope.isLoading = false;
             });
           } else {
-            var render = $scope.tabs.selected === 'list' ? listViewRefresh : matrixViewRefresh;
+            var render = $scope.tab === 'list' ? listViewRefresh : matrixViewRefresh;
             watchlistFactory.getMyWatchlist().then(function(response) {
               $scope.myWatchlist = response.data;
               render(function() {
                 initFilters(function() {
+                  $rootScope.pageTitle = $scope.isCreateCohortMode ? 'Create Cohort' : $scope.cohort.name || 'Search';
                   $scope.isLoading = false;
 
                   if (args.a) {
-                    $timeout(function() {
-                      // Scroll to anchor if returning from student profile page
-                      $scope.anchor = args.a;
-                      $location.search('a', null).replace();
-                      $anchorScroll.yOffset = 50;
-                      $anchorScroll(args.a);
-                    });
+                    // We are returning from student page.
+                    $scope.anchor = args.a;
+                    utilService.anchorScroll($scope.anchor);
                   }
                   // Track view event
                   if (isNaN($scope.cohort.code)) {

@@ -29,30 +29,28 @@
 
   angular.module('boac').controller('CourseController', function(
     cohortService,
+    config,
     courseFactory,
     googleAnalyticsService,
     utilService,
     watchlistFactory,
-    $anchorScroll,
+    $base64,
     $location,
+    $rootScope,
     $scope,
     $state,
-    $stateParams,
-    $timeout) {
+    $stateParams
+  ) {
 
+    $scope.demoMode = config.demoMode;
     $scope.isLoading = true;
+    $scope.tab = 'list';
 
-    $scope.studentProfile = utilService.studentProfile;
-
-    $scope.tabs = {
-      all: ['list', 'matrix'],
-      defaultTab: 'list',
-      selected: 'list'
+    var goToStudent = $scope.goToStudent = function(uid) {
+      utilService.goTo('/student/' + uid, $scope.section.displayName);
     };
 
     /**
-     * Draw scatterplot graph.
-     *
      * @param  {Function}      callback       Standard callback
      * @return {void}
      */
@@ -65,20 +63,18 @@
       });
       // Pass along a subset of students that have useful data.
       cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
-        var absUrl = $location.absUrl();
-        $location.state(absUrl);
-        var encodedAbsUrl = encodeURIComponent($base64.encode(absUrl));
-        $state.go('user', {uid: uid, r: encodedAbsUrl});
+        $location.state($location.absUrl());
+        goToStudent(uid);
       });
       // List of students-without-data is rendered below the scatterplot.
       $scope.studentsWithoutData = partitions[1];
       return callback();
     };
 
-    $scope.onTab = function(tabName) {
+    var onTab = $scope.onTab = function(tabName) {
       $scope.isLoading = true;
-      $scope.tabs.selected = tabName;
-      $location.search('v', $scope.tabs.selected);
+      $scope.tab = tabName;
+      $location.search('v', $scope.tab);
       if (tabName === 'matrix') {
         scatterplotRefresh(function() {
           $scope.isLoading = false;
@@ -89,30 +85,48 @@
     };
 
     var init = function() {
+      // Maybe we are arriving from student page.
+      $scope.returnUrl = utilService.unpackReturnUrl();
+      $scope.returnLabel = utilService.constructReturnToLabel($scope.returnUrl);
+      $scope.hideFeedbackLink = !!$scope.returnUrl;
+
       var args = _.clone($location.search());
 
-      courseFactory.getSection($stateParams.termId, $stateParams.sectionId).then(function(response) {
+      courseFactory.getSection($stateParams.termId, $stateParams.sectionId, true).then(function(response) {
+        $rootScope.pageTitle = response.data.displayName;
         $scope.section = response.data;
-
+        // averageStudent has averages of ALL students, not just athletes
+        var averageStudent = $scope.section.averageStudent;
+        if (averageStudent) {
+          if (averageStudent.warning) {
+            $scope.warning = averageStudent.warning;
+          } else {
+            $scope.section.students.unshift(averageStudent);
+          }
+        }
+        $scope.isLoading = false;
+        if (args.a) {
+          // Scroll to anchor
+          $scope.anchor = args.a;
+          utilService.anchorScroll($scope.anchor);
+        }
+        googleAnalyticsService.track(
+          'course',
+          'view',
+          $scope.section.termName + ' ' + $scope.section.displayName + ' ' + $scope.section.sectionNum
+        );
       }).catch(function(err) {
-        $scope.error = err ? {message: err.status + ': ' + err.statusText} : true;
+        $scope.error = utilService.parseError(err);
+        $scope.isLoading = false;
 
       }).then(function() {
         watchlistFactory.getMyWatchlist().then(function(response) {
           $scope.myWatchlist = response.data;
-          $scope.isLoading = false;
-
-          if (args.a) {
-            $timeout(function() {
-              // Scroll to anchor if returning from student profile page
-              $scope.anchor = args.a;
-              $location.search('a', null).replace();
-              $anchorScroll.yOffset = 50;
-              $anchorScroll(args.a);
-            });
+          // Begin with matrix view if arg is present
+          if (args.v && _.includes(['list', 'matrix'], args.v)) {
+            $scope.tab = args.v;
+            onTab($scope.tab);
           }
-          var s = $scope.section;
-          googleAnalyticsService.track('course', 'view', s.termName + ' ' + s.displayName + ' ' + s.sectionNum);
         });
       });
     };

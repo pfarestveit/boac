@@ -27,7 +27,23 @@
 
   'use strict';
 
-  angular.module('boac').service('utilService', function($base64) {
+  angular.module('boac').service('utilService', function(
+    config,
+    $anchorScroll,
+    $base64,
+    $location,
+    $rootScope,
+    $timeout
+  ) {
+
+    var anchorScroll = function(anchorId) {
+      $timeout(function() {
+        // Clean up location URI
+        $location.search('a', null).replace();
+        $anchorScroll.yOffset = 50;
+        $anchorScroll(anchorId);
+      });
+    };
 
     var toBoolOrNull = function(str) {
       return _.isNil(str) ? null : _.lowerCase(str) === 'true';
@@ -101,18 +117,86 @@
       return words.join(' ');
     };
 
-    var studentProfile = function(uid) {
-      var encodedAbsUrl = encodeURIComponent($base64.encode($location.absUrl()));
-      $location.path('/student/' + uid).search({r: encodedAbsUrl});
+    var parseError = function(error) {
+      $rootScope.pageTitle = 'Error';
+      var message = error.message || _.get(error, 'data.message') || error || 'An unexpected server error occurred.';
+      return _.truncate(message, {length: 200});
+    };
+
+    var unpackReturnUrl = function(anchorId) {
+      var disableBreadcrumb = true;
+      if (disableBreadcrumb) {
+        // TODO: Cook up a sensible breadcrumb strategy (see BOAC-596) or remove the feature.
+        return null;
+      }
+      var encodedReturnUrl = $location.search().r;
+      var url = null;
+      if (!_.isEmpty(encodedReturnUrl)) {
+        // Parse referring URL
+        $location.search('r', null).replace();
+        url = $base64.decode(decodeURIComponent(encodedReturnUrl));
+        if (anchorId) {
+          var anchorParam = 'a=' + anchorId;
+          var urlComponents = url.split('?');
+          if (urlComponents.length > 1) {
+            url = urlComponents.shift();
+            var query = urlComponents.join('?');
+            query = query.replace(/&?casLogin=true/, '');
+            if (query.length) {
+              anchorParam = query + '&' + anchorParam;
+            }
+          }
+          url = url + '?' + anchorParam;
+        }
+      }
+      return url;
+    };
+
+    var constructReturnToLabel = function(returnUrl) {
+      var label = null;
+      if (returnUrl) {
+        var name = $location.search().referringPageName;
+        if (name && !config.demoMode) {
+          label = 'Return to ' + name;
+          $location.search('referringPageName', null).replace();
+        } else if (returnUrl.includes('student')) {
+          label = 'Return to student';
+        } else {
+          label = returnUrl.includes('cohort') ? 'Return to cohort' : 'Return to course';
+        }
+      }
+      return label;
+    };
+
+    var getEncodedAbsUrl = function() {
+      return encodeURIComponent($base64.encode($location.absUrl()));
+    };
+
+    /**
+     * @param  {String}     path                    URI of destination
+     * @param  {String}     currentPageName         Used to construct 'Return to...' label (see returnUrl above)
+     * @return {void}
+     */
+    var goTo = function(path, currentPageName) {
+      var encodedAbsUrl = getEncodedAbsUrl();
+      $location.path(path).search({
+        r: encodedAbsUrl,
+        referringPageName: currentPageName
+      });
     };
 
     return {
+      anchorScroll: anchorScroll,
       camelCaseToDashes: camelCaseToDashes,
+      constructReturnToLabel: constructReturnToLabel,
       decorateOptions: decorateOptions,
       format: format,
+      getEncodedAbsUrl: getEncodedAbsUrl,
+      goTo: goTo,
+      unpackReturnUrl: unpackReturnUrl,
       getValuesSelected: getValuesSelected,
       obfuscate: obfuscate,
-      studentProfile: studentProfile,
+      parseError: parseError,
       toBoolOrNull: toBoolOrNull
     };
   });

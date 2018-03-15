@@ -49,7 +49,7 @@ def safe_execute(string):
     return [dict(r) for r in rows]
 
 
-@stow('loch_page_views_{course_id}.csv', for_term=True)
+@stow('loch_page_views_{course_id}', for_term=True)
 def get_course_page_views(course_id, term_id):
     return _get_course_page_views(course_id)
 
@@ -61,5 +61,45 @@ def _get_course_page_views(course_id):
               FROM boac_analytics.page_views_zscore
               WHERE canvas_course_id={course_id}
               ORDER BY sis_login_id
+        """
+    return safe_execute(sql)
+
+
+@stow('loch_scores_{course_id}', for_term=True)
+def get_course_scores(course_id, term_id):
+    return _get_course_scores(course_id)
+
+
+@fixture('loch_scores_{course_id}.csv')
+def _get_course_scores(course_id):
+    sql = f"""SELECT
+              user_id as canvas_user_id, current_score
+              FROM boac_analytics.user_course_scores
+              WHERE course_id={course_id}
+              ORDER BY canvas_user_id
+        """
+    return safe_execute(sql)
+
+
+@stow('loch_on_time_submissions_relative_to_user_{course_id}_{user_id}', for_term=True)
+def get_on_time_submissions_relative_to_user(course_id, user_id, term_id):
+    return _get_on_time_submissions_relative_to_user(course_id, user_id)
+
+
+@fixture('loch_on_time_submissions_relative_to_user_{course_id}_{user_id}.csv')
+def _get_on_time_submissions_relative_to_user(course_id, user_id):
+    sql = f"""SELECT user_id as canvas_user_id,
+        COUNT(CASE WHEN assignment_status IN ('on_time', 'submitted') THEN 1 ELSE NULL END) AS on_time_submissions
+        FROM boac_analytics.assignment_submissions_scores
+        WHERE assignment_id IN
+        (
+          SELECT DISTINCT assignment_id FROM boac_analytics.assignment_submissions_scores
+          WHERE user_id = {user_id} AND course_id = {course_id}
+        )
+        GROUP BY user_id
+        HAVING count(*) = (
+          SELECT count(*) FROM boac_analytics.assignment_submissions_scores
+          WHERE user_id = {user_id} AND course_id = {course_id}
+        )
         """
     return safe_execute(sql)

@@ -48,10 +48,6 @@
   box-shadow: none !important;
 }
 
-.btn-nowrap {
-  white-space: nowrap;
-}
-
 .btn-watchlist-fa-1x {
   padding: 2px 5px 0 2px;
 }
@@ -215,6 +211,10 @@
   min-height: 370px;
 }
 
+.no-wrap {
+  white-space: nowrap;
+}
+
 .outage-banner {
   position: fixed;
   top: 0;
@@ -319,4 +319,26 @@ select.form-control {
   display: flex;
   margin: 20px 0 10px 0;
   white-space: nowrap;
+}
+
+.visualize-metrics {
+  margin-bottom: 20px;
+}
+
+.visualize-metrics td {
+  font-size: 14px;
+  padding: 0 25px 5px 0;
+}
+
+.visualize-metrics-legend {
+  color: #999;
+}
+
+.visualize-metrics-maximum {
+  color: #666;
+}
+
+.visualize-metrics-no-data {
+  color: #666;
+  font-style: italic;
 }

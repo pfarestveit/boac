@@ -52,7 +52,7 @@ def merge_analytics_for_user(user_courses, uid, sid, canvas_user_id, term_id):
                     term_id=term_id,
                 )
                 analytics.update(assignment_analytics)
-                analytics.update(analytics_from_loch_page_views(uid, canvas_course_id, term_id))
+                analytics.update({'loch': analytics_from_loch(uid, canvas_user_id, canvas_course_id, term_id)})
             course['analytics'] = analytics
 
 
@@ -155,7 +155,45 @@ def analytics_from_canvas_course_assignments(course_id, course_code, uid, sid, t
     return data
 
 
-def analytics_from_loch_page_views(uid, canvas_course_id, term_id):
+def analytics_from_loch(uid, canvas_user_id, canvas_course_id, term_id):
+    return {
+        'assignmentsOnTime': loch_assignments_on_time(canvas_user_id, canvas_course_id, term_id),
+        'currentScores': loch_current_scores(canvas_user_id, canvas_course_id, term_id),
+        'pageViews': loch_page_views(uid, canvas_course_id, term_id),
+    }
+
+
+def loch_assignments_on_time(canvas_user_id, canvas_course_id, term_id):
+    course_rows = data_loch.get_on_time_submissions_relative_to_user(canvas_course_id, canvas_user_id, term_id)
+    if course_rows is None:
+        return {'error': 'Unable to retrieve from Data Loch'}
+    df = pandas.DataFrame(course_rows, columns=['canvas_user_id', 'on_time_submissions'])
+    student_row = df.loc[df['canvas_user_id'].values == int(canvas_user_id)]
+    if course_rows and student_row.empty:
+        app.logger.warn(f'Canvas user id {canvas_user_id} not found in Data Loch assignments for course site {canvas_course_id}; will assume 0 score')
+        student_row = pandas.DataFrame({'canvas_user_id': [int(canvas_user_id)], 'on_time_submissions': [0]})
+        df = df.append(student_row, ignore_index=True)
+        # Fetch newly appended row, mostly for the sake of its properly set-up index.
+        student_row = df.loc[df['canvas_user_id'].values == int(canvas_user_id)]
+    return analytics_for_column(df, student_row, 'on_time_submissions')
+
+
+def loch_current_scores(canvas_user_id, canvas_course_id, term_id):
+    course_rows = data_loch.get_course_scores(canvas_course_id, term_id)
+    if course_rows is None:
+        return {'error': 'Unable to retrieve from Data Loch'}
+    df = pandas.DataFrame(course_rows, columns=['canvas_user_id', 'current_score'])
+    student_row = df.loc[df['canvas_user_id'].values == int(canvas_user_id)]
+    if course_rows and student_row.empty:
+        app.logger.warn(f'Canvas id {canvas_user_id} not found in Data Loch current scores for course site {canvas_course_id}; will assume 0 score')
+        student_row = pandas.DataFrame({'canvas_user_id': [int(canvas_user_id)], 'current_score': [0]})
+        df = df.append(student_row, ignore_index=True)
+        # Fetch newly appended row, mostly for the sake of its properly set-up index.
+        student_row = df.loc[df['canvas_user_id'].values == int(canvas_user_id)]
+    return analytics_for_column(df, student_row, 'current_score')
+
+
+def loch_page_views(uid, canvas_course_id, term_id):
     course_rows = data_loch.get_course_page_views(canvas_course_id, term_id)
     if course_rows is None:
         return {'error': 'Unable to retrieve from Data Loch'}
@@ -167,9 +205,7 @@ def analytics_from_loch_page_views(uid, canvas_course_id, term_id):
         df = df.append(student_row, ignore_index=True)
         # Fetch newly appended row, mostly for the sake of its properly set-up index.
         student_row = df.loc[df['uid'].values == uid]
-    return {
-        'lochPageViews': analytics_for_column(df, student_row, 'loch_page_views'),
-    }
+    return analytics_for_column(df, student_row, 'loch_page_views')
 
 
 def analytics_for_column(df, student_row, column_name):
@@ -210,10 +246,9 @@ def analytics_for_column(df, student_row, column_name):
     # If all students have the same score, we have no basis for comparison.
     if nunique == 1:
         display_percentile = None
-    elif nunique <= 10:
-        display_percentile = ordinal(intuitive_percentile)
+    # Otherwise the intuitive percentile is our best option for display, whether or not the distribution is boxplottable.
     else:
-        display_percentile = ordinal(comparative_percentile)
+        display_percentile = ordinal(intuitive_percentile)
 
     return {
         'boxPlottable': box_plottable,

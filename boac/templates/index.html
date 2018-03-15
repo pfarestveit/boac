@@ -2,7 +2,7 @@
   <head>
     <meta charset="utf-8">
     <link rel="icon" type="image/png" href="/static/app/favicon.ico" />
-    <title>BOAC</title>
+    <title data-ng-bind="(pageTitle ? pageTitle : 'UC Berkeley') + ' | BOAC'"></title>
 
     <!-- Third-party CSS -->
     <link href="/static/lib/angular-bootstrap/ui-bootstrap-csp.css" rel="stylesheet">
@@ -13,6 +13,7 @@
     <!-- BOAC CSS -->
     <link href="/static/app/main.css" rel="stylesheet">
     <link href="/static/app/cohort/cohort.css" rel="stylesheet">
+    <link href="/static/app/course/course.css" rel="stylesheet">
     <link href="/static/app/landing/landing.css" rel="stylesheet">
     <link href="/static/app/shared/matrix.css" rel="stylesheet">
     <link href="/static/app/shared/profile.css" rel="stylesheet">
@@ -53,17 +54,18 @@
     <script src="/static/app/shared/avatarFallbackDirective.js"></script>
     <script src="/static/app/shared/boxplotService.js"></script>
     <script src="/static/app/shared/utilService.js"></script>
-    <script src="/static/app/student/courseSiteMetricsDirective.js"></script>
     <script src="/static/app/student/findStudentDirective.js"></script>
     <script src="/static/app/student/findStudentFilter.js"></script>
     <script src="/static/app/student/studentAlertMessageDirective.js"></script>
     <script src="/static/app/student/studentController.js"></script>
     <script src="/static/app/student/studentFactory.js"></script>
+    <script src="/static/app/student/studentService.js"></script>
     <script src="/static/app/user/authController.js"></script>
     <script src="/static/app/user/authFactory.js"></script>
     <script src="/static/app/user/authService.js"></script>
     <script src="/static/app/user/watchlistFactory.js"></script>
     <script src="/static/app/user/watchlistToggleDirective.js"></script>
+    <script src="/static/app/visual/boxplotDrawDirective.js"></script>
 
     <!-- Google Analytics (the order below matters) -->
     <script src="/static/app/shared/googleAnalyticsService.js"></script>

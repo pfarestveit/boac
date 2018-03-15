@@ -27,23 +27,25 @@
 
   'use strict';
 
-  angular.module('boac').factory('courseFactory', function(utilService, $http) {
-
-    var getSectionIdsPerTerm = function() {
-      return $http.get('/api/sections/ids_per_term');
-    };
-
-    var getSection = function(termId, sectionId, includeAverage) {
-      var url = '/api/section/' + termId + '/' + sectionId;
-      if (includeAverage) {
-        url += '?includeAverage=true';
-      }
-      return $http.get(url);
-    };
-
+  angular.module('boac').directive('boxplotDraw', function(boxplotService, utilService) {
     return {
-      getSectionIdsPerTerm: getSectionIdsPerTerm,
-      getSection: getSection
+      restrict: 'E',
+
+      scope: {
+        dataset: '='
+      },
+
+      link: function(scope, elem, attrs) {
+        angular.element(function() {
+          if (scope.dataset.boxPlottable) {
+            var compactTooltip = utilService.toBoolOrNull(attrs.compactTooltip);
+            boxplotService.drawBoxplot(elem[0], scope.dataset, compactTooltip);
+          } else {
+            elem.attr('class', elem.attr('class') + ' visualize-metrics-no-data');
+            elem.text('No Data');
+          }
+        });
+      }
     };
   });
 

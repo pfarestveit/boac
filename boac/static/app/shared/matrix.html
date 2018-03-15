@@ -19,25 +19,31 @@
       <a class="list-group-item student-list-item"
          data-ng-class="{'list-group-item-info': anchor===student.uid}"
          href
-         data-ng-click="studentProfile(student.uid)"
+         data-ng-click="goToStudent(student.uid)"
          data-ng-repeat="student in studentsWithoutData | orderBy:['lastName','firstName']">
         <div class="student-avatar-container">
           <img class="student-avatar"
                data-ng-src="/api/user/{{student.uid}}/photo"
-               data-avatar-fallback>
+               data-avatar-fallback
+               data-ng-if="!student.isClassAverage">
+          <img class="student-avatar"
+               src="/static/app/course/class-group-icon.svg"
+               data-ng-if="student.isClassAverage">
         </div>
         <div class="student-name-container">
           <div class="flex-container">
             <h3 class="flex-container student-name"
                 data-ng-class="{'demo-mode-blur': demoMode}">
-              {{student.lastName}}, {{student.firstName}}
+              {{student.lastName}}<span data-ng-if="student.firstName">, {{student.firstName}}</span>
             </h3>
             <watchlist-toggle data-sid="student.sid"
                               data-fa-size="fa-1x"
-                              data-watchlist="myWatchlist"></watchlist-toggle>
+                              data-watchlist="myWatchlist"
+                              data-ng-if="!student.isClassAverage"></watchlist-toggle>
           </div>
           <div class="student-sid"
-               data-ng-class="{'demo-mode-blur': demoMode}">
+               data-ng-class="{'demo-mode-blur': demoMode}"
+               data-ng-if="student.sid">
             SID: <span data-ng-bind="student.sid"></span>
           </div>
         </div>

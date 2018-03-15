@@ -5,28 +5,42 @@
     <i class="fa fa-refresh fa-spin fa-5x fa-fw"></i>
     <span class="sr-only">Loading...</span>
   </div>
-  <div data-ng-if="!isLoading && !error">
+  <div data-ng-show="!isLoading && !error">
     <div class="return-to-url" data-ng-if="returnUrl">
       <a data-ng-href="{{returnUrl}}">
-        <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to student
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> <span data-ng-bind="returnLabel"></span>
       </a>
+      <div class="container-right">
+        Questions or feedback? Contact us at <a href="mailto:ascpilot@lists.berkeley.edu">ascpilot@lists.berkeley.edu</a>
+      </div>
     </div>
     <div class="profile-body">
       <div class="profile-sidebar">
         <div class="profile-sidebar-box">
-          <h1 class="profile-sidebar-header">{{section.displayName}} {{section.sectionNum}}</h1>
-          <div class="profile-sidebar-details">
-            <span data-ng-bind="section.courseCode"></span>
-            <span data-ng-if="section.courseCode">&mdash;</span>
+          <h1 class="course-sidebar-header" data-ng-bind="section.displayName"></h1>
+          <div class="course-details-section">
+            <span data-ng-bind="section.instructionFormat"></span>
+            <span data-ng-bind="section.sectionNum"></span>
+            <span data-ng-if="section.instructionFormat">&mdash;</span>
             <span data-ng-bind="section.units"></span> Units
           </div>
-          <div class="profile-sidebar-details">
-            <h2 data-ng-bind="section.title"></h2>
-            <div data-ng-repeat="meeting in section.meetings">
+          <div class="course-section-title" data-ng-if="section.title">
+            <span data-ng-bind="section.title"></span>
+          </div>
+          <div data-ng-repeat="meeting in section.meetings"
+               data-ng-if="section.meetings">
+            <div id="meetings-{{$index}}" class="course-details-meetings">
               <div data-ng-bind="meeting.days"></div>
               <div data-ng-bind="meeting.time"></div>
               <div data-ng-bind="meeting.location"></div>
-              <div data-ng-repeat="instructor in meeting.instructors">
+            </div>
+            <div data-ng-if="meeting.instructors">
+              <h2 class="course-instructors-header"
+                  id="instructors-{{$index}}"
+                  data-ng-pluralize
+                  count="meeting.instructors.length"
+                  when="{'one': 'Instructor', 'other': 'Instructors'}"></h2>
+              <div class="course-details-instructors" data-ng-repeat="instructor in meeting.instructors">
                 <div data-ng-bind="instructor"></div>
               </div>
             </div>
@@ -34,41 +48,59 @@
         </div>
       </div>
       <div class="profile-terms">
-        <h3 data-ng-bind="section.termName"></h3>
+        <h2 data-ng-bind="section.termName"></h2>
+        <div data-ng-if="warning && warning.message">
+          <div class="has-error"><i class="fa fa-exclamation-triangle"></i>
+            Warning: <span data-ng-bind="warning.message"></span>
+          </div>
+        </div>
 
         <div data-ng-include="'/static/app/shared/tabs.html'"></div>
 
-        <div data-ng-show="tabs.selected === 'list'"
+        <div data-ng-show="tab === 'list'"
              data-ng-if="!isLoading && !error && section.students.length">
+          <div class="flex-container course-column-headers">
+            <div class="course-column-header-left"></div>
+            <div class="course-column-header course-column-header-boxplot">ASSIGNMENTS <div class="no-wrap">ON TIME</div></div>
+            <div class="course-column-header course-column-header-boxplot">ASSIGNMENT<div>GRADES</div></div>
+            <div class="course-column-header course-column-header-boxplot">PAGE VIEWS</div>
+            <div class="course-column-header course-column-header-grade">MID</div>
+            <div class="course-column-header course-column-header-grade">FINAL</div>
+          </div>
           <ul id="section-students-list" class="list-group">
             <a class="list-group-item student-list-item"
                data-ng-class="{'list-group-item-info': anchor===student.uid}"
                id="{{student.uid}}"
                href
-               data-ng-click="studentProfile(student.uid)"
+               data-ng-click="goToStudent(student.uid)"
                data-ng-repeat="student in section.students">
-              <div class="student-avatar-container">
-                <img class="student-avatar"
+              <div class="student-avatar-large-container">
+                <img class="student-avatar student-avatar-large"
                      data-ng-src="/api/user/{{student.uid}}/photo"
-                     data-avatar-fallback>
+                     data-avatar-fallback
+                     data-ng-if="!student.isClassAverage">
+                <img class="student-avatar student-avatar-large"
+                     src="/static/app/course/class-group-icon.svg"
+                     data-ng-if="student.isClassAverage">
               </div>
-              <div class="student-name-container">
+              <div class="course-student-name-container">
                 <div class="flex-container">
-                  <h3 class="student-name"
-                      data-ng-class="{'demo-mode-blur': demoMode}"
-                      data-ng-if="orderBy.selected !== 'first_name'">
-                    {{student.lastName}}, {{student.firstName}}
-                  </h3>
-                  <h3 class="student-name"
-                      data-ng-class="{'demo-mode-blur': demoMode}">
-                    {{student.firstName}} {{student.lastName}}
-                  </h3>
-                  <watchlist-toggle data-sid="student.sid"
-                                    data-fa-size="fa-1x"
-                                    data-watchlist="myWatchlist"></watchlist-toggle>
+                  <div>
+                    <h3 class="course-student-name"
+                        data-ng-class="{'demo-mode-blur': demoMode}">
+                      {{student.lastName}}<span data-ng-if="student.firstName">, {{student.firstName}}</span>
+                    </h3>
+                  </div>
+                  <div>
+                    <watchlist-toggle data-sid="student.sid"
+                                      data-fa-size="fa-1x"
+                                      data-watchlist="myWatchlist"
+                                      data-ng-if="!student.isClassAverage"></watchlist-toggle>
+                  </div>
                 </div>
                 <div class="student-sid"
-                     data-ng-class="{'demo-mode-blur': demoMode}">
+                     data-ng-class="{'demo-mode-blur': demoMode}"
+                     data-ng-if="!student.isClassAverage">
                   {{student.sid}}
                   <span class="student-inactive" data-ng-if="!student.isActiveAsc">INACTIVE</span>
                 </div>
@@ -80,10 +112,56 @@
                        data-ng-repeat="membership in student.athletics"></div>
                 </div>
               </div>
+              <div class="student-column course-column-assignment-data">
+                <div data-ng-repeat="canvasSite in student.enrollment.canvasSites">
+                  <strong class="no-wrap" data-ng-bind="canvasSite.courseCode"></strong>
+                  <div class="no-wrap" data-ng-if="canvasSite.analytics.assignmentsOnTime.displayPercentile">
+                    Score: <strong data-ng-bind="canvasSite.analytics.assignmentsOnTime.student.raw"></strong>
+                    <span class="faint-text">
+                      (Max: <span data-ng-bind="canvasSite.analytics.assignmentsOnTime.courseDeciles[10]"></span>)
+                    </span>
+                  </div>
+                  <div data-ng-if="!canvasSite.analytics.assignmentsOnTime.displayPercentile">
+                    No Data
+                  </div>
+                </div>
+              </div>
+              <div class="student-column">
+                <div class="profile-boxplot-container"
+                     data-ng-repeat="canvasSite in student.enrollment.canvasSites">
+                  <boxplot-draw class="profile-boxplot"
+                                data-dataset="canvasSite.analytics.courseCurrentScore"></boxplot-draw>
+                </div>
+              </div>
+              <div class="student-column">
+                <div class="profile-boxplot-container"
+                     data-ng-repeat="canvasSite in student.enrollment.canvasSites">
+                  <boxplot-draw class="profile-boxplot"
+                                data-dataset="canvasSite.analytics.pageViews"></boxplot-draw>
+                </div>
+              </div>
+              <div class="student-column-grade">
+                <span class="cohort-grade"
+                      data-ng-bind="student.enrollment.midtermGrade"
+                      data-ng-if="student.enrollment.midtermGrade"></span>
+                <i class="fa fa-exclamation-triangle boac-exclamation"
+                   data-ng-if="isAlertGrade(student.enrollment.midtermGrade)"></i>
+                <span data-ng-if="!student.enrollment.midtermGrade">&mdash;</span>
+              </div>
+              <div class="student-column-grade">
+                <span class="cohort-grade"
+                      data-ng-bind="student.enrollment.grade"
+                      data-ng-if="student.enrollment.grade"></span>
+                <i class="fa fa-exclamation-triangle boac-exclamation"
+                   data-ng-if="isAlertGrade(student.enrollment.grade)"></i>
+                <span class="cohort-grading-basis"
+                      data-ng-bind="student.enrollment.gradingBasis"
+                      data-ng-if="!student.enrollment.grade"></span>
+              </div>
             </a>
           </ul>
         </div>
-        <div id="matrix-outer" data-ng-show="tabs.selected === 'matrix' && !isLoading && !error">
+        <div id="matrix-outer" data-ng-show="tab === 'matrix' && !isLoading && !error">
           <div data-ng-include="'/static/app/shared/matrix.html'"></div>
         </div>
       </div>

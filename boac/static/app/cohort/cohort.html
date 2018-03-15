@@ -68,14 +68,14 @@
     <div class="cohort-filters-column flex-column-10"></div>
     <div class="cohort-filters-column flex-column-btn">
       <button id="execute-search"
-              class="btn btn-primary btn-nowrap"
+              class="btn btn-primary no-wrap"
               data-ng-disabled="disableSearchButton()"
               data-ng-click="executeSearch()">Search</button>
     </div>
     <div class="cohort-filters-column flex-column-btn">
       <span data-ng-controller="CreateCohortController">
         <button id="create-cohort-btn"
-                class="btn btn-default btn-nowrap"
+                class="btn btn-default no-wrap"
                 data-ng-disabled="disableSearchButton()"
                 data-ng-click="openCreateCohortModal(search.options)">
           Save Cohort
@@ -94,11 +94,11 @@
 
   <div class="cohort-column-results">
     <div class="flex-container flex-space-between"
-         data-ng-if="!isLoading && !error && (tabs.selected === 'matrix' || cohort.totalMemberCount)">
+         data-ng-if="!isLoading && !error && (tab === 'matrix' || cohort.totalMemberCount)">
 
       <div data-ng-include="'/static/app/shared/tabs.html'"></div>
 
-      <div class="cohort-sort-column" data-ng-if="tabs.selected === 'list'">
+      <div class="cohort-sort-column" data-ng-if="tab === 'list'">
         <label class="cohort-sort-label" for="cohort-sort-by">Sort by</label>
         <select id="cohort-sort-by"
                 class="form-control"
@@ -107,17 +107,17 @@
         </select>
       </div>
     </div>
-    <div data-ng-show="tabs.selected === 'list'"
+    <div data-ng-show="tab === 'list'"
          data-ng-if="!isLoading && !error && cohort.totalMemberCount">
       <ul id="cohort-members-list" class="list-group">
         <a class="list-group-item student-list-item"
            data-ng-class="{'list-group-item-info': anchor===student.uid}"
            id="{{student.uid}}"
            href
-           data-ng-click="studentProfile(student.uid)"
+           data-ng-click="goToStudent(student.uid)"
            data-ng-repeat="student in cohort.members">
-          <div class="student-avatar-container">
-            <img class="student-avatar"
+          <div class="student-avatar-large-container">
+            <img class="student-avatar student-avatar-large"
                  data-ng-src="/api/user/{{student.uid}}/photo"
                  data-avatar-fallback>
           </div>
@@ -155,7 +155,7 @@
             <div class="student-text">GPA (Cumulative)</div>
           </div>
           <div class="student-column">
-            <div class="student-gpa" data-ng-bind="student.currentTerm.enrolledUnits || '0'"></div>
+            <div class="student-gpa" data-ng-bind="student.term.enrolledUnits || '0'"></div>
             <div class="student-text">Units (In Progress)</div>
             <div class="student-gpa" data-ng-bind="student.cumulativeUnits || '--'"></div>
             <div class="student-text">Total Units</div>
@@ -167,15 +167,16 @@
               <div class="student-column-grade student-text">MID</div>
               <div class="student-column-grade student-text">FINAL</div>
             </div>
-            <div class="student-course-activity-row" data-ng-repeat="enrollment in student.currentTerm.enrollments">
+            <div class="student-course-activity-row" data-ng-repeat="enrollment in student.term.enrollments">
               <div class="student-column">
                 <div data-ng-bind="enrollment.displayName"></div>
               </div>
               <div class="student-column">
                 <div class="cohort-boxplot-container" data-ng-repeat="canvasSite in enrollment.canvasSites">
-                  <div id="boxplot-{{canvasSite.canvasCourseId}}-{{student.uid}}-pageviews"
-                       class="cohort-boxplot">
-                  </div>
+                  <boxplot-draw class="cohort-boxplot"
+                                data-compact-tooltip="true"
+                                data-dataset="canvasSite.analytics.pageViews"
+                                data-ng-if="tab === 'list'"></boxplot-draw>
                 </div>
               </div>
               <div class="student-column-grade">
@@ -200,7 +201,7 @@
           data-ng-click="nextPage()"
           data-ng-if="pagination.enabled && !isCreateCohortMode && (cohort.totalMemberCount > pagination.itemsPerPage)"></ul>
     </div>
-    <div id="matrix-outer" data-ng-show="tabs.selected === 'matrix' && !isLoading && !error">
+    <div id="matrix-outer" data-ng-show="tab === 'matrix' && !isLoading && !error">
       <div data-ng-include="'/static/app/shared/matrix.html'"></div>
     </div>
   </div>

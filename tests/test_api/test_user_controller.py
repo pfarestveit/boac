@@ -263,7 +263,9 @@ class TestUserAnalytics:
         assert analytics['participations']['courseDeciles'][9] == 6
         assert analytics['participations']['courseDeciles'][10] == 12
 
-        assert analytics['lochPageViews']['student']['raw'] == 766
+        assert analytics['loch']['assignmentsOnTime']['student']['raw'] == 7
+        assert analytics['loch']['currentScores']['student']['raw'] == 84
+        assert analytics['loch']['pageViews']['student']['raw'] == 766
 
     def test_empty_canvas_course_feed(self, client, fake_auth):
         """Returns 200 if user is found and Canvas course feed is empty."""
@@ -387,6 +389,12 @@ class TestUserAnalytics:
         assert sis_profile['preferredName'] == 'Osk Bear'
         assert sis_profile['primaryName'] == 'Oski Bear'
         assert sis_profile['termsInAttendance'] == 5
+
+    def test_sis_profile_expected_graduation_term(self, authenticated_response):
+        """Provides the last of any expected graduation terms listed in SIS profile."""
+        sis_profile = authenticated_response.json['sisProfile']
+        assert sis_profile['expectedGraduationTerm']['id'] == '2198'
+        assert sis_profile['expectedGraduationTerm']['name'] == 'Fall 2019'
 
     def test_student_overview_link(self, authenticated_response):
         """Provides a link to official data about the student."""
