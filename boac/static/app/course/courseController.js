@@ -65,6 +65,8 @@
       cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
         $location.state($location.absUrl());
         goToStudent(uid);
+        // Because intervening cohortService code moves out of Angular and into d3, administer the extra kick of $apply.
+        $scope.$apply();
       });
       // List of students-without-data is rendered below the scatterplot.
       $scope.studentsWithoutData = partitions[1];
@@ -91,8 +93,8 @@
       $scope.hideFeedbackLink = !!$scope.returnUrl;
 
       var args = _.clone($location.search());
-
-      courseFactory.getSection($stateParams.termId, $stateParams.sectionId, true).then(function(response) {
+      // For now, exclude 'Average Student'
+      courseFactory.getSection($stateParams.termId, $stateParams.sectionId, false).then(function(response) {
         $rootScope.pageTitle = response.data.displayName;
         $scope.section = response.data;
         // averageStudent has averages of ALL students, not just athletes

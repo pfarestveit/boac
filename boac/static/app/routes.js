@@ -57,8 +57,20 @@
       return deferred.promise;
     };
 
-    var resolvePublic = {
-      me: resolveMe
+    // Return a rejection if authenticated user is present.
+    var splashAuthentication = function(me, $q) {
+      var deferred = $q.defer();
+      if (me.is_authenticated) {
+        deferred.reject({message: 'authenticated'});
+      } else {
+        deferred.resolve({});
+      }
+      return deferred.promise;
+    };
+
+    var resolveSplash = {
+      me: resolveMe,
+      authentication: splashAuthentication
     };
 
     var resolvePrivate = {
@@ -97,10 +109,16 @@
         resolve: resolvePrivate
       })
       .state('home', {
+        url: '/home',
+        templateUrl: '/static/app/home/home.html',
+        controller: 'HomeController',
+        resolve: resolvePrivate
+      })
+      .state('splash', {
         url: '/',
-        templateUrl: '/static/app/landing/landing.html',
-        controller: 'LandingController',
-        resolve: resolvePublic
+        templateUrl: '/static/app/splash/splash.html',
+        controller: 'SplashController',
+        resolve: resolveSplash
       })
       .state('user', {
         url: '/student/:uid?r',
@@ -110,7 +128,10 @@
         reloadOnSearch: false
       });
 
-  }).run(function(authFactory, $rootScope) {
+  }).run(function(authFactory, $rootScope, $state) {
+    // logOut is always an option
+    $rootScope.logOut = authFactory.logOut;
+
     $rootScope.$on('$stateChangeStart', function(e, toState) {
       if (toState && toState.name) {
         var name = toState.name.replace(/([A-Z])/g, ' $1');
@@ -122,6 +143,8 @@
     $rootScope.$on('$stateChangeError', function(event, toState, toParams, fromState, fromParams, error) {
       if (error.message === 'unauthenticated') {
         authFactory.casLogIn();
+      } else if (error.message === 'authenticated') {
+        $state.go('home');
       }
     });
   });
