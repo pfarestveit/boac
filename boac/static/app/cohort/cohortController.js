@@ -29,20 +29,19 @@
 
   angular.module('boac').controller('CohortController', function(
     cohortFactory,
-    cohortService,
     config,
     googleAnalyticsService,
+    me,
     studentFactory,
+    studentGroupFactory,
+    studentSearchService,
     utilService,
-    watchlistFactory,
+    visualizationService,
     $anchorScroll,
-    $base64,
     $location,
     $rootScope,
     $scope
   ) {
-
-    $scope.demoMode = config.demoMode;
 
     var filters = {
       gpaRanges: 'g',
@@ -65,8 +64,10 @@
       };
     };
 
+    $scope.demoMode = config.demoMode;
     $scope.isLoading = true;
     $scope.isCreateCohortMode = false;
+    $scope.allGroups = _.concat(me.myPrimaryGroup, me.myGroups);
     $scope.showIntensiveCheckbox = false;
     $scope.showInactiveCheckbox = false;
     $scope.tab = 'list';
@@ -97,18 +98,7 @@
       }
     };
 
-    $scope.orderBy = {
-      options: [
-        {name: 'First Name', value: 'first_name'},
-        {name: 'Last Name', value: 'last_name'},
-        {name: 'Team', value: 'group_name'},
-        {name: 'GPA', value: 'gpa'},
-        {name: 'Level', value: 'level'},
-        {name: 'Major', value: 'major'},
-        {name: 'Units', value: 'units'}
-      ],
-      selected: 'last_name'
-    };
+    $scope.orderBy = studentSearchService.getSortByOptionsForSearch();
 
     // More info: https://angular-ui.github.io/bootstrap/
     $scope.pagination = {
@@ -116,6 +106,85 @@
       currentPage: 1,
       itemsPerPage: 50,
       noLimit: Number.MAX_SAFE_INTEGER
+    };
+
+    $scope.studentGroupForm = {
+      addAll: false,
+      isOpen: false,
+      showGroupsMenu: false
+    };
+
+    /**
+     * Show or hide the student-groups menu based on page state.
+     *
+     * @return {void}
+     */
+    var updateShowGroupsMenu = function() {
+      if ($scope.studentGroupForm.addAll) {
+        $scope.studentGroupForm.showGroupsMenu = true;
+      } else {
+        $scope.studentGroupForm.showGroupsMenu = !!_.find($scope.cohort.members, 'checkboxSelected');
+      }
+    };
+
+    /**
+     * Toggle the all-student-groups checkbox.
+     *
+     * @param  {Boolean}    value      If true, select all students in current page view.
+     * @return {void}
+     */
+    var toggleAllStudentCheckboxes = $scope.toggleAllStudentCheckboxes = function(value) {
+      var selected = _.isNil(value) ? $scope.studentGroupForm.addAll : value;
+      _.each($scope.cohort.members, function(student) {
+        student.checkboxSelected = selected;
+      });
+      $scope.studentGroupForm.addAll = selected;
+      updateShowGroupsMenu();
+      $scope.studentGroupForm.showGroupsMenu = selected;
+    };
+
+    /**
+     * Click on checkbox of an individual student.
+     *
+     * @param  {Student}    student      Student checkbox has been toggled.
+     * @return {void}
+     */
+    $scope.selectStudentCheckbox = function(student) {
+      if (student.checkboxSelected) {
+        var allStudentsSelected = true;
+        _.each($scope.cohort.members, function(member) {
+          if (!member.checkboxSelected) {
+            // We found a checkbox not checked. The 'all' checkbox must be false.
+            allStudentsSelected = false;
+            // Break out of loop.
+            return false;
+          }
+        });
+        $scope.studentGroupForm.addAll = allStudentsSelected;
+      } else {
+        $scope.studentGroupForm.addAll = false;
+      }
+      updateShowGroupsMenu();
+    };
+
+    /**
+     * Add selected students to the group provided and then reset all student-group related menus.
+     *
+     * @param  {Group}    group      Students will be added to this group.
+     * @return {void}
+     */
+    $scope.groupCheckboxClick = function(group) {
+      var students = _.filter($scope.cohort.members, 'checkboxSelected');
+      if (students.length) {
+        var sids = _.map(students, 'sid');
+        studentGroupFactory.addStudentsToGroup(group.id, sids).then(function() {
+          $scope.studentGroupForm.showGroupsMenu = false;
+          $scope.studentGroupForm.addAll = false;
+          _.each($scope.cohort.members, function(member) {
+            member.checkboxSelected = false;
+          });
+        });
+      }
     };
 
     /**
@@ -375,30 +444,6 @@
     };
 
     /**
-     * Draw scatterplot graph.
-     *
-     * @param  {Object}      response       Data from backend API
-     * @return {void}
-     */
-    var scatterplotRefresh = function() {
-      // Plot the cohort
-      var yAxisMeasure = $scope.yAxisMeasure = $location.search().yAxis || 'analytics.courseCurrentScore';
-      var partitions = _.partition($scope.cohort.members, function(member) {
-        return _.isFinite(_.get(member, 'analytics.pageViews.percentile')) &&
-          _.isFinite(_.get(member, yAxisMeasure + '.percentile'));
-      });
-      // Pass along a subset of students that have useful data.
-      cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
-        $location.state($location.absUrl());
-        goToStudent(uid);
-        // Because intervening cohortService code moves out of Angular and into d3, administer the extra kick of $apply.
-        $scope.$apply();
-      });
-      // List of students-without-data is rendered below the scatterplot.
-      $scope.studentsWithoutData = partitions[1];
-    };
-
-    /**
      * Get ALL students of the cohort then render the scatterplot graph.
      *
      * @param  {Function}    callback      Standard callback function
@@ -408,7 +453,17 @@
       $scope.isLoading = true;
       getCohort(null, 0, $scope.pagination.noLimit).then(function(response) {
         updateCohort(response.data);
-        scatterplotRefresh();
+        var goToUserPage = function(uid) {
+          $location.state($location.absUrl());
+          goToStudent(uid);
+          // The intervening visualizationService code moves out of Angular and into d3 thus the extra kick of $apply.
+          $scope.$apply();
+        };
+        visualizationService.scatterplotRefresh($scope.cohort.members, goToUserPage, function(yAxisMeasure, studentsWithoutData) {
+          $scope.yAxisMeasure = yAxisMeasure;
+          // List of students-without-data is rendered below the scatterplot.
+          $scope.studentsWithoutData = studentsWithoutData;
+        });
         return callback();
       }).catch(function(err) {
         $scope.error = utilService.parseError(err);
@@ -537,6 +592,7 @@
       $scope.showIntensiveCheckbox = false;
       $scope.showInactiveCheckbox = false;
       $scope.search.dropdown = defaultDropdownState();
+      toggleAllStudentCheckboxes(false);
       // Refresh search results
       $scope.cohort.code = 'search';
       $rootScope.pageTitle = 'Search';
@@ -641,31 +697,32 @@
             });
           } else {
             var render = $scope.tab === 'list' ? listViewRefresh : matrixViewRefresh;
-            watchlistFactory.getMyWatchlist().then(function(response) {
-              $scope.myWatchlist = response.data;
-              render(function() {
-                initFilters(function() {
-                  $rootScope.pageTitle = $scope.isCreateCohortMode ? 'Create Cohort' : $scope.cohort.name || 'Search';
-                  $scope.isLoading = false;
+            render(function() {
+              initFilters(function() {
+                $rootScope.pageTitle = $scope.isCreateCohortMode ? 'Create Cohort' : $scope.cohort.name || 'Search';
+                $scope.isLoading = false;
 
-                  if (args.a) {
-                    // We are returning from student page.
-                    $scope.anchor = args.a;
-                    utilService.anchorScroll($scope.anchor);
-                  }
-                  // Track view event
-                  if (isNaN($scope.cohort.code)) {
-                    googleAnalyticsService.track('team', 'view', $scope.cohort.code + ': ' + $scope.cohort.name);
-                  } else {
-                    googleAnalyticsService.track('cohort', 'view', $scope.cohort.name, $scope.cohort.code);
-                  }
-                });
+                if (args.a) {
+                  // We are returning from student page.
+                  $scope.anchor = args.a;
+                  utilService.anchorScroll($scope.anchor);
+                }
+                // Track view event
+                if (isNaN($scope.cohort.code)) {
+                  googleAnalyticsService.track('team', 'view', $scope.cohort.code + ': ' + $scope.cohort.name);
+                } else {
+                  googleAnalyticsService.track('cohort', 'view', $scope.cohort.name, $scope.cohort.code);
+                }
               });
             });
           }
         });
       });
     };
+
+    $rootScope.$on('studentGroupCreated', function(event, data) {
+      $scope.allGroups.push(data.group);
+    });
 
     /**
      * Reload page with newly created cohort.

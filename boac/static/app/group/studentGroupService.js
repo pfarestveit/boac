@@ -27,32 +27,33 @@
 
   'use strict';
 
-  angular.module('boac').directive('myCohortsDropdown', function() {
+  angular.module('boac').service('studentGroupService', function(studentGroupFactory, utilService) {
+
+    var loadMyGroups = function(callback) {
+      studentGroupFactory.getMyGroups().then(function(response) {
+        var groups = response.data;
+        var myPrimaryGroup = null;
+        var myGroups = [];
+        _.each(groups, function(group) {
+          var decoratedGroup = {
+            id: group.id,
+            name: group.name,
+            students: utilService.extendSortableNames(group.students),
+            sortBy: 'sortableName',
+            reverse: false
+          };
+          if (group.name === 'My Students') {
+            myPrimaryGroup = decoratedGroup;
+          } else {
+            myGroups.push(group);
+          }
+        });
+        return callback(myPrimaryGroup, myGroups);
+      });
+    };
 
     return {
-      // @see https://docs.angularjs.org/guide/directive#template-expanding-directive
-      restrict: 'E',
-
-      // @see https://docs.angularjs.org/guide/directive#isolating-the-scope-of-a-directive
-      scope: {},
-      templateUrl: '/static/app/cohort/myCohortsDropdown.html',
-      controller: function(cohortFactory, $rootScope, $scope) {
-
-        $scope.isLoading = true;
-        $scope.myCohorts = null;
-        $scope.truncate = _.truncate;
-
-        var init = function() {
-          cohortFactory.getMyCohorts().then(function(response) {
-            $scope.myCohorts = response.data;
-            $scope.isLoading = false;
-          });
-        };
-
-        $rootScope.$on('myCohortsUpdated', init);
-
-        init();
-      }
+      loadMyGroups: loadMyGroups
     };
   });
 

@@ -171,11 +171,6 @@ def load_canvas_externals(uid, term_id):
                     failures.append(f'canvas.get_student_summaries failed for site_id {site_id}')
                     continue
                 success_count += 1
-                # This is a very time-consuming API and might have to managed separately.
-                if not canvas.get_course_enrollments(site_id, term_id):
-                    failures.append(f'canvas.get_course_enrollments failed for site_id {site_id}')
-                    continue
-                success_count += 1
                 # Do not treat an empty list as a failure.
                 if canvas.get_assignments_analytics(site_id, uid, term_id) is None:
                     failures.append(f'canvas.get_assignments_analytics failed for UID {uid}, site_id {site_id}')
@@ -243,6 +238,7 @@ def load_analytics_feeds(uid, sid, term_id):
             canvas_user_id = canvas_user_profile.get('id')
             if canvas_user_id:
                 data_loch.get_on_time_submissions_relative_to_user(site['canvasCourseId'], canvas_user_id, term_id)
+                data_loch.get_submissions_turned_in_relative_to_user(site['canvasCourseId'], canvas_user_id, term_id)
     if merged_term_feed:
         for enrollment in merged_term_feed['enrollments']:
             load_analytics_for_sites(enrollment['canvasSites'])

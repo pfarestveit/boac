@@ -26,7 +26,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 import io
 
-from boac.externals import canvas, data_loch
+from boac.externals import data_loch
 from boac.lib import analytics
 from boac.lib.mockingdata import MockRows, register_mock
 
@@ -44,40 +44,6 @@ class TestAnalytics:
         assert analytics.ordinal(21) == '21st'
         assert analytics.ordinal(22) == '22nd'
         assert analytics.ordinal(23) == '23rd'
-
-    def test_canvas_course_scores(self, app):
-        """Summarizes current course score in fixture for active enrollments only."""
-        canvas_user_id = 9000100
-        canvas_course_id = 7654321
-        feed = canvas.get_course_enrollments(canvas_course_id, '2178')
-        digested = analytics.analytics_from_canvas_course_enrollments(feed, canvas_user_id)
-        course_current_score = digested['courseCurrentScore']
-        assert course_current_score['boxPlottable'] is True
-        assert course_current_score['courseDeciles'][0] == 76
-        assert course_current_score['courseDeciles'][10] == 97
-        assert course_current_score['displayPercentile'] == '11th'
-        assert course_current_score['student']['percentile'] == 8
-        assert course_current_score['student']['raw'] == 86.0
-        assert course_current_score['student']['roundedUpPercentile'] == 11
-
-    def test_no_canvas_course_scores(self, app):
-        """Handles complete absence of scored assignments."""
-        canvas_user_id = 9000100
-        canvas_course_id = 7654321
-        feed = canvas.get_course_enrollments(canvas_course_id, '2178')
-        # Mimic an unscored site.
-        for row in feed:
-            row['grades']['current_grade'] = None
-            row['grades']['current_score'] = None
-            row['grades']['final_grade'] = None
-            row['grades']['final_score'] = None
-        digested = analytics.analytics_from_canvas_course_enrollments(feed, canvas_user_id)
-        course_current_score = digested['courseCurrentScore']
-        assert course_current_score['boxPlottable'] is False
-        assert course_current_score['displayPercentile'] is None
-        assert course_current_score['student']['percentile'] is None
-        assert course_current_score['student']['raw'] is None
-        assert course_current_score['student']['roundedUpPercentile'] is None
 
     def test_canvas_course_assignments(self, app):
         """Summarizes the student assignment statuses from fixture."""
@@ -293,6 +259,35 @@ class TestAnalyticsFromLochAssignmentsOnTime:
         mr = MockRows(io.StringIO('canvas_user_id,on_time_submissions'))
         with register_mock(data_loch._get_on_time_submissions_relative_to_user, mr):
             digested = analytics.loch_assignments_on_time(self.canvas_user_id, self.canvas_course_id, self.term_id)
+        assert digested['student']['raw'] is None
+        assert digested['student']['percentile'] is None
+        assert digested['boxPlottable'] is False
+        assert digested['courseDeciles'] is None
+
+
+class TestAnalyticsFromLochAssignmentsSubmitted:
+    canvas_user_id = 9000100
+    canvas_course_id = 7654321
+    term_id = '2178'
+
+    def test_from_fixture(self, app):
+        digested = analytics.loch_assignments_submitted(self.canvas_user_id, self.canvas_course_id, self.term_id)
+        assert digested['student']['raw'] == 8
+        assert digested['student']['percentile'] == 64
+        assert digested['student']['roundedUpPercentile'] == 81
+        assert digested['courseDeciles'][0] == 0
+        assert digested['courseDeciles'][9] == 10
+        assert digested['courseDeciles'][10] == 17
+
+    def test_with_loch_error(self, app):
+        bad_course_id = 'NoSuchSite'
+        digested = analytics.loch_assignments_submitted(self.canvas_user_id, bad_course_id, self.term_id)
+        assert digested == {'error': 'Unable to retrieve from Data Loch'}
+
+    def test_when_no_data(self, app):
+        mr = MockRows(io.StringIO('canvas_user_id,assignments_submitted'))
+        with register_mock(data_loch._get_submissions_turned_in_relative_to_user, mr):
+            digested = analytics.loch_assignments_submitted(self.canvas_user_id, self.canvas_course_id, self.term_id)
         assert digested['student']['raw'] is None
         assert digested['student']['percentile'] is None
         assert digested['boxPlottable'] is False

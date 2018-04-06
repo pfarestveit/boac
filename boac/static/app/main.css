@@ -23,6 +23,16 @@
  * ENHANCEMENTS, OR MODIFICATIONS.
  */
 
+.page-not-found-background-image {
+  background: url(/static/app/shared/404_lost_in_the_clouds.jpg) no-repeat center center fixed;
+  -webkit-background-size: cover;
+  -moz-background-size: cover;
+  -o-background-size: cover;
+  background-size: cover;
+  height: 100%;
+  width: 100%;
+}
+
 .demo-mode-blur {
   color: transparent !important;
   text-shadow: 0 0 15px rgba(0, 0, 0, 0.5) !important;
@@ -38,34 +48,28 @@
 }
 
 .body-text {
-  font-size: 20px;
-  font-weight: 400;
-  line-height: 1.8em;
+  font-size: 14px;
+  line-height: 1.4em;
 }
 
-.btn-group.open .dropdown-toggle {
-  -webkit-box-shadow: none !important;
-  box-shadow: none !important;
-}
-
-.btn-watchlist-fa-1x {
+.btn-student-group-fa-1x {
   padding: 2px 5px 0 2px;
 }
 
-.btn-watchlist-fa-2x {
+.btn-student-group-fa-2x {
   padding: 0 0 2px 3px;
 }
 
-.btn-watchlist-text {
+.btn-student-group-text {
   padding: 2px 5px 0 2px;
 }
 
-.btn-watchlist-label-fa-1x {
+.btn-student-group-label-fa-1x {
   font-size: 10px;
   vertical-align: middle;
 }
 
-.btn-watchlist-label-fa-2x {
+.btn-student-group-label-fa-2x {
   font-size: 11px;
   vertical-align: middle;
 }
@@ -78,30 +82,12 @@
   float: right;
 }
 
-.container-top {
-  font-weight: 300;
-  padding-top: 10px;
-}
-
-.dropdown-menu-info {
-  display: block;
-  padding: 3px 20px;
-  clear: both;
-  font-weight: 400;
-  color: #333;
-  white-space: nowrap;
-}
-
 .faint-text {
   color: grey;
 }
 
 .flex-column-btn {
   padding: 0 10px 0 10px;
-}
-
-.flex-column-right {
-  padding: 10px 10px 10px 0;
 }
 
 .flex-container {
@@ -111,30 +97,8 @@
   display: flex;
 }
 
-.flex-container-wrap-reverse {
-  display: flex;
-  -webkit-flex-wrap: wrap-reverse;
-  flex-wrap: wrap-reverse;
-}
-
 .flex-justify-center {
   justify-content: center;
-}
-
-.flex-row-wrap {
-  flex-flow: wrap;
-}
-
-.flex-row-wrap div:first-child {
-  margin-right: 10px;
-}
-
-.flex-row-wrap div:last-child {
-  margin-right: 150px;
-}
-
-.flex-row-wrap-separator {
-  margin: 30px 0 30px 0;
 }
 
 .flex-space-between {
@@ -143,12 +107,6 @@
 
 .flex-column-10 {
   flex-grow: 1;
-}
-
-.flex-column-50 {
-  flex: 0 0 50%;
-  flex-grow: 1;
-  min-width: 350px;
 }
 
 .form-control {
@@ -160,33 +118,33 @@
   color: #cf1715;
 }
 
-.header {
-  background-color: #e8e8e8;
-  position: relative;
+.index-container-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 100%;
 }
 
-.header-column-home {
-  padding: 15px 0 0 20px;
-  vertical-align: middle;
+.index-container-body {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
 }
 
-.header-column-cohorts {
-  padding: 10px 0 10px 20px;
+.index-container-footer {
+  margin: 20px 0 70px 0;
+  width: 100%;
 }
 
-.header-column-search {
-  flex: 1;
-  padding: 10px 20px 10px 20px;
+.index-container-header {
+  background-color: #3b7ea5;
 }
 
-.header-column-name {
-  padding: 17px 20px 10px 10px;
-}
-
-.header-feedback {
-  font-size: 14px;
-  padding: 10px 0 0 0;
-  text-align: right;
+.index-container-sidebar {
+  background-color: #125074;
+  flex: 0 0 200px;
+  height: inherit;
+  padding: 3px 0 0 0;
 }
 
 .loading-spinner-large {
@@ -209,6 +167,12 @@
 
 .no-wrap {
   white-space: nowrap;
+}
+
+.page-section-header {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 10px;
 }
 
 .return-to-url {

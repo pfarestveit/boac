@@ -61,6 +61,7 @@
 }
 
 .matrix-container {
+  margin: 0 10px 100px 20px;
   margin-bottom: 100px;
   position: relative;
 }

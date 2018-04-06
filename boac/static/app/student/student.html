@@ -1,120 +1,152 @@
-<div class="container">
-  <div data-ng-include="'/static/app/shared/header.html'"></div>
+<div class="loading-spinner-large" data-ng-if="student.isLoading && !error">
+  <i class="fa fa-refresh fa-spin fa-5x fa-fw"></i>
+  <span class="sr-only">Loading...</span>
+</div>
 
-  <div class="loading-spinner-large" data-ng-if="student.isLoading && !error">
-    <i class="fa fa-refresh fa-spin fa-5x fa-fw"></i>
-    <span class="sr-only">Loading...</span>
-  </div>
-  <div data-ng-if="!student.isLoading && !error">
-    <div class="return-to-url" data-ng-if="returnUrl">
-      <a data-ng-href="{{returnUrl}}">
-        <i class="fa fa-arrow-left" aria-hidden="true"></i> <span data-ng-bind="returnLabel"></span>
-      </a>
-      <div class="container-right">
-        Questions or feedback? Contact us at <a href="mailto:ascpilot@lists.berkeley.edu">ascpilot@lists.berkeley.edu</a>
-      </div>
-    </div>
-    <div class="profile-header">
-      <div class="profile-avatar-container">
-        <img class="profile-avatar"
-             data-ng-src="/api/user/{{student.uid}}/photo"
-             data-avatar-fallback/>
-      </div>
-      <div class="profile-header-contact">
-        <div class="flex-container">
-          <h1 class="profile-header-name"
-              data-ng-class="{'demo-mode-blur': demoMode}">
-            {{student.athleticsProfile.fullName}}
-          </h1>
-          <watchlist-toggle data-sid="student.athleticsProfile.sid"
-                            data-fa-size="fa-2x"
-                            data-watchlist="myWatchlist"
-                            data-ng-if="!isWatchlistLoading"></watchlist-toggle>
-        </div>
-        <h3 class="profile-header-name-preferred"
-            data-ng-bind="student.sisProfile.preferredName"
-            data-ng-class="{'demo-mode-blur': demoMode}"
-            data-ng-if="student.sisProfile.preferredName !== student.athleticsProfile.fullName"></h3>
-        <div>
-          <i class="fa fa-envelope"></i>
-          <a data-ng-href="mailto:{{student.sisProfile.emailAddress}}"
-             data-ng-class="{'demo-mode-blur': demoMode}"
-             data-ng-bind="student.sisProfile.emailAddress"></a>
-        </div>
-        <div>
-          <i class="fa fa-phone"></i>
-          <span data-ng-bind="student.sisProfile.phoneNumber"></span>
-        </div>
-      </div>
-      <div class="profile-header-status-box profile-header-status-box-units">
-        <div>
-          <div class="profile-header-status-number" data-ng-bind="student.sisProfile.cumulativeUnits"></div>
-          <div class="profile-header-status-legend">Cumulative Units</div>
-        </div>
-        <div class="profile-units-chart-outer">
-          <div class="profile-header-status-legend profile-header-status-legend-units">Unit Totals</div>
-          <div class="profile-units-chart-container" id="profile-units-chart-container"></div>
-        </div>
-      </div>
-      <div class="profile-header-status-box">
-        <div class="profile-header-status-number" data-ng-bind="student.sisProfile.cumulativeGPA || '--'"></div>
-        <div class="profile-header-status-legend">Cumulative GPA</div>
-      </div>
-    </div>
-    <div class="profile-body">
-      <div class="profile-sidebar">
-        <div class="profile-sidebar-box">
-          <div data-ng-if="!student.athleticsProfile.isActiveAsc">
-            <h4 class="profile-sidebar-header profile-sidebar-inactive">INACTIVE</h4>
+<div class="container-left" data-ng-if="!student.isLoading && error">
+  <h1>Error</h1>
+  <div data-ng-bind="error"></div>
+</div>
+
+<div class="return-to-url" data-ng-if="returnUrl">
+  <a data-ng-href="{{returnUrl}}">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> <span data-ng-bind="returnLabel"></span>
+  </a>
+</div>
+
+<div class="student-container" data-ng-if="!student.isLoading && !error">
+  <div class="student-container-row-01">
+    <div class="student-profile-container">
+      <!-- Avatar, name, degree progress, etc. -->
+      <div class="student-bio-container">
+        <div class="student-bio-container-column-01">
+          <div class="profile-avatar-container">
+            <img class="profile-avatar"
+                 data-ng-src="/api/user/{{student.uid}}/photo"
+                 data-avatar-fallback/>
           </div>
-          <div data-ng-repeat="membership in student.athleticsProfile.athletics">
-            <h4 class="profile-sidebar-header profile-sidebar-header-team" data-ng-bind="membership.groupName"></h4>
+        </div>
+        <div class="student-bio-container-column-02">
+          <div class="student-bio-contact">
+            <div class="flex-container">
+              <h1 class="student-bio-name"
+                  data-ng-class="{'demo-mode-blur': demoMode}">
+                {{student.athleticsProfile.fullName}}
+              </h1>
+              <student-group-toggle data-sid="student.athleticsProfile.sid"
+                                    data-fa-size="fa-2x"
+                                    data-group="myPrimaryGroup"></student-group-toggle>
+            </div>
+            <h3 class="student-bio-name-preferred"
+                data-ng-bind="student.sisProfile.preferredName"
+                data-ng-class="{'demo-mode-blur': demoMode}"
+                data-ng-if="student.sisProfile.preferredName !== student.athleticsProfile.fullName"></h3>
+            <div>
+              <i class="fa fa-envelope"></i>
+              <a data-ng-href="mailto:{{student.sisProfile.emailAddress}}"
+                 data-ng-class="{'demo-mode-blur': demoMode}"
+                 data-ng-bind="student.sisProfile.emailAddress"></a>
+            </div>
+            <div>
+              <i class="fa fa-phone"></i>
+              <span data-ng-bind="student.sisProfile.phoneNumber"></span>
+            </div>
           </div>
-          <div data-ng-repeat="plan in student.sisProfile.plans">
-            <h4 class="profile-sidebar-header">
-              <span data-ng-bind="plan.description" data-ng-if="!plan.degreeProgramUrl"></span>
-              <a data-ng-bind="plan.description" data-ng-if="plan.degreeProgramUrl" data-ng-href="{{plan.degreeProgramUrl}}" target="_blank"></a>
-            </h4>
+          <div>
+            <div data-ng-if="!student.athleticsProfile.isActiveAsc">
+              <h4 class="student-bio-header profile-sidebar-inactive">INACTIVE</h4>
+            </div>
+            <div data-ng-repeat="membership in student.athleticsProfile.athletics">
+              <h4 class="student-bio-header student-bio-header-team" data-ng-bind="membership.groupName"></h4>
+            </div>
+            <div data-ng-repeat="plan in student.sisProfile.plans">
+              <h4 class="student-bio-header">
+                <span data-ng-bind="plan.description" data-ng-if="!plan.degreeProgramUrl"></span>
+                <a data-ng-bind="plan.description" data-ng-if="plan.degreeProgramUrl" data-ng-href="{{plan.degreeProgramUrl}}" target="_blank"></a>
+              </h4>
+              <div class="profile-sidebar-details">
+                <div data-ng-bind="plan.program" data-ng-if="plan.program"></div>
+              </div>
+            </div>
+            <h4 class="student-bio-header" data-ng-bind="student.sisProfile.level.description"></h4>
             <div class="profile-sidebar-details">
-              <div data-ng-bind="plan.program" data-ng-if="plan.program"></div>
+              <div data-ng-pluralize
+                   count="student.sisProfile.termsInAttendance"
+                   when="{'one': '1 Term in Attendance', 'other': '{{student.sisProfile.termsInAttendance}} Terms in Attendance'}"
+                   data-ng-if="student.sisProfile.termsInAttendance"></div>
+              <div data-ng-if="student.sisProfile.expectedGraduationTerm && student.sisProfile.level.code !== 'GR'">
+                Expected graduation <span data-ng-bind="student.sisProfile.expectedGraduationTerm.name"></span>
+              </div>
             </div>
-          </div>
-          <h4 class="profile-sidebar-header" data-ng-bind="student.sisProfile.level.description"></h4>
-          <div class="profile-sidebar-details">
-            <div data-ng-pluralize
-                  count="student.sisProfile.termsInAttendance"
-                  when="{'one': '1 Term in Attendance', 'other': '{{student.sisProfile.termsInAttendance}} Terms in Attendance'}"
-                  data-ng-if="student.sisProfile.termsInAttendance"></div>
-            <div data-ng-if="student.sisProfile.expectedGraduationTerm && student.sisProfile.level.code !== 'GR'">
-              Expected graduation <span data-ng-bind="student.sisProfile.expectedGraduationTerm.name"></span>
+            <div class="student-bio-status-box-groups student-groups-checkboxes">
+              <div>
+                <h4 class="student-bio-header">
+                  Groups <span data-ng-if="myGroups.length">(<a id="groups-manage" href="/groups/manage">Manage</a>)</span>
+                </h4>
+              </div>
+              <div class="student-group-checkbox" data-ng-repeat="group in myGroups track by $index">
+                <input id="student-group-checkbox-{{$index}}"
+                       type="checkbox"
+                       data-ng-model="group.selected"
+                       data-ng-click="groupCheckboxClick(group)"/>
+                <span data-ng-bind="group.name"></span>
+              </div>
+              <div class="student-group-create-new">
+                <span data-ng-controller="CreateStudentGroupController">
+                  <a id="group-create"
+                     href
+                     data-ng-click="openCreateGroupModal()"><i class="fa fa-plus"></i> Create New Group</a>
+                </span>
+              </div>
             </div>
           </div>
         </div>
-        <div class="profile-sidebar-box" data-ng-if="student.sisProfile.degreeProgress">
-          <h4 class="profile-sidebar-header">Degree Progress</h4>
-          <table class="profile-sidebar-table">
-            <tr>
-              <th>University Requirements</th>
-              <th>Status</th>
-            </tr>
-            <tr data-ng-repeat="requirement in student.sisProfile.degreeProgress.requirements">
-              <td data-ng-bind="requirement.name"></td>
-              <td>
-                <i data-ng-class="{
-                        'fa fa-check profile-sidebar-icon': requirement.status === 'Satisfied',
-                        'fa fa-exclamation-triangle profile-sidebar-icon': requirement.status === 'Not Satisfied',
-                        'fa fa-clock-o profile-sidebar-icon': requirement.status === 'In Progress'
-                    }"></i>
-                <span data-ng-bind="requirement.status"></span>
-              </td>
-            </tr>
-          </table>
-          <div class="profile-sidebar-subdetails">
-            <div>Degree Progress as of <span data-ng-bind="student.sisProfile.degreeProgress.reportDate"></span>.</div>
-            <div>Advisors can refresh this data at <a data-ng-href="{{student.studentProfileLink}}">CalCentral</a>.</div>
+        <div class="student-bio-container-column-03">
+          <div class="student-bio-status-box student-bio-status-box-units">
+            <div>
+              <div class="student-bio-status-number" data-ng-bind="student.sisProfile.cumulativeUnits"></div>
+              <div class="student-bio-status-legend">Cumulative Units</div>
+            </div>
+            <div class="profile-units-chart-outer">
+              <div class="student-bio-status-legend student-bio-status-legend-units">Unit Totals</div>
+              <div class="profile-units-chart-container" id="profile-units-chart-container"></div>
+            </div>
+          </div>
+          <div class="student-bio-status-box">
+            <div class="student-bio-status-number" data-ng-bind="student.sisProfile.cumulativeGPA || '--'"></div>
+            <div class="student-bio-status-legend">Cumulative GPA</div>
+          </div>
+          <div class="student-bio-status-box" data-ng-if="student.sisProfile.degreeProgress">
+            <h4 class="student-bio-progress-header">Degree Progress</h4>
+            <table class="student-bio-table">
+              <tr>
+                <th>University Requirements</th>
+                <th>Status</th>
+              </tr>
+              <tr data-ng-repeat="requirement in student.sisProfile.degreeProgress.requirements">
+                <td data-ng-bind="requirement.name"></td>
+                <td>
+                  <i data-ng-class="{
+                          'fa fa-check student-bio-table-icon': requirement.status === 'Satisfied',
+                          'fa fa-exclamation-triangle student-bio-table-icon': requirement.status === 'Not Satisfied',
+                          'fa fa-clock-o student-bio-table-icon': requirement.status === 'In Progress'
+                      }"></i>
+                  <span data-ng-bind="requirement.status"></span>
+                </td>
+              </tr>
+            </table>
+            <div class="profile-sidebar-subdetails">
+              <div>Degree Progress as of <span data-ng-bind="student.sisProfile.degreeProgress.reportDate"></span>.</div>
+              <div>Advisors can refresh this data at <a data-ng-href="{{student.studentProfileLink}}">CalCentral</a>.</div>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  </div>
+  <div class="student-container-row-02">
+    <!-- Classes -->
+    <div>
       <div class="profile-terms">
         <h2>Classes</h2>
         <div class="profile-term" data-ng-repeat="term in student.enrollmentTerms | limitTo: (showAllTerms ? undefined : 1)">
@@ -325,10 +357,4 @@
       </div>
     </div>
   </div>
-  <div class="container-left" data-ng-if="!student.isLoading && error">
-    <h1>Error</h1>
-    <div data-ng-bind="error"></div>
-  </div>
-
-  <div data-ng-include="'/static/app/shared/footer.html'" data-ng-if="!student.isLoading"></div>
 </div>

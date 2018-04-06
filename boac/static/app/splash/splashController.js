@@ -30,7 +30,6 @@
   angular.module('boac').controller('SplashController', function(authFactory, config, $rootScope, $scope) {
 
     $rootScope.pageTitle = 'Welcome';
-    $rootScope.isSplash = true;
     $scope.signIn = authFactory.casLogIn;
 
     var init = function() {

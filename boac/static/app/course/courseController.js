@@ -28,13 +28,12 @@
   'use strict';
 
   angular.module('boac').controller('CourseController', function(
-    cohortService,
     config,
     courseFactory,
     googleAnalyticsService,
+    me,
     utilService,
-    watchlistFactory,
-    $base64,
+    visualizationService,
     $location,
     $rootScope,
     $scope,
@@ -44,33 +43,11 @@
 
     $scope.demoMode = config.demoMode;
     $scope.isLoading = true;
+    $scope.myPrimaryGroup = me.myPrimaryGroup;
     $scope.tab = 'list';
 
     var goToStudent = $scope.goToStudent = function(uid) {
       utilService.goTo('/student/' + uid, $scope.section.displayName);
-    };
-
-    /**
-     * @param  {Function}      callback       Standard callback
-     * @return {void}
-     */
-    var scatterplotRefresh = function(callback) {
-      // Plot the cohort
-      var yAxisMeasure = $scope.yAxisMeasure = $location.search().yAxis || 'analytics.courseCurrentScore';
-      var partitions = _.partition($scope.section.students, function(student) {
-        return _.isFinite(_.get(student, 'analytics.pageViews.percentile')) &&
-          _.isFinite(_.get(student, yAxisMeasure + '.percentile'));
-      });
-      // Pass along a subset of students that have useful data.
-      cohortService.drawScatterplot(partitions[0], yAxisMeasure, function(uid) {
-        $location.state($location.absUrl());
-        goToStudent(uid);
-        // Because intervening cohortService code moves out of Angular and into d3, administer the extra kick of $apply.
-        $scope.$apply();
-      });
-      // List of students-without-data is rendered below the scatterplot.
-      $scope.studentsWithoutData = partitions[1];
-      return callback();
     };
 
     var onTab = $scope.onTab = function(tabName) {
@@ -78,7 +55,16 @@
       $scope.tab = tabName;
       $location.search('v', $scope.tab);
       if (tabName === 'matrix') {
-        scatterplotRefresh(function() {
+        var goToUserPage = function(uid) {
+          $location.state($location.absUrl());
+          goToStudent(uid);
+          // The intervening visualizationService code moves out of Angular and into d3 thus the extra kick of $apply.
+          $scope.$apply();
+        };
+        visualizationService.scatterplotRefresh($scope.section.students, goToUserPage, function(yAxisMeasure, studentsWithoutData) {
+          $scope.yAxisMeasure = yAxisMeasure;
+          // List of students-without-data is rendered below the scatterplot.
+          $scope.studentsWithoutData = studentsWithoutData;
           $scope.isLoading = false;
         });
       } else if (tabName === 'list') {
@@ -90,7 +76,6 @@
       // Maybe we are arriving from student page.
       $scope.returnUrl = utilService.unpackReturnUrl();
       $scope.returnLabel = utilService.constructReturnToLabel($scope.returnUrl);
-      $scope.hideFeedbackLink = !!$scope.returnUrl;
 
       var args = _.clone($location.search());
       // For now, exclude 'Average Student'
@@ -122,14 +107,11 @@
         $scope.isLoading = false;
 
       }).then(function() {
-        watchlistFactory.getMyWatchlist().then(function(response) {
-          $scope.myWatchlist = response.data;
-          // Begin with matrix view if arg is present
-          if (args.v && _.includes(['list', 'matrix'], args.v)) {
-            $scope.tab = args.v;
-            onTab($scope.tab);
-          }
-        });
+        // Begin with matrix view if arg is present
+        if (args.v && _.includes(['list', 'matrix'], args.v)) {
+          $scope.tab = args.v;
+          onTab($scope.tab);
+        }
       });
     };
 

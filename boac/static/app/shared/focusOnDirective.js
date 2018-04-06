@@ -27,30 +27,23 @@
 
   'use strict';
 
-  var boac = angular.module('boac');
-
-  boac.factory('watchlistFactory', function(googleAnalyticsService, utilService, $http, $rootScope) {
-
-    var getMyWatchlist = function() {
-      return $http.get('/api/watchlist/my');
-    };
-
-    var addToWatchlist = function(sid) {
-      return $http.get('/api/watchlist/add/' + sid).then(function() {
-        $rootScope.$broadcast('watchlistAddition', sid);
-      });
-    };
-
-    var removeFromWatchlist = function(sid) {
-      return $http.get('/api/watchlist/remove/' + sid).then(function() {
-        $rootScope.$broadcast('watchlistRemoval', sid);
-      });
-    };
-
+  /**
+   * Fall back to a default avatar in the case of an error during image load.
+   */
+  angular.module('boac').directive('focusOn', function($timeout) {
     return {
-      addToWatchlist: addToWatchlist,
-      getMyWatchlist: getMyWatchlist,
-      removeFromWatchlist: removeFromWatchlist
+      restrict: 'A',
+      link: function(scope, element, attr) {
+        scope.$watch(attr.focusOn, function(focusValue) {
+          $timeout(function() {
+            if (focusValue) {
+              element[0].focus();
+            } else {
+              element[0].blur();
+            }
+          });
+        });
+      }
     };
   });
 

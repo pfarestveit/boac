@@ -27,59 +27,36 @@
 
   'use strict';
 
-  angular.module('boac').controller('HomeController', function(authService, cohortFactory, watchlistFactory, $rootScope, $scope) {
+  angular.module('boac').controller('HomeController', function(
+    cohortService,
+    config,
+    studentGroupService,
+    $rootScope,
+    $scope
+  ) {
 
-    $scope.isLoading = true;
-    $scope.isAuthenticated = authService.isAuthenticatedUser();
+    $scope.demoMode = config.demoMode;
 
-    var extendSortableNames = function(students) {
-      return _.map(students, function(student) {
-        return _.extend(student, {
-          sortableName: student.lastName + ', ' + student.firstName
+    var init = function() {
+      $scope.isLoading = true;
+
+      studentGroupService.loadMyGroups(function(myPrimaryGroup, myGroups) {
+        $scope.myPrimaryGroup = myPrimaryGroup;
+        $scope.myGroups = myGroups;
+
+        cohortService.loadMyCohorts(function(myCohorts) {
+          $scope.myCohorts = myCohorts;
+          $scope.isLoading = false;
         });
       });
     };
 
-    var init = function() {
-      if ($scope.isAuthenticated) {
-        cohortFactory.getTeams().then(function(teamsResponse) {
-          $scope.teams = teamsResponse.data;
-
-          cohortFactory.getMyCohorts().then(function(cohortsResponse) {
-            $scope.myCohorts = [];
-            _.each(cohortsResponse.data, function(cohort) {
-              if (cohort.alerts.length) {
-                var students = extendSortableNames(cohort.alerts);
-                cohort.alerts = {
-                  students: students,
-                  sortBy: 'sortableName',
-                  reverse: false
-                };
-              }
-              $scope.myCohorts.push(cohort);
-            });
-
-            watchlistFactory.getMyWatchlist().then(function(response) {
-              $scope.myWatchlist = {
-                students: extendSortableNames(response.data),
-                sortBy: 'sortableName',
-                reverse: false
-              };
-              $scope.isLoading = false;
-            });
-          });
-        });
-      } else {
+    $rootScope.$on('myCohortsUpdated', function() {
+      $scope.isLoading = true;
+      cohortService.loadMyCohorts(function(myCohorts) {
+        $scope.myCohorts = myCohorts;
         $scope.isLoading = false;
-      }
-    };
-
-    $rootScope.$on('devAuthFailure', function() {
-      $scope.alertMessage = 'Log in failed. Please try again.';
-    });
-
-    $rootScope.$on('watchlistRemoval', function(event, sidRemoved) {
-      $scope.myWatchlist.students = _.reject($scope.myWatchlist.students, ['sid', sidRemoved]);
+      });
     });
 
     init();

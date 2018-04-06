@@ -32,17 +32,17 @@
     config,
     courseFactory,
     googleAnalyticsService,
+    me,
+    studentGroupFactory,
     studentFactory,
-    studentService,
+    studentSearchService,
     utilService,
-    watchlistFactory,
+    visualizationService,
     $location,
     $rootScope,
     $scope,
     $stateParams
   ) {
-
-    $scope.demoMode = config.demoMode;
 
     $scope.student = {
       canvasProfile: null,
@@ -50,6 +50,9 @@
       isLoading: true
     };
 
+    $scope.demoMode = config.demoMode;
+    $scope.myGroups = me.myGroups;
+    $scope.myPrimaryGroup = me.myPrimaryGroup;
     $scope.showAllTerms = false;
     $scope.showDismissedAlerts = false;
 
@@ -70,10 +73,16 @@
       return _.get($scope.student, 'sisProfile.preferredName') || _.get($scope.student, 'canvasProfile.name');
     };
 
-    $scope.goToCourse = function(event, termId, sectionId) {
-      event.stopPropagation();
-      var name = config.demoMode ? null : getPreferredName();
-      utilService.goTo('/course/' + termId + '/' + sectionId, name);
+    var identifyGroupsThatIncludeStudent = function(myGroups, student) {
+      _.each(myGroups, function(group) {
+        _.each(group.students, function(groupStudent) {
+          group.selected = student.sid === groupStudent.sid;
+          if (group.selected) {
+            // Break from loop
+            return false;
+          }
+        });
+      });
     };
 
     var loadStudent = function(uid, callback) {
@@ -81,6 +90,7 @@
       var preferredName = null;
       studentFactory.analyticsPerUser(uid).then(function(analytics) {
         $scope.student = analytics.data;
+        identifyGroupsThatIncludeStudent($scope.myGroups, $scope.student);
         preferredName = getPreferredName();
 
         courseFactory.getSectionIdsPerTerm().then(function(response) {
@@ -119,7 +129,7 @@
             studentFactory.getAlerts(athleticsProfile.sid).then(function(alerts) {
               $scope.alerts = alerts.data;
             });
-            studentService.showUnitsChart($scope.student);
+            visualizationService.showUnitsChart($scope.student);
           }
         }
         if (!config.demoMode) {
@@ -132,6 +142,24 @@
 
       }).then(callback);
     };
+
+    $scope.groupCheckboxClick = function(group) {
+      if (group.selected) {
+        studentGroupFactory.addStudentToGroup(group.id, $scope.student.sid).then(angular.noop);
+      } else {
+        studentGroupFactory.removeStudentFromGroup(group.id, $scope.student.sid).then(angular.noop);
+      }
+    };
+
+    $scope.goToCourse = function(event, termId, sectionId) {
+      event.stopPropagation();
+      var name = config.demoMode ? null : getPreferredName();
+      utilService.goTo('/course/' + termId + '/' + sectionId, name);
+    };
+
+    $rootScope.$on('studentGroupCreated', function(event, data) {
+      $scope.myGroups.push(data.group);
+    });
 
     var init = function() {
       var args = _.clone($location.search());
@@ -146,13 +174,7 @@
           // ...or, maybe we are fresh arrival from cohort page.
           $scope.returnUrl = utilService.unpackReturnUrl(uid);
           $scope.returnLabel = utilService.constructReturnToLabel($scope.returnUrl);
-          $scope.hideFeedbackLink = !!$scope.returnUrl;
         }
-        $scope.isWatchlistLoading = true;
-        watchlistFactory.getMyWatchlist().then(function(response) {
-          $scope.myWatchlist = response.data;
-          $scope.isWatchlistLoading = false;
-        });
       });
     };
 
