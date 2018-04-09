@@ -36,6 +36,7 @@
     studentGroupFactory,
     studentSearchService,
     utilService,
+    validationService,
     visualizationService,
     $anchorScroll,
     $location,
@@ -176,8 +177,7 @@
     $scope.groupCheckboxClick = function(group) {
       var students = _.filter($scope.cohort.members, 'checkboxSelected');
       if (students.length) {
-        var sids = _.map(students, 'sid');
-        studentGroupFactory.addStudentsToGroup(group.id, sids).then(function() {
+        studentGroupFactory.addStudentsToGroup(group.id, students).then(function() {
           $scope.studentGroupForm.showGroupsMenu = false;
           $scope.studentGroupForm.addAll = false;
           _.each($scope.cohort.members, function(member) {
@@ -185,6 +185,9 @@
           });
         });
       }
+      _.each($scope.allGroups, function(g) {
+        g.selected = false;
+      });
     };
 
     /**
@@ -300,7 +303,7 @@
         updateCohort(response.data);
         return callback();
       }).catch(function(err) {
-        $scope.error = utilService.parseError(err);
+        $scope.error = validationService.parseError(err);
         return callback(null);
       });
     };
@@ -466,7 +469,7 @@
         });
         return callback();
       }).catch(function(err) {
-        $scope.error = utilService.parseError(err);
+        $scope.error = validationService.parseError(err);
         return callback();
       });
     };
@@ -489,7 +492,7 @@
         };
 
         var handleError = function(err) {
-          $scope.error = utilService.parseError(err);
+          $scope.error = validationService.parseError(err);
         };
         var page = $scope.pagination.currentPage;
         var offset = page < 2 ? 0 : (page - 1) * $scope.pagination.itemsPerPage;
@@ -720,7 +723,7 @@
       });
     };
 
-    $rootScope.$on('studentGroupCreated', function(event, data) {
+    $rootScope.$on('groupCreated', function(event, data) {
       $scope.allGroups.push(data.group);
     });
 

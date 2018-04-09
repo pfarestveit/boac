@@ -37,9 +37,9 @@
   ) {
     var init = function() {
       $scope.demoMode = config.demoMode;
-      $scope.myCohorts = me.myCohorts;
-      $scope.myGroups = me.myGroups;
-      $scope.myPrimaryGroup = me.myPrimaryGroup;
+      $scope.myCohorts = _.clone(me.myCohorts);
+      $scope.myGroups = _.clone(me.myGroups);
+      $scope.myPrimaryGroup = _.clone(me.myPrimaryGroup);
       $scope.truncate = _.truncate;
     };
 
@@ -73,22 +73,44 @@
       });
     };
 
-    $rootScope.$on('studentGroupCreated', function(event, data) {
+    $rootScope.$on('groupCreated', function(event, data) {
       $scope.myGroups.push(data.group);
     });
 
-    $rootScope.$on('studentGroupDeleted', function(event, data) {
+    $rootScope.$on('groupNameChanged', function(event, data) {
+      _.each($scope.myGroups, function(group) {
+        if (data.group.id === group.id) {
+          group.name = data.group.name;
+        }
+      });
+    });
+
+    $rootScope.$on('groupDeleted', function(event, data) {
       $scope.myGroups = _.remove($scope.myGroups, function(group) {
         return data.groupId !== group.id;
       });
     });
 
     $rootScope.$on('addStudentToGroup', function(event, data) {
-      addToStudentCount(data.groupId, 1);
+      var groupId = data.groupId;
+      var student = data.student;
+      if (groupId === $scope.myPrimaryGroup.id) {
+        $scope.myPrimaryGroup.students.push(student);
+      } else {
+        addToStudentCount(data.groupId, 1);
+      }
     });
 
     $rootScope.$on('removeStudentFromGroup', function(event, data) {
-      addToStudentCount(data.groupId, -1);
+      var groupId = data.groupId;
+      var student = data.student;
+      if (groupId === $scope.myPrimaryGroup.id) {
+        $scope.myPrimaryGroup.students = _.remove($scope.myPrimaryGroup.students, function(s) {
+          return s.sid !== student.sid;
+        });
+      } else {
+        addToStudentCount(data.groupId, -1);
+      }
     });
   });
 

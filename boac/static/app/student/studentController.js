@@ -37,6 +37,7 @@
     studentFactory,
     studentSearchService,
     utilService,
+    validationService,
     visualizationService,
     $location,
     $rootScope,
@@ -51,8 +52,8 @@
     };
 
     $scope.demoMode = config.demoMode;
-    $scope.myGroups = me.myGroups;
-    $scope.myPrimaryGroup = me.myPrimaryGroup;
+    $scope.myGroups = _.clone(me.myGroups);
+    $scope.myPrimaryGroup = _.clone(me.myPrimaryGroup);
     $scope.showAllTerms = false;
     $scope.showDismissedAlerts = false;
 
@@ -62,7 +63,7 @@
         Array.prototype.push.apply($scope.alerts.dismissed, dismissed);
       }).catch(function(error) {
         if (error) {
-          $scope.error = utilService.parseError(err);
+          $scope.error = validationService.parseError(err);
         } else {
           throw error;
         }
@@ -119,7 +120,7 @@
         });
 
       }).catch(function(err) {
-        $scope.error = utilService.parseError(err);
+        $scope.error = validationService.parseError(err);
 
       }).then(function() {
         var athleticsProfile = $scope.student.athleticsProfile;
@@ -145,9 +146,9 @@
 
     $scope.groupCheckboxClick = function(group) {
       if (group.selected) {
-        studentGroupFactory.addStudentToGroup(group.id, $scope.student.sid).then(angular.noop);
+        studentGroupFactory.addStudentToGroup(group.id, $scope.student).then(angular.noop);
       } else {
-        studentGroupFactory.removeStudentFromGroup(group.id, $scope.student.sid).then(angular.noop);
+        studentGroupFactory.removeStudentFromGroup(group.id, $scope.student).then(angular.noop);
       }
     };
 
@@ -157,7 +158,7 @@
       utilService.goTo('/course/' + termId + '/' + sectionId, name);
     };
 
-    $rootScope.$on('studentGroupCreated', function(event, data) {
+    $rootScope.$on('groupCreated', function(event, data) {
       $scope.myGroups.push(data.group);
     });
 
