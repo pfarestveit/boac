@@ -24,6 +24,8 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
+from boac.models.authorized_user import AuthorizedUser
+from boac.models.student_group import StudentGroup
 import pytest
 import simplejson as json
 
@@ -46,6 +48,13 @@ class TestStudentGroupsController:
     def test_not_authenticated(self, client):
         """Returns 401 if not authenticated."""
         assert client.get('/api/groups/my').status_code == 401
+
+    def test_unauthorized(self, authenticated_session_empty_primary, client):
+        """Rejects authenticated user if s/he does not own the group."""
+        advisor_with_group = AuthorizedUser.find_by_uid('6446')
+        groups = StudentGroup.get_groups_by_owner_id(advisor_with_group.id)
+        response = client.get(f'/api/group/{groups[0].id}')
+        assert response.status_code == 403
 
     def test_my_groups(self, authenticated_session, client):
         """Returns all of current_user's student groups."""
@@ -77,6 +86,28 @@ class TestStudentGroupsController:
         groups = client.get('/api/groups/my').json
         assert groups[0]['students'][0]['alertCount'] == 2
 
+    def test_group_index_includes_summary(self, authenticated_session, client):
+        """Returns summary details but not full term and analytics data for group index."""
+        groups = client.get('/api/groups/my').json
+        students = groups[0]['students']
+        assert students[0]['cumulativeGPA'] == 3.8
+        assert students[0]['cumulativeUnits'] == 101.3
+        assert students[0]['level'] == 'Junior'
+        assert len(students[0]['majors']) == 2
+        assert 'analytics' not in students[0]
+        assert 'enrollments' not in students[0]['term']
+
+    def test_group_detail_includes_analytics(self, authenticated_session, client):
+        """Returns full term and analytics data for detailed group listing."""
+        primary_group = client.get('/api/group/my_primary').json
+        students = primary_group['students']
+        assert students[0]['cumulativeGPA'] == 3.8
+        assert students[0]['cumulativeUnits'] == 101.3
+        assert students[0]['level'] == 'Junior'
+        assert len(students[0]['majors']) == 2
+        assert 'analytics' in students[0]
+        assert 'enrollments' in students[0]['term']
+
     def test_create_add_remove_and_delete(self, authenticated_session, client):
         """Create a group, add a student, remove the student and then delete the group."""
         name = 'Fun Boy Three'
@@ -87,6 +118,7 @@ class TestStudentGroupsController:
         )
         group = json.loads(response.data)
         group_id = group['id']
+
         # Add student
         sid = '2345678901'
         response = client.get(f'/api/group/{group_id}/add_student/{sid}')
