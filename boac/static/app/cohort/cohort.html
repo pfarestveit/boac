@@ -112,7 +112,7 @@
     <div data-ng-show="tab === 'list'"
          data-ng-if="!isLoading && !error && cohort.totalMemberCount">
       <ul id="cohort-members-list" class="list-group">
-        <div class="list-group-item student-list-item"
+        <div class="list-group-item cohort-student-list-item"
              data-ng-class="{'list-group-item-info': anchor===student.uid}"
              data-ng-repeat="student in cohort.members">
 
@@ -141,6 +141,11 @@
                       data-ng-class="{'demo-mode-blur': demoMode}"
                       data-ng-if="orderBy.selected !== 'first_name'">
                     {{student.lastName}}, {{student.firstName}}
+                  </h3>
+                  <h3 class="student-name"
+                      data-ng-class="{'demo-mode-blur': demoMode}"
+                      data-ng-if="orderBy.selected === 'first_name'">
+                    {{student.firstName}} {{student.lastName}}
                   </h3>
                 </a>
               </div>
