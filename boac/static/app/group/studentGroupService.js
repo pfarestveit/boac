@@ -29,8 +29,29 @@
 
   angular.module('boac').service('studentGroupService', function(studentGroupFactory, utilService) {
 
+    var decorateGroup = function(group) {
+      return {
+        id: group.id,
+        name: group.name,
+        students: utilService.extendSortableNames(group.students),
+        sortBy: 'sortableName',
+        reverse: false
+      };
+    };
+
     var isMyPrimaryGroup = function(group) {
       return group.name === 'My Students';
+    };
+
+    var isStudentInGroup = function(student, group) {
+      var inGroup = false;
+      _.each(group.students, function(s) {
+        if (s.sid === student.sid) {
+          inGroup = true;
+          return false;
+        }
+      });
+      return inGroup;
     };
 
     var loadMyGroups = function(callback) {
@@ -39,17 +60,11 @@
         var myPrimaryGroup = null;
         var myGroups = [];
         _.each(groups, function(group) {
-          var decoratedGroup = {
-            id: group.id,
-            name: group.name,
-            students: utilService.extendSortableNames(group.students),
-            sortBy: 'sortableName',
-            reverse: false
-          };
+          var decoratedGroup = decorateGroup(group);
           if (isMyPrimaryGroup(group)) {
             myPrimaryGroup = decoratedGroup;
           } else {
-            myGroups.push(group);
+            myGroups.push(decoratedGroup);
           }
         });
         return callback(myPrimaryGroup, myGroups);
@@ -57,7 +72,9 @@
     };
 
     return {
+      decorateGroup: decorateGroup,
       isMyPrimaryGroup: isMyPrimaryGroup,
+      isStudentInGroup: isStudentInGroup,
       loadMyGroups: loadMyGroups
     };
   });

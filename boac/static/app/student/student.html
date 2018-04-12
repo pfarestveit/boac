@@ -5,7 +5,7 @@
   </div>
 
   <div class="container-left" data-ng-if="!student.isLoading && error">
-    <h1>Error</h1>
+    <h1>{{error.status === 404 ? 'Not Found' : 'Error'}}</h1>
     <div class="faint-text">
       <span data-ng-bind="error.message" data-ng-if="error.message"></span>
       <span data-ng-if="!error.message">Sorry, there was an error retrieving data.</span>
@@ -85,6 +85,7 @@
                 </div>
                 <div class="student-group-checkbox">
                   <input id="my-students-checkbox"
+                         class="student-group-checkbox-input"
                          type="checkbox"
                          data-ng-model="myPrimaryGroup.selected"
                          data-ng-click="groupCheckboxClick(myPrimaryGroup)"/>
@@ -94,6 +95,7 @@
                 </div>
                 <div class="student-group-checkbox" data-ng-repeat="group in myGroups track by $index">
                   <input id="student-group-checkbox-{{$index}}"
+                         class="student-group-checkbox-input"
                          type="checkbox"
                          data-ng-model="group.selected"
                          data-ng-click="groupCheckboxClick(group)"/>
@@ -102,7 +104,7 @@
                   </div>
                 </div>
                 <div class="student-group-create-new">
-                  <span data-ng-controller="CreateStudentGroupController">
+                  <span data-ng-controller="CreateGroupController">
                     <a id="group-create"
                        href
                        data-ng-click="openCreateGroupModal()"><i class="fa fa-plus"></i> Create New Group</a>
