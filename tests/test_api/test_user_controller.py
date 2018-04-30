@@ -27,28 +27,6 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from boac.externals import sis_enrollments_api, sis_student_api
 from boac.lib.mockingbird import MockResponse, register_mock
 import pytest
-import simplejson as json
-
-
-class TestStudents:
-    """Students API."""
-
-    def test_all_students(self, client):
-        """Returns a list of students."""
-        response = client.get('/api/students/all')
-        assert response.status_code == 200
-        # We have one student not on a team
-        assert len(response.json) == 6
-
-    def test_multiple_teams(self, client):
-        """Includes multiple team memberships."""
-        response = client.get('/api/students/all')
-        assert response.status_code == 200
-        athletics = next(user['athletics'] for user in response.json if user['uid'] == '98765')
-        assert len(athletics) == 2
-        group_codes = [a['groupCode'] for a in athletics]
-        assert 'MFB-DB' in group_codes
-        assert 'MFB-DL' in group_codes
 
 
 class TestUserProfile:
@@ -60,24 +38,46 @@ class TestUserProfile:
         assert response.status_code == 200
         assert not response.json['uid']
 
-    def test_profile_auto_create_primary_group(self, client, fake_auth):
-        uid = '6446'
-        fake_auth.login(uid)
-        response = client.get('/api/profile')
-        assert response.status_code == 200
-        profile = response.json
-        assert profile['uid'] == uid
-        assert 'firstName' in profile
-        assert 'lastName' in profile
-        assert profile['myPrimaryGroup']
-
     def test_includes_canvas_profile_if_available(self, client, fake_auth):
+        """Includes user profile info from Canvas."""
         test_uid = '2040'
         fake_auth.login(test_uid)
         response = client.get('/api/profile')
         assert response.json['uid'] == test_uid
         assert 'firstName' in response.json
         assert 'lastName' in response.json
+
+    def test_user_with_no_dept_membership(self, client, fake_auth):
+        """Returns zero or more departments."""
+        fake_auth.login('2040')
+        response = client.get('/api/profile')
+        assert response.status_code == 200
+        user = response.json
+        assert user['isAdmin'] is True
+        assert not len(user['departments'])
+
+    def test_department_beyond_asc(self, client, fake_auth):
+        """Returns EHEEC director."""
+        fake_auth.login('1022796')
+        response = client.get('/api/profile')
+        assert response.status_code == 200
+        user = response.json
+        assert user['isAdmin'] is False
+        assert len(user['departments']) == 1
+        assert 'EHEEC' in user['departments']
+        assert user['departments']['EHEEC']['isAdvisor'] is False
+        assert user['departments']['EHEEC']['isDirector'] is True
+
+    def test_athletic_study_center_user(self, client, fake_auth):
+        """Returns Athletic Study Center advisor."""
+        test_uid = '1081940'
+        fake_auth.login(test_uid)
+        response = client.get('/api/profile')
+        assert response.status_code == 200
+        user = response.json
+        assert 'UWASC' in user['departments']
+        assert user['departments']['UWASC']['isAdvisor'] is True
+        assert user['departments']['UWASC']['isDirector'] is False
 
 
 class TestUserPhoto:
@@ -127,8 +127,7 @@ class TestUserAnalytics:
 
     @pytest.fixture()
     def authenticated_session(self, fake_auth):
-        test_uid = '1133399'
-        fake_auth.login(test_uid)
+        fake_auth.login('1133399')
 
     @pytest.fixture()
     def authenticated_response(self, authenticated_session, client):
@@ -304,6 +303,7 @@ class TestUserAnalytics:
         assert burmese['sections'][0]['units'] == 4
         assert burmese['sections'][0]['gradingBasis'] == 'Letter'
         assert burmese['sections'][0]['midtermGrade'] == 'D+'
+        assert burmese['sections'][0]['primary'] is True
         assert not burmese['sections'][0]['grade']
         assert burmese['units'] == 4
         assert burmese['gradingBasis'] == 'Letter'
@@ -319,6 +319,7 @@ class TestUserAnalytics:
         assert medieval['sections'][0]['enrollmentStatus'] == 'E'
         assert medieval['sections'][0]['units'] == 5
         assert medieval['sections'][0]['gradingBasis'] == 'Letter'
+        assert medieval['sections'][0]['primary'] is True
         assert not medieval['sections'][0]['grade']
 
         nuclear = TestUserAnalytics.get_course_for_code(authenticated_response, '2178', 'NUC ENG 124')
@@ -331,11 +332,13 @@ class TestUserAnalytics:
         assert nuclear['sections'][0]['units'] == 3
         assert nuclear['sections'][0]['gradingBasis'] == 'P/NP'
         assert nuclear['sections'][0]['grade'] == 'P'
+        assert nuclear['sections'][0]['primary'] is True
         assert nuclear['sections'][1]['ccn'] == 90301
         assert nuclear['sections'][1]['sectionNumber'] == '201'
         assert nuclear['sections'][1]['enrollmentStatus'] == 'E'
         assert nuclear['sections'][1]['units'] == 0
         assert nuclear['sections'][1]['gradingBasis'] == 'NON'
+        assert nuclear['sections'][1]['primary'] is False
         assert not nuclear['sections'][1]['grade']
 
         music = TestUserAnalytics.get_course_for_code(authenticated_response, '2172', 'MUSIC 41C')
@@ -348,6 +351,7 @@ class TestUserAnalytics:
         assert music['sections'][0]['units'] == 2
         assert music['sections'][0]['gradingBasis'] == 'Letter'
         assert music['sections'][0]['grade'] == 'A-'
+        assert music['sections'][0]['primary'] is True
         assert music['units'] == 2
         assert music['gradingBasis'] == 'Letter'
         assert music['grade'] == 'A-'
@@ -408,7 +412,7 @@ class TestUserAnalytics:
     def test_athletics_profile(self, authenticated_response):
         """Includes athletics profile."""
         athletics_profile = authenticated_response.json['athleticsProfile']
-        assert athletics_profile['name'] == 'Brigitte Lin'
+        assert athletics_profile['name'] == 'Deborah Davies'
         assert athletics_profile['uid'] == '61889'
         assert athletics_profile['sid'] == '11667051'
         assert athletics_profile['inIntensiveCohort'] is True
@@ -439,77 +443,3 @@ class TestUserAnalytics:
             assert response.status_code == 200
             assert response.json['canvasProfile']
             assert not response.json['sisProfile']
-
-    def test_get_students(self, authenticated_session, client):
-        data = {
-            'gpaRanges': ['numrange(3, 3.5, \'[)\')', 'numrange(3.5, 4, \'[]\')'],
-            'groupCodes': ['MFB-DB', 'MFB-DL'],
-            'levels': ['Junior', 'Senior'],
-            'majors': ['English BA', 'History BA', 'Letters & Sci Undeclared UG', 'Gender and Women\'s Studies'],
-            'unitRanges': [],
-            'inIntensiveCohort': None,
-            'orderBy': 'last_name',
-            'offset': 1,
-            'limit': 50,
-        }
-        response = client.post('/api/students', data=json.dumps(data), content_type='application/json')
-
-        assert response.status_code == 200
-        assert 'members' in response.json
-        students = response.json['members']
-        assert 2 == len(students)
-        # Offset of 1, ordered by lastName
-        assert ['1133399', '242881'] == [student['uid'] for student in students]
-        group_codes_1133399 = [a['groupCode'] for a in students[0]['athletics']]
-        assert len(group_codes_1133399) == 3
-        assert 'MFB-DB' in group_codes_1133399
-        assert 'MFB-DL' in group_codes_1133399
-        assert 'MTE' in group_codes_1133399
-        group_codes_242881 = [a['groupCode'] for a in students[1]['athletics']]
-        assert group_codes_242881 == ['MFB-DL']
-
-    def test_get_intensive_cohort(self, authenticated_session, client):
-        """Returns the canned 'intensive' cohort, available to all authenticated users."""
-        response = client.post('/api/students', data=json.dumps({'inIntensiveCohort': True}), content_type='application/json')
-        assert response.status_code == 200
-        cohort = json.loads(response.data)
-        assert 'members' in cohort
-        assert cohort['totalMemberCount'] == len(cohort['members']) == 4
-        assert 'teamGroups' not in cohort
-        for student in cohort['members']:
-            assert student['inIntensiveCohort']
-            assert student['isActiveAsc']
-
-    def test_order_by_with_intensive_cohort(self, authenticated_session, client):
-        """Returns the canned 'intensive' cohort, available to all authenticated users."""
-        all_expected_order = {
-            'first_name': ['61889', '1022796', '1049291', '242881'],
-            'gpa': ['1022796', '242881', '1049291', '61889'],
-            'group_name': ['242881', '1049291', '61889', '1022796'],
-            'last_name': ['1022796', '1049291', '242881', '61889'],
-            'level': ['1022796', '242881', '1049291', '61889'],
-            'major': ['1022796', '61889', '242881', '1049291'],
-            'units': ['61889', '1022796', '242881', '1049291'],
-        }
-        for order_by, expected_uid_list in all_expected_order.items():
-            args = {
-                'inIntensiveCohort': True,
-                'orderBy': order_by,
-            }
-            response = client.post('/api/students', data=json.dumps(args), content_type='application/json')
-            assert response.status_code == 200, f'Non-200 response where order_by={order_by}'
-            cohort = json.loads(response.data)
-            assert cohort['totalMemberCount'] == 4, f'Wrong count where order_by={order_by}'
-            uid_list = [s['uid'] for s in cohort['members']]
-            assert uid_list == expected_uid_list, f'Unmet expectation where order_by={order_by}'
-
-    def test_get_inactive_cohort(self, authenticated_session, client):
-        response = client.post('/api/students', data=json.dumps({'isInactive': True}), content_type='application/json')
-        assert response.status_code == 200
-        cohort = json.loads(response.data)
-        assert 'members' in cohort
-        assert cohort['totalMemberCount'] == len(cohort['members']) == 1
-        assert 'teamGroups' not in cohort
-        inactive_student = response.json['members'][0]
-        assert not inactive_student['isActiveAsc']
-        assert inactive_student['statusAsc'] == 'Trouble'

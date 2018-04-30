@@ -44,12 +44,7 @@
 
     $scope.demoMode = config.demoMode;
     $scope.isLoading = true;
-    $scope.myPrimaryGroup = me.myPrimaryGroup;
     $scope.tab = 'list';
-
-    var goToStudent = $scope.goToStudent = function(uid) {
-      utilService.goTo('/student/' + uid, $scope.section.displayName);
-    };
 
     var onTab = $scope.onTab = function(tabName) {
       $scope.isLoading = true;
@@ -58,7 +53,7 @@
       if (tabName === 'matrix') {
         var goToUserPage = function(uid) {
           $location.state($location.absUrl());
-          goToStudent(uid);
+          $location.path('/student/' + uid);
           // The intervening visualizationService code moves out of Angular and into d3 thus the extra kick of $apply.
           $scope.$apply();
         };

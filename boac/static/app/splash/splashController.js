@@ -34,7 +34,8 @@
     $location,
     $rootScope,
     $sce,
-    $scope
+    $scope,
+    $stateParams
   ) {
 
     $rootScope.pageTitle = 'Welcome';
@@ -46,7 +47,7 @@
 
     var uibPopoverError = function(errorMessage) {
       return {
-        popoverHtml: $sce.trustAsHtml('<i class="fa fa-exclamation-triangle"></i> ' + errorMessage),
+        popoverHtml: $sce.trustAsHtml('<i class="fas fa-exclamation-triangle"></i> ' + errorMessage),
         isPopoverOpen: true
       };
     };
@@ -65,7 +66,7 @@
     };
 
     var init = function() {
-      var casLoginError = _.get($location.search(), 'casLoginError');
+      var casLoginError = _.get($location.search(), 'casLoginError') || $stateParams.casLoginError;
       if (casLoginError) {
         $scope.casLogin = {error: uibPopoverError(casLoginError)};
       }

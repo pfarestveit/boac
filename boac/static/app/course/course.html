@@ -1,16 +1,16 @@
 <div class="course-container">
   <div class="loading-spinner-large" data-ng-if="isLoading && !error">
-    <i class="fa fa-refresh fa-spin fa-5x fa-fw"></i>
+    <i class="fas fa-sync fa-spin fa-5x"></i>
     <span class="sr-only">Loading...</span>
   </div>
 
   <div class="return-to-url" data-ng-if="!isLoading && !error && returnUrl">
     <a data-ng-href="{{returnUrl}}">
-      <i class="fa fa-arrow-left" aria-hidden="true"></i> <span data-ng-bind="returnLabel"></span>
+      <i class="fas fa-arrow-left" aria-hidden="true"></i> <span data-ng-bind="returnLabel"></span>
     </a>
   </div>
 
-  <div class="container-left" data-ng-if="!isLoading && error">
+  <div class="container-error" data-ng-if="!isLoading && error">
     <h1 class="page-section-header">Error</h1>
     <div class="faint-text">
       <span data-ng-bind="error.message" data-ng-if="error.message"></span>
@@ -37,20 +37,18 @@
           <div class="course-term-name" data-ng-bind="section.termName"></div>
           <div data-ng-repeat="meeting in section.meetings"
                data-ng-if="section.meetings">
+            <div class="course-details-instructors" data-ng-if="meeting.instructors.length">
+              <span class="course-instructors-header"
+                    id="instructors-{{$index}}"
+                    data-ng-pluralize
+                    count="meeting.instructors.length"
+                    when="{'one': 'Instructor:', 'other': 'Instructors:'}"></span>
+              <span data-ng-repeat="instructor in meeting.instructors">{{instructor}}{{$last ? '' : ', '}}</span>
+            </div>
             <div id="meetings-{{$index}}" class="course-details-meetings">
               <div data-ng-bind="meeting.days"></div>
               <div data-ng-bind="meeting.time"></div>
               <div data-ng-bind="meeting.location"></div>
-            </div>
-            <div data-ng-if="meeting.instructors.length">
-              <h2 class="course-instructors-header"
-                  id="instructors-{{$index}}"
-                  data-ng-pluralize
-                  count="meeting.instructors.length"
-                  when="{'one': 'Instructor', 'other': 'Instructors'}"></h2>
-              <div class="course-details-instructors" data-ng-repeat="instructor in meeting.instructors">
-                <div data-ng-bind="instructor"></div>
-              </div>
             </div>
           </div>
         </div>
@@ -58,14 +56,14 @@
     </div>
     <div class="course-terms">
       <div data-ng-if="warning && warning.message">
-        <div class="has-error"><i class="fa fa-exclamation-triangle"></i>
+        <div class="has-error"><i class="fas fa-exclamation-triangle"></i>
           Warning: <span data-ng-bind="warning.message"></span>
         </div>
       </div>
 
       <div class="course-tabs-container">
         <div class="course-tabs-container-column-01">
-          <groups-selector data-students="section.students" data-ng-if="tab === 'list'"></groups-selector>
+          <curated-cohort-selector data-students="section.students" data-ng-if="tab === 'list'"></curated-cohort-selector>
         </div>
         <div class="course-tabs-container-column-02">
           <div data-ng-include="'/static/app/shared/tabs.html'"></div>
@@ -94,9 +92,9 @@
             <!-- Column -->
             <div class="course-list-view-column-00" data-ng-if="!$first">
               <div class="student-checkbox-add-to-group">
-                <input id="student-{{student.sid}}-checkbox-add-to-group"
+                <input id="student-{{student.uid}}-curated-cohort-checkbox"
                        type="checkbox"
-                       data-ng-click="checkboxForStudentGroupsSelector(student)"
+                       data-ng-click="curatedCohortStudentToggle(student)"
                        data-ng-model="student.selectedForStudentGroups"/>
               </div>
             </div>
@@ -115,9 +113,7 @@
             <!-- Column -->
             <div class="course-list-view-column-02" data-ng-if="!$first">
               <div>
-                <a id="student-{{student.sid}}"
-                   href
-                   data-ng-click="goToStudent(student.uid)">
+                <a id="{{student.uid}}" data-ng-href="/student/{{student.uid}}">
                   <h3 class="course-student-name"
                       data-ng-class="{'demo-mode-blur': demoMode}">
                     {{student.lastName}}<span data-ng-if="student.firstName">, {{student.firstName}}</span>
@@ -202,7 +198,7 @@
               <span class="cohort-grade"
                     data-ng-bind="student.enrollment.midtermGrade"
                     data-ng-if="student.enrollment.midtermGrade"></span>
-              <i class="fa fa-exclamation-triangle boac-exclamation"
+              <i class="fas fa-exclamation-triangle boac-exclamation"
                  data-ng-if="isAlertGrade(student.enrollment.midtermGrade)"></i>
               <span data-ng-if="!student.enrollment.midtermGrade">&mdash;</span>
             </div>
@@ -213,7 +209,7 @@
               <span class="cohort-grade"
                     data-ng-bind="student.enrollment.grade"
                     data-ng-if="student.enrollment.grade"></span>
-              <i class="fa fa-exclamation-triangle boac-exclamation"
+              <i class="fas fa-exclamation-triangle boac-exclamation"
                  data-ng-if="isAlertGrade(student.enrollment.grade)"></i>
               <span class="cohort-grading-basis"
                     data-ng-bind="student.enrollment.gradingBasis"

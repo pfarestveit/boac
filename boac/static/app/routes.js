@@ -49,7 +49,7 @@
     // Authentication dependency for private states only; return a rejection if authenticated user not present.
     var resolveAuthentication = function(me, $q) {
       var deferred = $q.defer();
-      if (me.is_authenticated) {
+      if (me.isAuthenticated) {
         deferred.resolve({});
       } else {
         deferred.reject({message: 'unauthenticated'});
@@ -60,7 +60,7 @@
     // Return a rejection if authenticated user is present.
     var splashAuthentication = function(me, $q) {
       var deferred = $q.defer();
-      if (me.is_authenticated) {
+      if (me.isAuthenticated) {
         deferred.reject({message: 'authenticated'});
       } else {
         deferred.resolve({});
@@ -99,13 +99,19 @@
     // Default route
     $urlRouterProvider.otherwise(function($injector, $location) {
       $injector.get('authService').reloadMe().then(function(me) {
-        var uri = me && me.is_authenticated ? '/404' : '/';
+        var uri = me && me.isAuthenticated ? '/404' : '/';
         $location.replace().path(uri);
       });
     });
 
     // Routes
     $stateProvider
+      .state('404', {
+        url: '/404',
+        views: standardLayout(null, '/static/app/shared/404.html'),
+        resolve: resolvePrivate,
+        reloadOnSearch: false
+      })
       .state('cohort', {
         url: '/cohort?c&i&inactive',
         views: standardLayout('CohortController', '/static/app/cohort/cohort.html'),
@@ -120,11 +126,6 @@
       .state('cohortsManage', {
         url: '/cohorts/manage',
         views: standardLayout('ManageCohortsController', '/static/app/cohort/manageCohorts.html'),
-        resolve: resolvePrivate
-      })
-      .state('teams', {
-        url: '/cohorts/teams',
-        views: standardLayout('TeamsController', '/static/app/cohort/teams.html'),
         resolve: resolvePrivate
       })
       .state('course', {
@@ -147,40 +148,72 @@
         views: standardLayout('HomeController', '/static/app/home/home.html'),
         resolve: resolvePrivate
       })
+      .state('search', {
+        url: '/search?q',
+        views: standardLayout('SearchController', '/static/app/search/searchResults.html'),
+        resolve: resolvePrivate
+      })
       .state('splash', {
         url: '/',
         templateUrl: '/static/app/splash/splash.html',
         controller: 'SplashController',
+        params: {casLoginError: null},
         resolve: resolveSplash
+      })
+      .state('teams', {
+        url: '/cohorts/teams',
+        views: standardLayout('TeamsController', '/static/app/cohort/teams.html'),
+        resolve: resolvePrivate
       })
       .state('user', {
         url: '/student/:uid?r',
         views: standardLayout('StudentController', '/static/app/student/student.html'),
         resolve: resolvePrivate,
         reloadOnSearch: false
-      }).state('404', {
-        url: '/404',
-        views: standardLayout(null, '/static/app/shared/404.html'),
-        resolve: resolvePrivate,
-        reloadOnSearch: false
       });
 
   }).run(function(authFactory, authService, $rootScope, $state, $transitions) {
-    $transitions.onStart({}, function($transition) {
-      if ($transition.$to().name) {
-        var name = $transition.$to().name.replace(/([A-Z])/g, ' $1');
-        $rootScope.pageTitle = name.charAt(0).toUpperCase() + name.slice(1);
+
+    $state.defaultErrorHandler(function(error) {
+      var message = _.get(error, 'detail.message');
+      if (message === 'unauthenticated') {
+        authFactory.casLogIn().then(
+          function(results) {
+            window.location = results.data.cas_login_url;
+          },
+          function(err) {
+            $state.go('splash', {casLoginError: _.get(err, 'data.message') || 'An unexpected error occurred.'});
+          }
+        );
+      } else if (message === 'authenticated') {
+        $state.go('home');
       } else {
-        $rootScope.pageTitle = 'UC Berkeley';
+        $state.go('splash', {casLoginError: message});
       }
     });
 
-    $transitions.onError({}, function($transition) {
-      var message = _.get($transition.error(), 'detail.message');
-      if (message === 'unauthenticated') {
-        authFactory.casLogIn();
-      } else if (message === 'authenticated') {
-        $state.go('home');
+    $transitions.onStart({}, function($transition) {
+      if ($transition.$to().name) {
+        var name = $transition.$to().name;
+        switch (name) {
+          case 'cohort':
+            $rootScope.pageTitle = 'Filtered Cohort';
+            break;
+          case 'cohortsManage':
+            $rootScope.pageTitle = 'Manage Filtered Cohorts';
+            break;
+          case 'group':
+            $rootScope.pageTitle = 'Curated Cohort';
+            break;
+          case 'groupsManage':
+            $rootScope.pageTitle = 'Manage Curated Cohorts';
+            break;
+          default:
+            name = name.replace(/([A-Z])/g, ' $1');
+            $rootScope.pageTitle = name.charAt(0).toUpperCase() + name.slice(1);
+        }
+      } else {
+        $rootScope.pageTitle = 'UC Berkeley';
       }
     });
 

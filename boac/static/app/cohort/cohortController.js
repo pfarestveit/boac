@@ -28,10 +28,10 @@
   'use strict';
 
   angular.module('boac').controller('CohortController', function(
+    authService,
     cohortFactory,
     config,
     googleAnalyticsService,
-    me,
     studentFactory,
     studentSearchService,
     utilService,
@@ -64,7 +64,9 @@
       };
     };
 
+    var me = authService.getMe();
     $scope.demoMode = config.demoMode;
+    $scope.isAthleticStudyCenter = me.isAdmin || authService.isDepartmentMember(me, 'UWASC');
     $scope.isLoading = true;
     $scope.isCreateCohortMode = false;
     $scope.showIntensiveCheckbox = false;
@@ -73,8 +75,8 @@
 
     $scope.cohort = {
       code: null,
-      members: [],
-      totalMemberCount: null
+      students: [],
+      totalStudentCount: null
     };
 
     $scope.search = {
@@ -116,6 +118,7 @@
     var updateCohort = function(data) {
       $scope.cohort = data;
       $scope.cohort.code = $scope.cohort.code || 'search';
+      $rootScope.pageTitle = $scope.cohort.name || 'Filtered Cohort';
       var intensive = _.get($scope.cohort, 'filterCriteria.inIntensiveCohort') || utilService.toBoolOrNull($scope.search.options.intensive);
       if (intensive) {
         $scope.showIntensiveCheckbox = $scope.search.options.intensive = true;
@@ -125,59 +128,15 @@
           $scope.cohort.name = 'Intensive';
         }
       }
-      var inactive = _.get($scope.cohort, 'filterCriteria.isInactive') || utilService.toBoolOrNull($scope.search.options.inactive);
-      if (inactive) {
-        $scope.showInactiveCheckbox = $scope.search.options.inactive = true;
+      var inactiveAsc = _.get($scope.cohort, 'filterCriteria.isInactiveAsc') || utilService.toBoolOrNull($scope.search.options.inactiveAsc);
+      if (utilService.toBoolOrNull(inactiveAsc)) {
+        $scope.showInactiveCheckbox = $scope.search.options.inactiveAsc = true;
         // If no other search options are selected then it deserves 'Inactive' label.
         var isInactiveCohort = $scope.cohort.code === 'search' && !_.includes(JSON.stringify($scope.search.options), 'selected');
         if (isInactiveCohort) {
           $scope.cohort.name = 'Inactive';
         }
       }
-    };
-
-    /**
-     * Use selected filter options to query students API.
-     *
-     * @param  {String}      orderBy                     Requested sort order
-     * @param  {Number}      offset                      As used in SQL query
-     * @param  {Number}      limit                       As used in SQL query
-     * @param  {Number}      updateBrowserLocation       If true, we will update search criteria in browser location URL
-     * @return {List}                                    Backend API results
-     */
-    var getStudents = function(orderBy, offset, limit, updateBrowserLocation) {
-      var opts = $scope.search.options;
-      var getValues = utilService.getValuesSelected;
-      // Get values where selected=true
-      var gpaRanges = getValues(opts.gpaRanges);
-      var groupCodes = getValues(opts.groupCodes, 'groupCode');
-      var levels = getValues(opts.levels);
-      var majors = getValues(opts.majors);
-      var unitRanges = getValues(opts.unitRanges);
-
-      if (updateBrowserLocation) {
-        $location.search('c', 'search');
-        $location.search('g', gpaRanges);
-        // Use string 'true' rather than boolean so that the value persists in browser location.
-        $location.search('i', opts.intensive ? 'true' : null);
-        $location.search('inactive', opts.inactive ? 'true' : null);
-        $location.search('l', levels);
-        $location.search('m', majors);
-        $location.search('t', groupCodes);
-        $location.search('u', unitRanges);
-      }
-      return studentFactory.getStudents(
-        gpaRanges,
-        groupCodes,
-        levels,
-        majors,
-        unitRanges,
-        opts.intensive,
-        opts.inactive,
-        orderBy,
-        offset,
-        limit
-      );
     };
 
     /**
@@ -191,7 +150,7 @@
     var getCohort = function(orderBy, offset, limit) {
       var promise;
       if ($scope.cohort.code === 'search') {
-        promise = getStudents(orderBy, offset, limit, true);
+        promise = studentSearchService.getStudents($scope.search.options, orderBy, offset, limit, true);
       } else if (isNaN($scope.cohort.code)) {
         promise = cohortFactory.getTeam($scope.cohort.code, orderBy, offset, limit);
       } else {
@@ -209,12 +168,13 @@
      * @return {void}
      */
     var listViewRefresh = function(callback) {
-      // Pagination is not used on teams because the member count is always reasonable.
+      // Pagination is not used on teams because student count is within reason.
       $scope.pagination.enabled = isPaginationEnabled();
       var page = $scope.pagination.enabled ? $scope.pagination.currentPage : 1;
       var limit = $scope.pagination.enabled ? $scope.pagination.itemsPerPage : Number.MAX_SAFE_INTEGER;
       var offset = page === 0 ? 0 : (page - 1) * limit;
 
+      $anchorScroll();
       $scope.isLoading = true;
       getCohort($scope.orderBy.selected, offset, limit).then(function(response) {
         updateCohort(response.data);
@@ -354,15 +314,6 @@
       return callback();
     };
 
-    var goToStudent = $scope.goToStudent = function(uid) {
-      var referringPageName = 'search';
-      if ($scope.cohort.name) {
-        // If 'id' is NOT null then it's a saved cohort (not a team) and we append suffix
-        referringPageName = $scope.cohort.id ? '\'' + $scope.cohort.name + '\' cohort' : $scope.cohort.name;
-      }
-      utilService.goTo('/student/' + uid, referringPageName);
-    };
-
     /**
      * Get ALL students of the cohort then render the scatterplot graph.
      *
@@ -375,11 +326,11 @@
         updateCohort(response.data);
         var goToUserPage = function(uid) {
           $location.state($location.absUrl());
-          goToStudent(uid);
+          $location.path('/student/' + uid);
           // The intervening visualizationService code moves out of Angular and into d3 thus the extra kick of $apply.
           $scope.$apply();
         };
-        visualizationService.scatterplotRefresh($scope.cohort.members, goToUserPage, function(yAxisMeasure, studentsWithoutData) {
+        visualizationService.scatterplotRefresh($scope.cohort.students, goToUserPage, function(yAxisMeasure, studentsWithoutData) {
           $scope.yAxisMeasure = yAxisMeasure;
           // List of students-without-data is rendered below the scatterplot.
           $scope.studentsWithoutData = studentsWithoutData;
@@ -416,7 +367,13 @@
 
         // Perform the query
         $scope.isLoading = true;
-        getStudents($scope.orderBy.selected, offset, $scope.pagination.itemsPerPage, true).then(handleSuccess, handleError).then(function() {
+        studentSearchService.getStudents(
+          $scope.search.options,
+          $scope.orderBy.selected,
+          offset,
+          $scope.pagination.itemsPerPage,
+          true
+        ).then(handleSuccess, handleError).then(function() {
           $scope.isLoading = false;
         });
       }
@@ -444,9 +401,24 @@
     };
 
     /**
+     * 'Intensive' and 'Inactive' are relevant to ASC advisors only.
+     *
+     * @param  {Object}       args       Selections from search filters
+     * @return {void}
+     */
+    var presetAthleticStudyCenterControls = function(args) {
+      $scope.showIntensiveCheckbox = $scope.search.options.intensive = utilService.toBoolOrNull(args.i);
+      if (args.inactive) {
+        $scope.showInactiveCheckbox = $scope.search.options.inactive = true;
+      } else {
+        $scope.search.options.inactive = false;
+      }
+    };
+
+    /**
      * Invoked when state is initializing. Preset filters and search criteria prior to cohort API call.
      *
-     * @param  {Object}    args     See $location.search()
+     * @param  {Object}       args       Selections from search filters
      * @return {void}
      */
     var presetSearchFilters = function(args) {
@@ -455,8 +427,9 @@
           _.each(filters, function(key, filterName) {
             preset(filterName, args[key]);
           });
-          $scope.showIntensiveCheckbox = $scope.search.options.intensive = utilService.toBoolOrNull(args.i);
-          $scope.showInactiveCheckbox = $scope.search.options.inactive = args.inactive;
+          if ($scope.isAthleticStudyCenter) {
+            presetAthleticStudyCenterControls(args);
+          }
         } else {
           // code is a team_code
           _.each($scope.search.options.groupCodes, function(option) {
@@ -495,9 +468,9 @@
       } else if (tabName === 'list') {
         // Restore pagination; fortunately, 'currentPage' persists.
         $scope.pagination.enabled = isPaginationEnabled();
-        if ($scope.pagination.enabled && $scope.pagination.currentPage > 1 && $scope.cohort.members.length > 50) {
+        if ($scope.pagination.enabled && $scope.pagination.currentPage > 1 && $scope.cohort.students.length > 50) {
           var start = ($scope.pagination.currentPage - 1) * 50;
-          $scope.cohort.members = _.slice($scope.cohort.members, start, start + 50);
+          $scope.cohort.students = _.slice($scope.cohort.students, start, start + 50);
         }
       }
     };
@@ -507,7 +480,7 @@
      *
      * @return {void}
      */
-    $scope.executeSearch = function() {
+    $scope.applyFilters = function() {
       $scope.isCreateCohortMode = false;
       $scope.showIntensiveCheckbox = false;
       $scope.showInactiveCheckbox = false;
@@ -542,8 +515,8 @@
       }
     });
 
-    $scope.disableSearchButton = function() {
-      // Disable button if page is loading or no search criterion is selected
+    $scope.disableApplyButton = function() {
+      // Disable button if page is loading or no filter criterion is selected
       var count = $scope.search.count;
       return $scope.isLoading || $scope.isSaving || (!count.gpaRanges && !count.groupCodes && !count.levels &&
         !count.majors && !count.unitRanges && (!$scope.showIntensiveCheckbox || !$scope.search.options.intensive) &&
@@ -598,12 +571,11 @@
 
         getMajors(function(majors) {
           var decorate = utilService.decorateOptions;
-          // 'decorate' is used to standardize (eg, assign 'id' property) each set of menu options
           $scope.search.options = {
             gpaRanges: decorate(studentFactory.getGpaRanges(), 'name'),
             groupCodes: decorate(groupCodes, 'groupCode'),
             intensive: args.i,
-            inactive: args.inactive,
+            inactive: args.inactive || ($scope.isAthleticStudyCenter ? false : null),
             levels: decorate(studentFactory.getStudentLevels(), 'name'),
             majors: decorate(majors, 'name'),
             unitRanges: decorate(studentFactory.getUnitRanges(), 'name')
@@ -619,7 +591,7 @@
             var render = $scope.tab === 'list' ? listViewRefresh : matrixViewRefresh;
             render(function() {
               initFilters(function() {
-                $rootScope.pageTitle = $scope.isCreateCohortMode ? 'Create Cohort' : $scope.cohort.name || 'Search';
+                $rootScope.pageTitle = $scope.isCreateCohortMode ? 'Create Filtered Cohort' : $scope.cohort.name || 'Search';
                 $scope.isLoading = false;
 
                 if (args.a) {

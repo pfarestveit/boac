@@ -84,10 +84,22 @@
       ];
     };
 
-    var getStudents = function(gpaRanges, groupCodes, levels, majors, unitRanges, intensive, inactive, orderBy, offset, limit) {
+    var getStudents = function(
+      gpaRanges,
+      groupCodes,
+      levels,
+      majors,
+      unitRanges,
+      intensive,
+      isInactiveAsc,
+      orderBy,
+      offset,
+      limit
+    ) {
       var args = {
         gpaRanges: gpaRanges || [],
         groupCodes: groupCodes || [],
+        isInactiveAsc: utilService.toBoolOrNull(isInactiveAsc),
         levels: levels || [],
         majors: majors || [],
         unitRanges: unitRanges || [],
@@ -98,10 +110,18 @@
       if (utilService.toBoolOrNull(intensive)) {
         args.inIntensiveCohort = true;
       }
-      if (utilService.toBoolOrNull(inactive)) {
-        args.isInactive = true;
-      }
       return $http.post('/api/students', args);
+    };
+
+    var searchForStudents = function(searchPhrase, isInactiveAsc, orderBy, offset, limit) {
+      var args = {
+        searchPhrase: searchPhrase,
+        isInactiveAsc: utilService.toBoolOrNull(isInactiveAsc),
+        orderBy: orderBy || 'first_name',
+        offset: offset || 0,
+        limit: limit || 50
+      };
+      return $http.post('/api/students/search', args);
     };
 
     return {
@@ -113,7 +133,8 @@
       getRelevantMajors: getRelevantMajors,
       getStudentLevels: getStudentLevels,
       getStudents: getStudents,
-      getUnitRanges: getUnitRanges
+      getUnitRanges: getUnitRanges,
+      searchForStudents: searchForStudents
     };
   });
 

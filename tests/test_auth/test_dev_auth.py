@@ -55,6 +55,13 @@ class TestDevAuth:
         response = client.post('/devauth/login', data=json.dumps(params), content_type='application/json')
         assert response.status_code == 403
 
+    def test_unauthorized_user(self, app, client):
+        """Fails if the chosen UID does not match an authorized user."""
+        app.config['DEVELOPER_AUTH_ENABLED'] = True
+        params = {'uid': '1015674', 'password': app.config['DEVELOPER_AUTH_PASSWORD']}
+        response = client.post('/devauth/login', data=json.dumps(params), content_type='application/json')
+        assert response.status_code == 403
+
     def test_known_user_with_correct_password_logs_in(self, app, client):
         """There is a happy path."""
         app.config['DEVELOPER_AUTH_ENABLED'] = True
@@ -63,9 +70,9 @@ class TestDevAuth:
         assert response.status_code == 302
         response = client.get('/api/status')
         assert response.status_code == 200
-        assert response.json['authenticated_as']['uid'] == self.authorized_uid
+        assert response.json['uid'] == self.authorized_uid
         response = client.get('/logout')
         assert response.status_code == 200
         response = client.get('/api/status')
         assert response.status_code == 200
-        assert response.json['authenticated_as']['is_anonymous']
+        assert response.json['isAnonymous']

@@ -31,20 +31,18 @@
 
   boac.factory('cohortFactory', function(googleAnalyticsService, utilService, $http, $rootScope) {
 
-    var createCohort = function(label, gpaRanges, groupCodes, levels, majors, unitRanges, intensive, inactive) {
+    var createCohort = function(label, gpaRanges, groupCodes, levels, majors, unitRanges, intensive, inactiveAsc) {
       var args = {
         label: label,
         gpaRanges: gpaRanges,
         groupCodes: groupCodes,
+        isInactiveAsc: utilService.toBoolOrNull(inactiveAsc),
         levels: levels,
         majors: majors,
         unitRanges: unitRanges
       };
       if (utilService.toBoolOrNull(intensive)) {
         args.inIntensiveCohort = true;
-      }
-      if (utilService.toBoolOrNull(inactive)) {
-        args.isInactive = true;
       }
       return $http.post('/api/cohort/create', args).then(function(response) {
         var cohort = response.data;
@@ -109,7 +107,7 @@
       };
       return $http.post('/api/cohort/update', args).then(function(response) {
         $rootScope.$broadcast('myCohortsUpdated');
-        $rootScope.$broadcast('cohortUpdated', {
+        $rootScope.$broadcast('cohortNameChanged', {
           cohort: response.data
         });
       });

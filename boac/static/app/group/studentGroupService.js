@@ -33,14 +33,11 @@
       return {
         id: group.id,
         name: group.name,
+        studentCount: group.studentCount,
         students: utilService.extendSortableNames(group.students),
         sortBy: 'sortableName',
         reverse: false
       };
-    };
-
-    var isMyPrimaryGroup = function(group) {
-      return group.name === 'My Students';
     };
 
     var isStudentInGroup = function(student, group) {
@@ -57,23 +54,17 @@
     var loadMyGroups = function(callback) {
       studentGroupFactory.getMyGroups().then(function(response) {
         var groups = response.data;
-        var myPrimaryGroup = null;
         var myGroups = [];
         _.each(groups, function(group) {
           var decoratedGroup = decorateGroup(group);
-          if (isMyPrimaryGroup(group)) {
-            myPrimaryGroup = decoratedGroup;
-          } else {
-            myGroups.push(decoratedGroup);
-          }
+          myGroups.push(decoratedGroup);
         });
-        return callback(myPrimaryGroup, myGroups);
+        return callback(myGroups);
       });
     };
 
     return {
       decorateGroup: decorateGroup,
-      isMyPrimaryGroup: isMyPrimaryGroup,
       isStudentInGroup: isStudentInGroup,
       loadMyGroups: loadMyGroups
     };

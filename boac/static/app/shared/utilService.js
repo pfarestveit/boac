@@ -94,29 +94,6 @@
       return str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
     };
 
-    /**
-     * @param  {String}     str      Word, phrase or whatever
-     * @return {String}              Unrecognizable representation of str
-     */
-    var obfuscate = function(str) {
-      var words = _.map(str.split(' '), function(word) {
-        var length = word.length;
-        if (length <= 1) {
-          // A dash or similar
-          return word;
-        } else if (/\d+/.test(word)) {
-          // A number
-          return Math.floor(Math.random() * 100000000);
-        }
-        // Random word
-        var chars = _.map(_.range(length), function() {
-          return 'abcdefghijklmnopqrstuvwxyz'.charAt(_.random(0, 26));
-        });
-        return _.capitalize(chars.join(''));
-      });
-      return words.join(' ');
-    };
-
     var unpackReturnUrl = function(anchorId) {
       var disableBreadcrumb = true;
       if (disableBreadcrumb) {
@@ -162,23 +139,6 @@
       return label;
     };
 
-    var getEncodedAbsUrl = function() {
-      return encodeURIComponent($base64.encode($location.absUrl()));
-    };
-
-    /**
-     * @param  {String}     path                    URI of destination
-     * @param  {String}     currentPageName         Used to construct 'Return to...' label (see returnUrl above)
-     * @return {void}
-     */
-    var goTo = function(path, currentPageName) {
-      var encodedAbsUrl = getEncodedAbsUrl();
-      $location.path(path).search({
-        r: encodedAbsUrl,
-        referringPageName: currentPageName
-      });
-    };
-
     var extendSortableNames = function(students) {
       return _.map(students, function(student) {
         return _.extend(student, {
@@ -194,12 +154,9 @@
       extendSortableNames: extendSortableNames,
       decorateOptions: decorateOptions,
       format: format,
-      getEncodedAbsUrl: getEncodedAbsUrl,
-      goTo: goTo,
-      unpackReturnUrl: unpackReturnUrl,
       getValuesSelected: getValuesSelected,
-      obfuscate: obfuscate,
-      toBoolOrNull: toBoolOrNull
+      toBoolOrNull: toBoolOrNull,
+      unpackReturnUrl: unpackReturnUrl
     };
   });
 

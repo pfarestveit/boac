@@ -29,11 +29,19 @@
 
   angular.module('boac').controller('CreateCohortController', function($scope, $uibModal) {
 
+    var isModalOpen = false;
+
     $scope.openCreateCohortModal = function(opts) {
-      $uibModal.open({
+      if (isModalOpen) {
+        return;
+      }
+      isModalOpen = true;
+
+      var modal = $uibModal.open({
         animation: true,
-        ariaLabelledBy: 'create-cohort-header',
-        ariaDescribedBy: 'create-cohort-body',
+        ariaLabelledBy: 'create-filtered-cohort-header',
+        ariaDescribedBy: 'create-filtered-cohort-body',
+        backdrop: false,
         templateUrl: '/static/app/cohort/createCohortModal.html',
         controller: 'CreateCohortModal',
         resolve: {
@@ -42,11 +50,15 @@
           }
         }
       });
+      var modalClosed = function() {
+        isModalOpen = false;
+      };
+
+      modal.result.finally(angular.noop).then(modalClosed, modalClosed);
     };
   });
 
   angular.module('boac').controller('CreateCohortModal', function(
-    authService,
     opts,
     cohortFactory,
     utilService,
@@ -68,7 +80,7 @@
         message: null
       };
       $scope.label = _.trim($scope.label);
-      validationService.validateName({name: $scope.label}, authService.getMe().myCohorts, function(errorMessage) {
+      validationService.validateName({name: $scope.label}, function(errorMessage) {
         if (errorMessage) {
           $scope.error.message = errorMessage;
           $rootScope.isSaving = false;

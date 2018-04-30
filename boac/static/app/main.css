@@ -54,8 +54,8 @@
   vertical-align: middle;
 }
 
-.container-left {
-  float: left;
+.container-error {
+  padding: 0 10px 0 10px;
 }
 
 .container-right {
@@ -70,6 +70,10 @@
 .demo-mode-blur:hover {
   color: transparent !important;
   text-shadow: 0 0 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+.display-none {
+  display: none;
 }
 
 .edit-mode-button-container {
@@ -133,7 +137,7 @@
 .index-container-body {
   display: flex;
   flex-direction: row;
-  height: 100%;
+  min-height: 100%;
 }
 
 .index-container-footer {
@@ -149,7 +153,6 @@
   background-color: #125074;
   flex: 0 0 230px;
   min-height: 100%;
-  padding: 3px 0 0 0;
 }
 
 .loading-spinner-large {
@@ -192,6 +195,14 @@
 
 .return-to-url {
   padding: 10px 0 0 5px;
+}
+
+.search-header-curated-cohort {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  padding: 20px 0 10px 0;
 }
 
 .student-checkbox-add-to-group {
@@ -261,10 +272,6 @@
 html,
 body {
   height: 100%;
-}
-
-oi-select .select-dropdown {
-  max-height: 250px !important;
 }
 
 select[data-value=""],

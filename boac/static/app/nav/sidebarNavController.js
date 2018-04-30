@@ -28,26 +28,37 @@
   'use strict';
 
   angular.module('boac').controller('SidebarNavController', function(
+    authService,
     cohortService,
     config,
-    me,
     studentGroupFactory,
     studentGroupService,
     $rootScope,
-    $scope
+    $scope,
+    $state
   ) {
     var init = function() {
+      var me = authService.getMe();
       $scope.demoMode = config.demoMode;
       $scope.myCohorts = _.clone(me.myCohorts);
       $scope.myGroups = _.clone(me.myGroups);
-      $scope.myPrimaryGroup = _.clone(me.myPrimaryGroup);
+      $scope.searchPhrase = null;
+      $scope.showAthletics = me.isAdmin || authService.isDepartmentMember(me, 'UWASC');
     };
 
     init();
 
+    $rootScope.$on('$viewContentLoaded', function() {
+      $scope.searchPhrase = null;
+    });
+
+    $scope.searchForStudents = function() {
+      $scope.searchResultsLoading = true;
+      $state.transitionTo('search', {q: $scope.searchPhrase}, {reload: true});
+    };
+
     var findGroupInScope = function(groupId) {
-      var allGroups = _.union([ $scope.myPrimaryGroup ], $scope.myGroups);
-      return _.find(allGroups, ['id', groupId]);
+      return _.find($scope.myGroups, ['id', groupId]);
     };
 
     $rootScope.$on('cohortCreated', function(event, data) {
@@ -62,7 +73,7 @@
       });
     });
 
-    $rootScope.$on('cohortUpdated', function(event, data) {
+    $rootScope.$on('cohortNameChanged', function(event, data) {
       _.each($scope.myCohorts, function(cohort) {
         if (cohort.id === data.cohort.id) {
           cohort.label = data.cohort.label;

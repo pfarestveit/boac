@@ -90,11 +90,6 @@
   flex: 1 0 0;
 }
 
-.header-column-03 {
-  -webkit-flex: 3 0 0;
-  flex: 3 0 0;
-}
-
 .sidebar-pill {
   background-color: #8bbdda;
   border-radius: 10px;
@@ -117,11 +112,11 @@
   white-space: nowrap;
 }
 
-.sidebar-header-icon {
-  border: 0;
-  object-fit: scale-down;
-  height: 16px;
-  margin: 0 2px 4px 0;
+.sidebar-create-link {
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle;
+  width: 20px;
 }
 
 .sidebar-row-link {
@@ -167,16 +162,9 @@
   overflow: hidden;
   padding-right: 5px;
   text-overflow: ellipsis;
+  vertical-align: middle;
   white-space: nowrap;
   width: 180px;
-}
-
-.sidebar-row-link-label-text-wide {
-  width: 195px;
-}
-
-.sidebar-row-without-link {
-  margin-left: 14px;
 }
 
 .sidebar-section-divider {
@@ -188,19 +176,25 @@
 }
 
 .sidebar-section-header {
-  margin-top: 10px;
+  margin: 10px 0 5px 0;
 }
 
-.sidebar-student-alert {
-  color: #f0ad4e;
-  float: right;
-  font-size: 16px;
-  margin-right: 5px;
-  padding: 3px 0 0 1px;
+.sidebar-section-search {
+  margin: 0 12px 12px 12px;
 }
 
-.sidebar-manage-link {
-  color: #8bbdda;
-  font-size: 16px;
-  line-height: 1.4em;
+.search-students-icon {
+  color: #999;
+  position: relative;
+  top: 28px;
+  left: 10px;
+}
+
+.search-students-input {
+  box-sizing: border-box;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  color: #999;
+  padding: 10px 15px 10px 30px;
+  width: 100%;
 }

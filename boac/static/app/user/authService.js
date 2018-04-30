@@ -37,39 +37,68 @@
   ) {
 
     var getMe = function() {
-      return _.cloneDeep($rootScope.me.authenticated_as);
+      return _.cloneDeep($rootScope.me);
+    };
+
+    var isDepartmentMember = function(user, deptCode) {
+      return _.get(user.departments, deptCode + '.isAdvisor') || _.get(user.departments, deptCode + '.isDirector');
     };
 
     var reloadMe = function() {
       return $http.get('/api/status').then(authFactory.loadUserProfile).then(function() {
-        var me = $rootScope.me.authenticated_as;
-        if (me.is_authenticated) {
+        var me = $rootScope.me;
+        if ($rootScope.me.isAuthenticated) {
           if ($location.search().casLogin) {
             // Track CAS login event
-            googleAnalyticsService.track('user', 'login', me.uid, parseInt(me.uid, 10));
+            var uid = $rootScope.me.uid;
+            googleAnalyticsService.track('user', 'login', uid, parseInt(uid, 10));
           }
         }
         return me;
       });
     };
 
+    $rootScope.$on('cohortCreated', function(event, data) {
+      if (_.get($rootScope, 'me.myCohorts')) {
+        $rootScope.me.myCohorts.push(data.cohort);
+      }
+    });
+
+    $rootScope.$on('cohortDeleted', function(event, data) {
+      if (_.get($rootScope, 'me.myCohorts')) {
+        $rootScope.me.myCohorts = _.remove($rootScope.me.myCohorts, function(cohort) {
+          return data.cohort.id !== cohort.id;
+        });
+      }
+    });
+
+    $rootScope.$on('cohortNameChanged', function(event, data) {
+      if (_.get($rootScope, 'me.myCohorts')) {
+        _.each($rootScope.me.myCohorts, function(cohort) {
+          if (data.cohort.id === group.id) {
+            cohort.name = data.cohort.name;
+          }
+        });
+      }
+    });
+
     $rootScope.$on('groupCreated', function(event, data) {
-      if (_.get($rootScope, 'me.authenticated_as.myGroups')) {
-        $rootScope.me.authenticated_as.myGroups.push(data.group);
+      if (_.get($rootScope, 'me.myGroups')) {
+        $rootScope.me.myGroups.push(data.group);
       }
     });
 
     $rootScope.$on('groupDeleted', function(event, data) {
-      if (_.get($rootScope, 'me.authenticated_as.myGroups')) {
-        $rootScope.me.authenticated_as.myGroups = _.remove($rootScope.me.authenticated_as.myGroups, function(group) {
+      if (_.get($rootScope, 'me.myGroups')) {
+        $rootScope.me.myGroups = _.remove($rootScope.me.myGroups, function(group) {
           return data.groupId !== group.id;
         });
       }
     });
 
     $rootScope.$on('groupNameChanged', function(event, data) {
-      if (_.get($rootScope, 'me.authenticated_as.myGroups')) {
-        _.each($rootScope.me.authenticated_as.myGroups, function(group) {
+      if (_.get($rootScope, 'me.myGroups')) {
+        _.each($rootScope.me.myGroups, function(group) {
           if (data.group.id === group.id) {
             group.name = data.group.name;
           }
@@ -79,6 +108,7 @@
 
     return {
       getMe: getMe,
+      isDepartmentMember: isDepartmentMember,
       reloadMe: reloadMe
     };
   });

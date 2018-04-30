@@ -25,9 +25,10 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 """This package integrates with Flask-Login. Determine who can use the app and which privileges they have."""
-from boac import db
+from boac import db, std_commit
 from boac.models.base import Base
 from boac.models.db_relationships import cohort_filter_owners
+from boac.models.student_group import StudentGroup
 from flask_login import UserMixin
 
 
@@ -37,31 +38,27 @@ class AuthorizedUser(Base, UserMixin):
     id = db.Column(db.Integer, nullable=False, primary_key=True)
     uid = db.Column(db.String(255), nullable=False, unique=True)
     is_admin = db.Column(db.Boolean)
-    is_advisor = db.Column(db.Boolean)
-    is_director = db.Column(db.Boolean)
+    department_memberships = db.relationship(
+        'UniversityDeptMember',
+        back_populates='authorized_user',
+    )
     cohort_filters = db.relationship(
         'CohortFilter',
         secondary=cohort_filter_owners,
         back_populates='owners',
-        lazy=True,
     )
     alert_views = db.relationship(
         'AlertView',
         back_populates='viewer',
-        lazy=True,
     )
 
-    def __init__(self, uid, is_admin=False, is_advisor=True, is_director=False):
+    def __init__(self, uid, is_admin=False):
         self.uid = uid
         self.is_admin = is_admin
-        self.is_advisor = is_advisor
-        self.is_director = is_director
 
     def __repr__(self):
         return f"""<AuthorizedUser {self.uid},
                     is_admin={self.is_admin},
-                    is_advisor={self.is_advisor},
-                    is_director={self.is_director},
                     updated={self.updated_at},
                     created={self.created_at}>
                 """
@@ -73,3 +70,13 @@ class AuthorizedUser(Base, UserMixin):
     @classmethod
     def find_by_uid(cls, uid):
         return AuthorizedUser.query.filter_by(uid=uid).first()
+
+    # TODO This method is presently not called, since we currently create authorized users manually in the database. As
+    # we move to creating users programmatically, they will be given a default "My Students" group on creation.
+    @classmethod
+    def create(cls, uid, is_admin):
+        user = cls(uid=uid, is_admin=is_admin)
+        db.session.add(user)
+        std_commit()
+        StudentGroup.create(cls, user.id, 'My Students')
+        return user

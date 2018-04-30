@@ -29,11 +29,19 @@
 
   angular.module('boac').controller('DeleteCohortController', function($scope, $uibModal) {
 
+    var isModalOpen = false;
+
     $scope.openDeleteCohortModal = function(cohort) {
-      $uibModal.open({
+      if (isModalOpen) {
+        return;
+      }
+      isModalOpen = true;
+
+      var modal = $uibModal.open({
         animation: true,
         ariaLabelledBy: 'confirm-delete-header',
         ariaDescribedBy: 'confirm-delete-body',
+        backdrop: false,
         templateUrl: '/static/app/cohort/deleteCohortModal.html',
         controller: 'DeleteCohortModal',
         resolve: {
@@ -42,6 +50,11 @@
           }
         }
       });
+      var modalClosed = function() {
+        isModalOpen = false;
+      };
+
+      modal.result.finally(angular.noop).then(modalClosed, modalClosed);
     };
   });
 

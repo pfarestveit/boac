@@ -33,74 +33,47 @@ from boac.lib.analytics import merge_analytics_for_user
 from boac.lib.berkeley import sis_term_id_for_name
 from boac.lib.http import tolerant_jsonify
 from boac.merged import calnet
-from boac.merged import member_details
 from boac.merged.sis_enrollments import merge_sis_enrollments
 from boac.merged.sis_profile import merge_sis_profile
 from boac.models.cohort_filter import CohortFilter
 from boac.models.normalized_cache_student_major import NormalizedCacheStudentMajor
 from boac.models.student import Student
-from boac.models.student_group import PRIMARY_GROUP_NAME, StudentGroup
-from flask import current_app as app, request, Response
+from boac.models.student_group import StudentGroup
+from flask import current_app as app, Response
 from flask_login import current_user, login_required
 
 
 @app.route('/api/profile')
 def user_profile():
-    profile = {
-        'uid': False,
-    }
+    uid = current_user.get_id()
+    profile = calnet.get_calnet_user_for_uid(app, uid)
     if current_user.is_active:
-        uid = current_user.get_id()
-        profile = calnet.get_calnet_user_for_uid(app, uid)
         # All BOAC views require group and cohort lists
-        profile['myCohorts'] = CohortFilter.all_owned_by(uid, include_alerts=True)
-        all_groups = StudentGroup.get_groups_by_owner_id(current_user.id)
-        my_primary = StudentGroup.get_or_create_my_primary(current_user.id)
-        profile['myPrimaryGroup'] = _decorate_student_group(my_primary)
-        profile['myGroups'] = []
-        for group in all_groups:
-            if group.name != PRIMARY_GROUP_NAME:
-                profile['myGroups'].append(_decorate_student_group(group))
+        authorized_user_id = current_user.id
+        groups = StudentGroup.get_groups_by_owner_id(authorized_user_id)
+        groups = [_decorate_student_group(group) for group in groups]
+        departments = {}
+        for m in current_user.department_memberships:
+            departments.update({
+                m.university_dept.dept_code: {
+                    'isAdvisor': m.is_advisor,
+                    'isDirector': m.is_director,
+                },
+            })
+        profile.update({
+            'myCohorts': CohortFilter.all_owned_by(uid, include_alerts=True),
+            'myGroups': groups,
+            'isAdmin': current_user.is_admin,
+            'departments': departments,
+        })
+    else:
+        profile.update({
+            'myCohorts': None,
+            'myGroups': None,
+            'isAdmin': False,
+            'departments': None,
+        })
     return tolerant_jsonify(profile)
-
-
-@app.route('/api/students/all')
-def all_students():
-    order_by = request.args['orderBy'] if 'orderBy' in request.args else None
-    return tolerant_jsonify(Student.get_all(order_by=order_by))
-
-
-@app.route('/api/students', methods=['POST'])
-@login_required
-def get_students():
-    params = request.get_json()
-    gpa_ranges = util.get(params, 'gpaRanges')
-    group_codes = util.get(params, 'groupCodes')
-    levels = util.get(params, 'levels')
-    majors = util.get(params, 'majors')
-    unit_ranges = util.get(params, 'unitRanges')
-    in_intensive_cohort = util.to_bool_or_none(util.get(params, 'inIntensiveCohort'))
-    is_inactive = util.get(params, 'isInactive')
-    order_by = util.get(params, 'orderBy', None)
-    offset = util.get(params, 'offset', 0)
-    limit = util.get(params, 'limit', 50)
-    results = Student.get_students(
-        gpa_ranges=gpa_ranges,
-        group_codes=group_codes,
-        levels=levels,
-        majors=majors,
-        unit_ranges=unit_ranges,
-        in_intensive_cohort=in_intensive_cohort,
-        is_inactive=is_inactive,
-        order_by=order_by,
-        offset=offset,
-        limit=limit,
-    )
-    member_details.merge_all(results['students'])
-    return tolerant_jsonify({
-        'members': results['students'],
-        'totalMemberCount': results['totalStudentCount'],
-    })
 
 
 @app.route('/api/user/<uid>/analytics')

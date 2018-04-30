@@ -155,10 +155,26 @@ ACADEMIC_PLAN_TO_DEGREE_PROGRAM_PAGE = {
     'Urban Studies': 'urban-studies',
 }
 
+BERKELEY_DEPT_NAME_TO_CODE = {
+    'Athletic Study Center': 'UWASC',
+    'Electrical Engineering and Computer Science': 'EHEEC',
+}
+
 
 def current_term_id():
     term_name = app.config['CANVAS_CURRENT_ENROLLMENT_TERM']
     return sis_term_id_for_name(term_name)
+
+
+def all_term_ids():
+    """Return SIS IDs of each term covered by BOAC, from current to oldest."""
+    earliest_term_id = int(sis_term_id_for_name(app.config['CANVAS_EARLIEST_TERM']))
+    term_id = int(current_term_id())
+    ids = []
+    while term_id >= earliest_term_id:
+        ids.append(str(term_id))
+        term_id -= 4 if (term_id % 10 == 2) else 3
+    return ids
 
 
 def sis_term_id_for_name(term_name=None):
@@ -200,3 +216,15 @@ def extract_canvas_ccn(canvas_course_section):
     canvas_sis_section_id = canvas_course_section.get('sis_section_id') or ''
     ccn_match = re.match(r'\ASEC:20\d{2}-[BCD]-(\d{5})', canvas_sis_section_id)
     return ccn_match.group(1) if ccn_match else None
+
+
+def is_authorized_to_use_boac(user):
+    authorized = False
+    if user.is_admin:
+        authorized = True
+    elif len(user.department_memberships):
+        for m in user.department_memberships:
+            authorized = m.is_advisor or m.is_director
+            if authorized:
+                break
+    return authorized
