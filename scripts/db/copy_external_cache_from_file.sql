@@ -23,38 +23,22 @@
  * ENHANCEMENTS, OR MODIFICATIONS.
  */
 
-(function(angular) {
+-- Temporary SQL script for BOAC-845. Please refer there for more information.
 
-  'use strict';
+-- This script must be run from inside the psql client:
+--
+-- Usage:
+--
+--     psql -U DBUSER postgresql://SOMEPLACE.amazonaws.com:SOMEPORT/BOACDB
+--     BOACDB=>  \i scripts/db/copy_external_cache_from_file
+--
+-- The input file should be named 'external_json_cache.bin'.
 
-  angular.module('boac').directive('sortableAlertsTable', function(authService, config, $rootScope) {
-
-    return {
-      // @see https://docs.angularjs.org/guide/directive#template-expanding-directive
-      restrict: 'E',
-
-      // @see https://docs.angularjs.org/guide/directive#isolating-the-scope-of-a-directive
-      scope: {
-        options: '=',
-        students: '='
-      },
-
-      templateUrl: '/static/app/home/sortableAlertsTable.html',
-
-      link: function(scope) {
-        scope.isCurrentUserAscAdvisor = authService.isCurrentUserAscAdvisor();
-        scope.demoMode = config.demoMode;
-        scope.curatedCohortStudentToggle = $rootScope.curatedCohortStudentToggle;
-        scope.sort = function(options, sortBy) {
-          if (options.sortBy === sortBy) {
-            options.reverse = !options.reverse;
-          } else {
-            options.sortBy = sortBy;
-            options.reverse = false;
-          }
-        };
-      }
-    };
-  });
-
-}(window.angular));
+\timing on
+BEGIN;
+LOCK TABLE json_cache;
+DELETE FROM json_cache WHERE key NOT LIKE 'job_%' AND key NOT LIKE 'asc_athletes_%';
+\COPY json_cache (created_at, updated_at, key, json) from 'external_json_cache.bin' WITH (FORMAT BINARY)
+COMMIT;
+VACUUM ANALYZE json_cache;
+\timing off
