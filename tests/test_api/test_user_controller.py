@@ -23,8 +23,10 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+import io
 
-from boac.externals import sis_enrollments_api, sis_student_api
+from boac.externals import data_loch, sis_student_api
+from boac.lib import mockingdata
 from boac.lib.mockingbird import MockResponse, register_mock
 import pytest
 
@@ -148,7 +150,7 @@ class TestUserAnalytics:
         """Returns a well-formed response if authenticated."""
         assert authenticated_response.status_code == 200
         assert authenticated_response.json['uid'] == '61889'
-        assert authenticated_response.json['canvasProfile']['id'] == 9000100
+        assert authenticated_response.json['canvasProfile']['canvas_id'] == 9000100
         assert len(authenticated_response.json['enrollmentTerms']) > 0
         for term in authenticated_response.json['enrollmentTerms']:
             assert len(term['enrollments']) > 0
@@ -220,13 +222,6 @@ class TestUserAnalytics:
         for enrollment in authenticated_response.json['enrollmentTerms'][0]['enrollments']:
             assert enrollment['displayName'] != 'PHYSED 11'
 
-    def test_past_term_dropped_enrollments_removed(self, authenticated_response):
-        """Removes dropped enrollments from past terms."""
-        for enrollment in authenticated_response.json['enrollmentTerms'][1]['enrollments']:
-            print(enrollment)
-            for section in enrollment['sections']:
-                assert section['enrollmentStatus'] != 'D'
-
     def test_course_site_without_enrollment(self, authenticated_response):
         """Returns course sites with no associated enrollments."""
         assert len(authenticated_response.json['enrollmentTerms'][0]['unmatchedCanvasSites']) == 0
@@ -239,36 +234,32 @@ class TestUserAnalytics:
     def test_course_site_without_membership(self, authenticated_response):
         """Returns a graceful error if the expected membership is not found in the course site."""
         course_without_membership = TestUserAnalytics.get_course_for_code(authenticated_response, '2178', 'BURMESE 1A')
-        assert course_without_membership['canvasSites'][0]['analytics']['error'] == 'Unable to retrieve analytics'
+        for metric in ['assignmentsSubmitted', 'currentScore', 'lastActivity', 'pageViews']:
+            assert course_without_membership['canvasSites'][0]['analytics'][metric]['error'] == 'Unable to retrieve from Data Loch'
 
     def test_course_site_with_enrollment(self, authenticated_response):
         """Returns sensible data if the expected enrollment is found in the course site."""
         course_with_enrollment = TestUserAnalytics.get_course_for_code(authenticated_response, '2178', 'MED ST 205')
         analytics = course_with_enrollment['canvasSites'][0]['analytics']
 
-        assert analytics['assignmentsOnTime']['student']['raw'] == 5
-        assert analytics['assignmentsOnTime']['student']['percentile'] == 93
-        assert analytics['assignmentsOnTime']['courseDeciles'][0] == 0
-        assert analytics['assignmentsOnTime']['courseDeciles'][9] == 5
-        assert analytics['assignmentsOnTime']['courseDeciles'][10] == 6
+        assert analytics['assignmentsSubmitted']['student']['raw'] == 8
+        assert analytics['assignmentsSubmitted']['student']['percentile'] == 64
+        assert analytics['assignmentsSubmitted']['courseDeciles'][0] == 0
+        assert analytics['assignmentsSubmitted']['courseDeciles'][9] == 10
+        assert analytics['assignmentsSubmitted']['courseDeciles'][10] == 17
 
-        assert analytics['courseCurrentScore']['student']['raw'] == 84
+        assert analytics['currentScore']['student']['raw'] == 84
 
-        assert analytics['pageViews']['student']['raw'] == 768
+        assert analytics['lastActivity']['boxPlottable'] is True
+        assert analytics['lastActivity']['student']['raw'] == 1535275620
+        assert analytics['lastActivity']['student']['percentile'] == 93
+        assert analytics['lastActivity']['displayPercentile'] == '90th'
+
+        assert analytics['pageViews']['student']['raw'] == 766
         assert analytics['pageViews']['student']['percentile'] == 54
         assert analytics['pageViews']['courseDeciles'][0] == 9
         assert analytics['pageViews']['courseDeciles'][9] == 917
         assert analytics['pageViews']['courseDeciles'][10] == 31983
-
-        assert analytics['participations']['student']['raw'] == 5
-        assert analytics['participations']['student']['percentile'] == 83
-        assert analytics['participations']['courseDeciles'][0] == 0
-        assert analytics['participations']['courseDeciles'][9] == 6
-        assert analytics['participations']['courseDeciles'][10] == 12
-
-        assert analytics['loch']['assignmentsOnTime']['student']['raw'] == 7
-        assert analytics['loch']['assignmentsSubmitted']['student']['raw'] == 8
-        assert analytics['loch']['pageViews']['student']['raw'] == 766
 
     def test_empty_canvas_course_feed(self, client, fake_auth):
         """Returns 200 if user is found and Canvas course feed is empty."""
@@ -360,14 +351,16 @@ class TestUserAnalytics:
         """Collects dropped sections in a separate feed."""
         dropped_sections = authenticated_response.json['enrollmentTerms'][0]['droppedSections']
         assert len(dropped_sections) == 1
-        assert dropped_sections[0]['displayName'] == 'NUC ENG 124'
-        assert dropped_sections[0]['component'] == 'DIS'
-        assert dropped_sections[0]['sectionNumber'] == '200'
+        assert dropped_sections[0]['displayName'] == 'MUSIC 41C'
+        assert dropped_sections[0]['component'] == 'TUT'
+        assert dropped_sections[0]['sectionNumber'] == '002'
 
     def test_sis_enrollment_not_found(self, authenticated_session, client):
         """Gracefully handles missing SIS enrollments."""
-        sis_error = MockResponse(200, {}, '{"apiResponse": {"response": {"message": "Something unexpected."}}}')
-        with register_mock(sis_enrollments_api._get_enrollments, sis_error):
+        hdrs = 'grade,units,grading_basis,sis_enrollment_status,sis_term_id,ldap_uid,sis_course_title,' \
+               'sis_course_name,sis_section_id,sis_primary,sis_instruction_format,sis_section_num '
+        mr = mockingdata.MockRows(io.StringIO(f'{hdrs}\n'))
+        with mockingdata.register_mock(data_loch._get_sis_enrollments, mr):
             response = client.get(TestUserAnalytics.field_hockey_star)
             assert response.status_code == 200
             assert len(response.json['enrollmentTerms']) > 0

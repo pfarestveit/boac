@@ -32,6 +32,7 @@
     config,
     courseFactory,
     googleAnalyticsService,
+    page,
     utilService,
     validationService,
     visualizationService,
@@ -44,11 +45,12 @@
 
     $scope.demoMode = config.demoMode;
     $scope.isCurrentUserAscAdvisor = authService.isCurrentUserAscAdvisor();
-    $scope.isLoading = true;
+    page.loading(true);
+    $scope.lastActivityDays = utilService.lastActivityDays;
     $scope.tab = 'list';
 
     var onTab = $scope.onTab = function(tabName) {
-      $scope.isLoading = true;
+      page.loading(true);
       $scope.tab = tabName;
       $location.search('v', $scope.tab);
       if (tabName === 'matrix') {
@@ -62,10 +64,10 @@
           $scope.yAxisMeasure = yAxisMeasure;
           // List of students-without-data is rendered below the scatterplot.
           $scope.studentsWithoutData = studentsWithoutData;
-          $scope.isLoading = false;
+          page.loading(false);
         });
       } else if (tabName === 'list') {
-        $scope.isLoading = false;
+        page.loading(false);
       }
     };
 
@@ -88,7 +90,7 @@
             $scope.section.students.unshift(averageStudent);
           }
         }
-        $scope.isLoading = false;
+        page.loading(false);
         if (args.a) {
           // Scroll to anchor
           $scope.anchor = args.a;
@@ -101,7 +103,7 @@
         );
       }).catch(function(err) {
         $scope.error = validationService.parseError(err);
-        $scope.isLoading = false;
+        page.loading(false);
 
       }).then(function() {
         // Begin with matrix view if arg is present

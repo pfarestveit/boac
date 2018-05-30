@@ -30,6 +30,7 @@
   angular.module('boac').controller('HomeController', function(
     cohortService,
     config,
+    page,
     studentGroupService,
     $rootScope,
     $scope
@@ -38,14 +39,14 @@
     $scope.demoMode = config.demoMode;
 
     var init = function() {
-      $scope.isLoading = true;
+      page.loading(true);
 
       studentGroupService.loadMyGroups(function(myGroups) {
         $scope.myGroups = myGroups;
 
         cohortService.loadMyCohorts(function(myCohorts) {
           $scope.myCohorts = myCohorts;
-          $scope.isLoading = false;
+          page.loading(false);
         });
       });
     };
@@ -55,10 +56,10 @@
     });
 
     $rootScope.$on('myCohortsUpdated', function() {
-      $scope.isLoading = true;
+      page.loading(true);
       cohortService.loadMyCohorts(function(myCohorts) {
         $scope.myCohorts = myCohorts;
-        $scope.isLoading = false;
+        page.loading(false);
       });
     });
 

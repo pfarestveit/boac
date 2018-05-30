@@ -53,6 +53,10 @@ def boac_schema():
     return app.config['DATA_LOCH_BOAC_SCHEMA']
 
 
+def intermediate_schema():
+    return app.config['DATA_LOCH_INTERMEDIATE_SCHEMA']
+
+
 @stow('loch_page_views_{course_id}', for_term=True)
 def get_course_page_views(course_id, term_id):
     return _get_course_page_views(course_id)
@@ -69,43 +73,91 @@ def _get_course_page_views(course_id):
     return safe_execute(sql)
 
 
-@stow('loch_scores_{course_id}', for_term=True)
-def get_course_scores(course_id, term_id):
-    return _get_course_scores(course_id)
+@stow('loch_canvas_course_scores_{course_id}', for_term=True)
+def get_canvas_course_scores(course_id, term_id):
+    return _get_canvas_course_scores(course_id)
 
 
-@fixture('loch_scores_{course_id}.csv')
-def _get_course_scores(course_id):
-    sql = f"""SELECT canvas_user_id, current_score
-              FROM {boac_schema()}.user_course_scores
+@fixture('loch_canvas_course_scores_{course_id}.csv')
+def _get_canvas_course_scores(course_id):
+    sql = f"""SELECT
+                canvas_user_id,
+                current_score,
+                EXTRACT(EPOCH FROM last_activity_at) AS last_activity_at,
+                sis_enrollment_status
+              FROM {boac_schema()}.course_enrollments
               WHERE course_id={course_id}
               ORDER BY canvas_user_id
         """
     return safe_execute(sql)
 
 
-@stow('loch_on_time_submissions_relative_to_user_{course_id}_{user_id}', for_term=True)
-def get_on_time_submissions_relative_to_user(course_id, user_id, term_id):
-    return _get_on_time_submissions_relative_to_user(course_id, user_id)
+def get_sis_enrollments(uid, term_id):
+    return _get_sis_enrollments(uid, term_id)
 
 
-@fixture('loch_on_time_submissions_relative_to_user_{course_id}_{user_id}.csv')
-def _get_on_time_submissions_relative_to_user(course_id, user_id):
-    sql = f"""SELECT canvas_user_id,
-        COUNT(CASE WHEN
-          assignment_status in ('graded', 'on_time', 'submitted')
-        THEN 1 ELSE NULL END) AS on_time_submissions
-        FROM {boac_schema()}.assignment_submissions_scores
-        WHERE assignment_id IN
-        (
-          SELECT DISTINCT assignment_id FROM {boac_schema()}.assignment_submissions_scores
-          WHERE canvas_user_id = {user_id} AND course_id = {course_id}
-        )
-        GROUP BY canvas_user_id
-        HAVING count(*) = (
-          SELECT count(*) FROM {boac_schema()}.assignment_submissions_scores
-          WHERE canvas_user_id = {user_id} AND course_id = {course_id}
-        )
+@fixture('loch_sis_enrollments_{uid}_{term_id}.csv')
+def _get_sis_enrollments(uid, term_id):
+    sql = f"""SELECT
+                  enr.grade, enr.units, enr.grading_basis, enr.sis_enrollment_status, enr.sis_term_id, enr.ldap_uid,
+                  crs.sis_course_title, crs.sis_course_name,
+                  crs.sis_section_id, crs.sis_primary, crs.sis_instruction_format, crs.sis_section_num
+              FROM {intermediate_schema()}.sis_enrollments enr
+              JOIN {intermediate_schema()}.course_sections crs
+                  ON crs.sis_section_id = enr.sis_section_id
+                  AND crs.sis_term_id = enr.sis_term_id
+              WHERE enr.ldap_uid = {uid}
+                  AND enr.sis_enrollment_status != 'D'
+                  AND enr.sis_term_id = {term_id}
+              ORDER BY crs.sis_course_name, crs.sis_primary DESC, crs.sis_instruction_format, crs.sis_section_num
+        """
+    return safe_execute(sql)
+
+
+@fixture('loch_sis_section_{term_id}_{sis_section_id}.csv')
+def get_sis_section(term_id, sis_section_id):
+    sql = f"""SELECT
+                  sc.sis_term_id, sc.sis_section_id, sc.sis_course_title, sc.sis_course_name,
+                  sc.is_primary, sc.sis_instruction_format, sc.sis_section_num, sc.allowed_units,
+                  sc.instructor_uid, sc.instructor_name, sc.instructor_role_code,
+                  sc.meeting_location, sc.meeting_days,
+                  sc.meeting_start_time, sc.meeting_end_time, sc.meeting_start_date, sc.meeting_end_date
+              FROM {intermediate_schema()}.sis_sections sc
+              WHERE sc.sis_section_id = {sis_section_id}
+                  AND sc.sis_term_id = {term_id}
+              ORDER BY sc.meeting_days, sc.meeting_start_time, sc.meeting_end_time, sc.instructor_name
+        """
+    return safe_execute(sql)
+
+
+@stow('loch_sis_sections_in_canvas_course_{canvas_course_id}', for_term=True)
+def get_sis_sections_in_canvas_course(canvas_course_id, term_id):
+    return _get_sis_sections_in_canvas_course(canvas_course_id)
+
+
+@fixture('loch_sis_sections_in_canvas_course_{canvas_course_id}.csv')
+def _get_sis_sections_in_canvas_course(canvas_course_id):
+    # The GROUP BY clause eliminates duplicates when multiple site sections include the same SIS class section.
+    sql = f"""SELECT sis_section_id
+        FROM {intermediate_schema()}.course_sections
+        WHERE canvas_course_id={canvas_course_id}
+        GROUP BY sis_section_id
+        """
+    return safe_execute(sql)
+
+
+@stow('loch_student_canvas_courses_{uid}.csv')
+def get_student_canvas_courses(uid):
+    return _get_student_canvas_courses(uid)
+
+
+@fixture('loch_student_canvas_courses_{uid}.csv')
+def _get_student_canvas_courses(uid):
+    sql = f"""SELECT DISTINCT enr.canvas_course_id, cs.canvas_course_name, cs.canvas_course_code, cs.canvas_course_term
+        FROM {intermediate_schema()}.active_student_enrollments enr
+        JOIN {intermediate_schema()}.course_sections cs
+            ON cs.canvas_course_id = enr.canvas_course_id
+        WHERE enr.uid = {uid}
         """
     return safe_execute(sql)
 
@@ -132,5 +184,20 @@ def _get_submissions_turned_in_relative_to_user(course_id, user_id):
           SELECT count(*) FROM {boac_schema()}.assignment_submissions_scores
           WHERE canvas_user_id = {user_id} AND course_id = {course_id}
         )
+        """
+    return safe_execute(sql)
+
+
+@stow('loch_user_for_uid_{uid}')
+def get_user_for_uid(uid):
+    rows = _get_user_for_uid(uid)
+    return False if not rows or (len(rows) == 0) else rows[0]
+
+
+@fixture('loch_user_for_uid_{uid}.csv')
+def _get_user_for_uid(uid):
+    sql = f"""SELECT canvas_id, name, uid
+        FROM {intermediate_schema()}.users
+        WHERE uid = {uid}
         """
     return safe_execute(sql)

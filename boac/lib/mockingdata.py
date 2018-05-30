@@ -50,10 +50,14 @@ class MockRows:
         if self.csv_in is None:
             return None
         # Unless otherwise instructed, `pandas` will interpret numeric strings as numbers instead of strings.
-        df = pandas.read_csv(self.csv_in, dtype={'uid': object})
+        df = pandas.read_csv(self.csv_in, dtype={'ldap_uid': object, 'sis_section_num': object, 'uid': object})
         # `pandas` also likes to store its numbers as numpy.int64, which is not JSON serializable, so we have
         # to pipe the dataframe through JSON conversion before returning.
-        return json.loads(df.to_json(None, 'records'))
+        result = json.loads(df.to_json(None, 'records'))
+        # Be kind, rewind.
+        if hasattr(self.csv_in, 'seek'):
+            self.csv_in.seek(0)
+        return result
 
 
 """Registry associating mockable request functions with zero or more mock responses. Responses are arranged
@@ -123,7 +127,7 @@ def fixture(pattern):
 
     @mocking(query_external_db)
     def external_db_mock(resource_id):
-        return response_from_fixture('resource_{resource_id}_rows.csv'.format(resource_id))
+        return response_from_fixture(f'resource_{resource_id}_rows.csv')
     """
     def fixture_wrapper(func):
         def register_fixture(*args, **kw):
@@ -147,9 +151,9 @@ def response_from_fixture(pattern):
 
     @mocking(query_external_db)
     def external_db_mock(resource_id):
-        return response_from_fixture('resource_{}_rows.csv'.format(resource_id))
+        return response_from_fixture(f'resource_{resource_id}_rows.csv')
     """
-    fixture_path = '{}/{}'.format(_get_fixtures_path(), pattern)
+    fixture_path = f'{_get_fixtures_path()}/{pattern}'
     if os.path.isfile(fixture_path):
         return MockRows(fixture_path)
     else:

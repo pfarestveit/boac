@@ -25,11 +25,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 from boac.api.errors import ResourceNotFoundError
-import boac.api.util as api_util
-from boac.externals import canvas
+from boac.externals import data_loch
 from boac.lib import analytics
 from boac.lib import util
-from boac.lib.berkeley import extract_canvas_ccn
 from boac.lib.http import tolerant_jsonify
 from boac.merged import student_details
 from boac.models.normalized_cache_enrollment import NormalizedCacheEnrollment
@@ -40,10 +38,9 @@ from flask_login import login_required
 @app.route('/api/section/<term_id>/<section_id>')
 @login_required
 def get_section(term_id, section_id):
-    row = NormalizedCacheEnrollment.get_course_section(term_id=term_id, section_id=section_id)
-    if not row:
+    section = NormalizedCacheEnrollment.get_course_section(term_id=term_id, section_id=section_id)
+    if not section:
         raise ResourceNotFoundError(f'No section {section_id} in term {term_id}')
-    section = api_util.course_section_to_json(term_id=term_id, section=row)
     students = section.get('students', [])
     student_details.merge_all(students, section['termId'])
     for student in students:
@@ -99,10 +96,12 @@ def _filter_canvas_sites_per_section_id(students, term_id, section_id):
     canvas_sites = []
     for canvas_site in list(canvas_sites_dict.values()):
         canvas_course_id = canvas_site['canvasCourseId']
-        sections = canvas.get_course_sections(canvas_course_id, term_id) or []
+        sections = data_loch.get_sis_sections_in_canvas_course(canvas_course_id, term_id)
         for section in sections:
-            if section_id == extract_canvas_ccn(section):
+            # Is this an official course section, linked to the SIS?
+            if section['sis_section_id']:
                 canvas_sites.append(canvas_site)
+                break
     # Remove students' extraneous canvas sites
     canvas_course_ids = [s['canvasCourseId'] for s in canvas_sites]
     for student in students:

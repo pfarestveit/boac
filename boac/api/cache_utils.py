@@ -28,7 +28,7 @@ import math
 from threading import Thread
 from boac import db, std_commit
 from boac.api.util import canvas_courses_api_feed
-from boac.lib import analytics
+from boac.externals import data_loch
 from boac.lib import berkeley
 from boac.merged import import_asc_athletes
 from boac.merged.sis_enrollments import merge_sis_enrollments_for_term
@@ -37,6 +37,7 @@ from boac.models import json_cache
 from boac.models.alert import Alert
 from boac.models.job_progress import JobProgress
 from boac.models.json_cache import JsonCache
+from boac.models.student import Student
 from flask import current_app as app
 from sqlalchemy import and_, or_
 
@@ -167,16 +168,16 @@ def clear_term(term_id):
     Application-supporting history must be explicitly excluded.
     """
     term_name = berkeley.term_name_for_sis_id(term_id)
-    filter = JsonCache.key.like('term_{}%'.format(term_name))
+    _filter = JsonCache.key.like(f'term_{term_name}%')
     if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
         current_externals_filter = and_(
             JsonCache.key.notlike('term_%'),
             JsonCache.key.notlike('asc_athletes_%'),
             JsonCache.key.notlike('job_%'),
         )
-        filter = or_(filter, current_externals_filter)
-    matches = db.session.query(JsonCache).filter(filter)
-    app.logger.info('Will delete {} entries'.format(matches.count()))
+        _filter = or_(_filter, current_externals_filter)
+    matches = db.session.query(JsonCache).filter(_filter)
+    app.logger.info(f'Will delete {matches.count()} entries')
     matches.delete(synchronize_session=False)
     std_commit()
 
@@ -212,8 +213,6 @@ def load_all_terms():
 
 
 def load_term(term_id=berkeley.current_term_id()):
-    from boac.models.student import Student
-
     if term_id == 'all':
         load_all_terms()
         return
@@ -231,7 +230,7 @@ def load_term(term_id=berkeley.current_term_id()):
         s, f = load_canvas_externals(uid, term_id)
         success_count += s
         failures += f
-        s, f = load_sis_externals(term_id, csid)
+        s, f = load_sis_externals(uid, csid, term_id)
         success_count += s
         failures += f
         nbr_finished += 1
@@ -259,44 +258,33 @@ def load_term(term_id=berkeley.current_term_id()):
 
 
 def load_canvas_externals(uid, term_id):
-    from boac.externals import canvas
-
     success_count = 0
     failures = []
 
-    canvas_user_profile = canvas.get_user_for_uid(uid)
-    if canvas_user_profile is None:
-        failures.append(f'canvas.get_user_for_uid failed for UID {uid}')
+    canvas_user_profile = data_loch.get_user_for_uid(uid)
+    if not canvas_user_profile:
+        failures.append(f'data_loch.get_user_for_uid failed for UID {uid}')
     elif canvas_user_profile:
         success_count += 1
-        sites = canvas.get_student_courses(uid)
+        sites = data_loch.get_student_canvas_courses(uid)
         if sites is None:
-            failures.append(f'canvas.get_student_courses failed for UID {uid}')
+            failures.append(f'data_loch.get_student_canvas_courses failed for UID {uid}')
         else:
             success_count += 1
             term_name = berkeley.term_name_for_sis_id(term_id)
             for site in sites:
-                if site.get('term', {}).get('name') != term_name:
+                if site.get('canvas_course_term') != term_name:
                     continue
-                site_id = site['id']
-                if not canvas.get_course_sections(site_id, term_id):
-                    failures.append(f'canvas.get_course_sections failed for UID {uid}, site_id {site_id}')
-                    continue
-                success_count += 1
-                if not canvas.get_student_summaries(site_id, term_id):
-                    failures.append(f'canvas.get_student_summaries failed for site_id {site_id}')
-                    continue
-                success_count += 1
-                # Do not treat an empty list as a failure.
-                if canvas.get_assignments_analytics(site_id, uid, term_id) is None:
-                    failures.append(f'canvas.get_assignments_analytics failed for UID {uid}, site_id {site_id}')
+                site_id = site['canvas_course_id']
+                if not data_loch.get_sis_sections_in_canvas_course(site_id, term_id):
+                    failures.append(f'data_loch.get_sis_sections_in_canvas_course failed for UID {uid}, site_id {site_id}')
                     continue
                 success_count += 1
     return success_count, failures
 
 
-def load_sis_externals(term_id, csid):
-    from boac.externals import sis_degree_progress_api, sis_enrollments_api, sis_student_api
+def load_sis_externals(uid, csid, term_id):
+    from boac.externals import sis_degree_progress_api, sis_student_api
     from boac.merged.sis_enrollments import merge_enrollment
 
     term_name = berkeley.term_name_for_sis_id(term_id)
@@ -317,43 +305,35 @@ def load_sis_externals(term_id, csid):
     else:
         failures.append(f'SIS get_student failed for CSID {csid}')
 
-    enrollments = sis_enrollments_api.get_enrollments(csid, term_id)
+    enrollments = data_loch.get_sis_enrollments(uid, term_id) or []
     if enrollments:
         # Perform higher-level enrollments feed processing; update NormalizedCacheEnrollment.
         merge_enrollment(csid, enrollments, term_id, term_name)
         success_count += 1
     elif enrollments is None:
-        failures.append(f'SIS get_enrollments failed for CSID {csid}, term_id {term_id}')
+        failures.append(f'get_sis_enrollments failed for CSID {csid}, term_id {term_id}')
     return success_count, failures
 
 
 def load_analytics_feeds(uid, sid, term_id):
     # Load distilled analytics feeds, one level up from the Canvas APIs already called by load_canvas_externals.
-    # Prior to load, existing assignment alerts for the student and term are deactivated. Alerts still in effect
-    # will be reactivated as feeds are loaded.
+    # Prior to load, existing assignment alerts for the student and term are deactivated.
+    # TODO Reinstate assignment alerts based on loch data.
     Alert.deactivate_all(sid=sid, term_id=term_id, alert_types=['late_assignment', 'missing_assignment'])
-    from boac.externals import canvas, data_loch
-    canvas_user_profile = canvas.get_user_for_uid(uid)
-    student_courses = canvas.get_student_courses(uid)
+    canvas_user_profile = data_loch.get_user_for_uid(uid)
+    canvas_user_id = canvas_user_profile and canvas_user_profile['canvas_id']
+    student_courses = data_loch.get_student_canvas_courses(uid)
     canvas_courses_feed = canvas_courses_api_feed(student_courses)
     # Route the course site feed through our SIS enrollments merge, so that site selection logic (e.g., filtering
     # out dropped and athletic enrollments) is consistent with web API calls.
     term_name = berkeley.term_name_for_sis_id(term_id)
-    merged_term_feed = merge_sis_enrollments_for_term(canvas_courses_feed, sid, term_name)
+    merged_term_feed = merge_sis_enrollments_for_term(canvas_courses_feed, uid, sid, term_name)
 
     def load_analytics_for_sites(sites):
         for site in sites:
-            analytics.analytics_from_canvas_course_assignments(
-                course_id=site['canvasCourseId'],
-                course_code=site['courseCode'],
-                uid=uid,
-                sid=sid,
-                term_id=term_id,
-            )
             data_loch.get_course_page_views(site['canvasCourseId'], term_id)
-            canvas_user_id = canvas_user_profile.get('id')
+            data_loch.get_canvas_course_scores(site['canvasCourseId'], term_id)
             if canvas_user_id:
-                data_loch.get_on_time_submissions_relative_to_user(site['canvasCourseId'], canvas_user_id, term_id)
                 data_loch.get_submissions_turned_in_relative_to_user(site['canvasCourseId'], canvas_user_id, term_id)
     if merged_term_feed:
         for enrollment in merged_term_feed['enrollments']:

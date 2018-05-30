@@ -33,6 +33,7 @@
     courseFactory,
     googleAnalyticsService,
     me,
+    page,
     studentGroupFactory,
     studentFactory,
     studentSearchService,
@@ -46,12 +47,15 @@
     $stateParams
   ) {
 
+    page.loading(true);
+
     $scope.student = {
       canvasProfile: null,
-      enrollmentTerms: null,
-      isLoading: true
+      enrollmentTerms: null
     };
     $scope.demoMode = config.demoMode;
+    $scope.lastActivityDays = utilService.lastActivityDays;
+    $scope.lastActivityInContext = utilService.lastActivityInContext;
     $scope.isCurrentUserAscAdvisor = authService.isCurrentUserAscAdvisor();
     $scope.myGroups = _.clone(me.myGroups);
     $scope.showAllTerms = false;
@@ -87,7 +91,7 @@
     };
 
     var loadStudent = function(uid, callback) {
-      $scope.student.isLoading = true;
+      page.loading(true);
       var preferredName = null;
       studentFactory.analyticsPerUser(uid).then(function(analytics) {
         var student = analytics.data;
@@ -142,12 +146,12 @@
         }
 
       }).then(function() {
-        $scope.student.isLoading = false;
+        page.loading(false);
         googleAnalyticsService.track('student', 'view-profile', preferredName, parseInt(uid, 10));
 
       }).catch(function(err) {
         $scope.error = validationService.parseError(err);
-        $scope.student.isLoading = false;
+        page.loading(false);
 
       }).then(callback);
     };

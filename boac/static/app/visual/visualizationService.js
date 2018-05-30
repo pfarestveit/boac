@@ -146,12 +146,12 @@
     var drawScatterplot = function(students, yAxisMeasure, goToUserPage) {
       var svg;
 
-      function x(d) { return d.analytics.pageViews.percentile; }
+      function x(d) { return d.analytics.lastActivity.percentile; }
       function y(d) { return _.get(d, yAxisMeasure).percentile; }
       function key(d) { return d.uid; }
 
-      var yAxisName = 'Assignments on time';
-      if (yAxisMeasure === 'analytics.courseCurrentScore') {
+      var yAxisName = 'Assignments Submitted';
+      if (yAxisMeasure === 'analytics.currentScore') {
         yAxisName = 'Assignment grades';
       }
 
@@ -312,7 +312,7 @@
         .attr('text-anchor', 'start')
         .attr('x', 0)
         .attr('y', height + 30)
-        .text('bCourses page views');
+        .text('Days since bCourses course site viewed');
 
       // Add a y-axis label.
       svg.append('text')
@@ -358,9 +358,9 @@
           .attr('class', config.demoMode ? 'demo-mode-blur' : 'matrix-tooltip-header')
           .text(fullName);
         var table = tooltip.append('table').attr('class', 'matrix-tooltip-table');
-        var pageViewsRow = table.append('tr');
-        pageViewsRow.append('td').attr('class', 'matrix-tooltip-label').text('bCourses page views');
-        pageViewsRow.append('td').attr('class', 'matrix-tooltip-value').text(displayValue(d, 'analytics.pageViews'));
+        var daysSinceRow = table.append('tr');
+        daysSinceRow.append('td').attr('class', 'matrix-tooltip-label').text('Days since bCourses course site viewed');
+        daysSinceRow.append('td').attr('class', 'matrix-tooltip-value').text(displayValue(d, 'analytics.lastActivity'));
         var yAxisRow = table.append('tr');
         yAxisRow.append('td').text(yAxisName);
         yAxisRow.append('td').attr('class', 'matrix-tooltip-value').text(displayValue(d, yAxisMeasure));
@@ -399,9 +399,9 @@
      */
     var scatterplotRefresh = function(students, goToUserPage, callback) {
       // Plot the cohort
-      var yAxisMeasure = $location.search().yAxis || 'analytics.courseCurrentScore';
+      var yAxisMeasure = $location.search().yAxis || 'analytics.currentScore';
       var partitions = _.partition(students, function(student) {
-        return _.isFinite(_.get(student, 'analytics.pageViews.percentile')) && _.isFinite(_.get(student, yAxisMeasure + '.percentile'));
+        return _.isFinite(_.get(student, 'analytics.lastActivity.percentile')) && _.isFinite(_.get(student, yAxisMeasure + '.percentile'));
       });
       // Pass along a subset of students that have useful data.
       drawScatterplot(partitions[0], yAxisMeasure, goToUserPage);

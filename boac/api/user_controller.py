@@ -26,7 +26,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 from boac.api import errors
 import boac.api.util as api_util
-from boac.externals import canvas
+from boac.externals import data_loch
 from boac.externals.cal1card_photo_api import get_cal1card_photo
 from boac.lib import util
 from boac.lib.analytics import merge_analytics_for_user
@@ -79,12 +79,10 @@ def user_profile():
 @app.route('/api/user/<uid>/analytics')
 @login_required
 def user_analytics(uid):
-    canvas_profile = canvas.get_user_for_uid(uid)
+    canvas_profile = data_loch.get_user_for_uid(uid)
     if canvas_profile is False:
         raise errors.ResourceNotFoundError('No Canvas profile found for user')
-    elif not canvas_profile:
-        raise errors.InternalServerError('Unable to reach bCourses')
-    canvas_id = canvas_profile['id']
+    canvas_id = canvas_profile['canvas_id']
 
     student = Student.query.filter_by(uid=uid).first()
     if student:
@@ -94,12 +92,12 @@ def user_analytics(uid):
         sis_profile = False
         athletics_profile = False
 
-    user_courses = canvas.get_student_courses(uid) or []
+    user_courses = data_loch.get_student_canvas_courses(uid) or []
     if student and sis_profile:
         # CalCentral's Student Overview page is advisors' official information source for the student.
-        student_profile_link = 'https://calcentral.berkeley.edu/user/overview/{}'.format(uid)
+        student_profile_link = f'https://calcentral.berkeley.edu/user/overview/{uid}'
         canvas_courses_feed = api_util.canvas_courses_api_feed(user_courses)
-        enrollment_terms = merge_sis_enrollments(canvas_courses_feed, student.sid, sis_profile.get('matriculation'))
+        enrollment_terms = merge_sis_enrollments(canvas_courses_feed, uid, student.sid, sis_profile.get('matriculation'))
     else:
         student_profile_link = None
         enrollment_terms = []
@@ -140,18 +138,6 @@ def user_photo(uid):
         return Response(photo, mimetype='image/jpeg')
     else:
         raise errors.ResourceNotFoundError('No photo was found for the requested id.')
-
-
-def load_canvas_profile(uid):
-    canvas_profile = False
-    canvas_response = canvas.get_user_for_uid(uid)
-    if canvas_response:
-        canvas_profile = canvas_response
-    elif canvas_response is None:
-        canvas_profile = {
-            'error': 'Unable to reach bCourses',
-        }
-    return canvas_profile
 
 
 def _decorate_student_group(group):
