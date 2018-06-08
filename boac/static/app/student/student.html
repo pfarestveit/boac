@@ -223,9 +223,7 @@
                                          data-ng-bind="section.displayName"></span><span data-ng-if="!$last"> | </span><span data-ng-if="$last">)</span>
                               </span>
                             </div>
-                            <div class="student-waitlisted faint-text" data-ng-if="course.waitlisted">
-                              (Waitlisted)
-                            </div>
+                            <span class="student-waitlisted red-flag-status" data-ng-if="course.waitlisted">WAITLISTED</span>
                           </div>
                         </div>
                       </div>
@@ -310,18 +308,20 @@
                         <boxplot-draw class="profile-boxplot"
                                       data-dataset="canvasSite.analytics"
                                       data-ng-if="canvasSite.analytics.currentScore.boxPlottable"></boxplot-draw>
-                        <span class="visualize-metrics-no-data"
-                              data-ng-if="canvasSite.analytics.currentScore.courseDeciles">
-                          Score:
-                          <strong data-ng-bind="canvasSite.analytics.currentScore.student.raw"></strong>
-                          <span class="visualize-metrics-maximum">
-                            (Maximum: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[10]"></span>)
+                        <div data-ng-if="!canvasSite.analytics.currentScore.boxPlottable">
+                          <span class="visualize-metrics-no-data"
+                                data-ng-if="canvasSite.analytics.currentScore.courseDeciles">
+                            Score:
+                            <strong data-ng-bind="canvasSite.analytics.currentScore.student.raw"></strong>
+                            <span class="visualize-metrics-maximum">
+                              (Maximum: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[10]"></span>)
+                            </span>
                           </span>
-                        </span>
-                        <span class="visualize-metrics-no-data"
-                              data-ng-if="!canvasSite.analytics.currentScore.courseDeciles">
-                          No Data
-                        </span>
+                          <span class="visualize-metrics-no-data"
+                                data-ng-if="!canvasSite.analytics.currentScore.courseDeciles">
+                            No Data
+                          </span>
+                        </div>
                        </td>
                     </tr>
                     <tr>
