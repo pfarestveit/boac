@@ -28,14 +28,16 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 from boac.lib import http
 from boac.lib.mockingbird import fixture
+from boac.models.json_cache import stow
 from flask import current_app as app
 
 
+@stow('sis_drops_and_midterms_{cs_id}', for_term=True)
 def get_drops_and_midterms(cs_id, term_id):
     """Obtain dropped classes and midterm deficient grades for the term."""
     response = get_enrollments(cs_id, term_id)
     if not response:
-        return response
+        return {}
     enrollments = response.get('studentEnrollments', [])
     dropped_classes = []
     midterm_grades = {}

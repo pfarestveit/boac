@@ -27,9 +27,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 import boac.api.util as api_util
 from boac.externals import data_loch, sis_enrollments_api
 from boac.lib.berkeley import sis_term_id_for_name
-from boac.models.alert import Alert
 from boac.models.json_cache import stow
-from boac.models.normalized_cache_enrollment import NormalizedCacheEnrollment
 from flask import current_app as app
 
 
@@ -59,26 +57,21 @@ def merge_sis_enrollments(canvas_course_sites, uid, cs_id, matriculation):
 def merge_sis_enrollments_for_term(canvas_course_sites, uid, cs_id, term_name):
     term_id = sis_term_id_for_name(term_name)
     enrollments = data_loch.get_sis_enrollments(uid, term_id) or []
-    term_feed = merge_enrollment(cs_id, enrollments, term_id, term_name)
+    if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
+        drops_and_midterms = sis_enrollments_api.get_drops_and_midterms(cs_id, term_id)
+    else:
+        drops_and_midterms = None
+    term_feed = merge_enrollment(cs_id, enrollments, term_id, term_name, drops_and_midterms)
 
     for site in canvas_course_sites:
         merge_canvas_course_site(term_feed, site)
-
-    # Screen out unwanted enrollments after course site merge so that associated sites are removed rather than orphaned.
-    remove_athletic_enrollments(term_feed)
 
     sort_canvas_course_sites(term_feed)
 
     return term_feed
 
 
-def merge_drops_and_midterms(cs_id, term_name, term_feed):
-    """Check for dropped classes and midterm deficient grades, creating new Alerts as needed."""
-    if term_name != app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
-        return term_feed
-
-    term_id = sis_term_id_for_name(term_name)
-    drops_and_midterms = sis_enrollments_api.get_drops_and_midterms(cs_id, term_id) or {}
+def merge_drops_and_midterms(term_feed, drops_and_midterms):
     term_feed['droppedSections'] = drops_and_midterms.get('droppedPrimarySections', [])
     section_midterms = drops_and_midterms.get('midtermGrades', {})
     for enrollment in term_feed['enrollments']:
@@ -88,14 +81,12 @@ def merge_drops_and_midterms(cs_id, term_name, term_feed):
                 midterm_grade = section_midterms[section_id]
                 section['midtermGrade'] = midterm_grade
                 enrollment['midtermGrade'] = midterm_grade
-                Alert.update_midterm_grade_alerts(cs_id, term_id, section_id, enrollment['displayName'], midterm_grade)
     return term_feed
 
 
 @stow('merged_enrollment_{cs_id}', for_term=True)
-def merge_enrollment(cs_id, enrollments, term_id, term_name):
+def merge_enrollment(cs_id, enrollments, term_id, term_name, drops_and_midterms):
     enrollments_by_class = {}
-    enrollments_for_normalized_cache = []
     term_section_ids = {}
     enrolled_units = 0
     for enrollment in enrollments:
@@ -103,10 +94,8 @@ def merge_enrollment(cs_id, enrollments, term_id, term_name):
         section_id = enrollment.get('sis_section_id')
         if section_id in term_section_ids:
             continue
-
         term_section_ids[section_id] = True
-        if enrollment['sis_enrollment_status'] in ['E', 'W']:
-            enrollments_for_normalized_cache.append(enrollment)
+
         section_feed = {
             'ccn': enrollment['sis_section_id'],
             'component': enrollment['sis_instruction_format'],
@@ -141,8 +130,6 @@ def merge_enrollment(cs_id, enrollments, term_id, term_name):
 
     enrollments_feed = sorted(enrollments_by_class.values(), key=lambda x: x['displayName'])
     sort_sections(enrollments_feed)
-    # Cache course and enrollment info
-    NormalizedCacheEnrollment.update_enrollments(term_id=term_id, sid=cs_id, enrollments=enrollments_for_normalized_cache)
     term_feed = {
         'termId': term_id,
         'termName': term_name,
@@ -150,8 +137,8 @@ def merge_enrollment(cs_id, enrollments, term_id, term_name):
         'enrolledUnits': enrolled_units,
         'unmatchedCanvasSites': [],
     }
-    merge_drops_and_midterms(cs_id, term_name, term_feed)
-
+    if drops_and_midterms is not None:
+        merge_drops_and_midterms(term_feed, drops_and_midterms)
     return term_feed
 
 
@@ -218,12 +205,6 @@ def merge_canvas_course_site(term_feed, site):
                     site_matched = True
     if not site_matched:
         term_feed['unmatchedCanvasSites'].append(site)
-
-
-def remove_athletic_enrollments(term_feed):
-    def is_athletic_enrollment(enrollment):
-        return (enrollment['displayName'].startswith('PHYSED 11')) or (enrollment['displayName'].startswith('PHYSED 12'))
-    term_feed['enrollments'] = [enr for enr in term_feed['enrollments'] if not is_athletic_enrollment(enr)]
 
 
 def remove_dropped_enrollments(term_feed):

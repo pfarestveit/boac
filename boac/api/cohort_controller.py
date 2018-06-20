@@ -25,6 +25,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
+from boac.api.util import strip_analytics
 from boac.lib import util
 from boac.lib.berkeley import is_department_member
 from boac.lib.http import tolerant_jsonify
@@ -41,7 +42,7 @@ def all_cohorts():
     if not current_user.is_admin and not is_department_member(current_user, 'UWASC'):
         raise ForbiddenRequestError('You are unauthorized to browse data that is managed by other departments')
     cohorts = {}
-    for cohort in CohortFilter.all():
+    for cohort in CohortFilter.all_cohorts():
         for uid in cohort['owners']:
             if uid not in cohorts:
                 cohorts[uid] = []
@@ -62,7 +63,9 @@ def all_cohorts():
 def my_cohorts():
     cohorts = CohortFilter.all_owned_by(current_user.get_id(), include_alerts=True)
     for cohort in cohorts:
-        student_details.merge_all(cohort['alerts'], include_analytics=False)
+        student_details.merge_all(cohort['alerts'])
+        for data in cohort['alerts']:
+            strip_analytics(data)
     return tolerant_jsonify(cohorts)
 
 

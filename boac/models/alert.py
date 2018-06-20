@@ -38,7 +38,7 @@ from sqlalchemy import text
 class Alert(Base):
     __tablename__ = 'alerts'
 
-    id = db.Column(db.Integer, nullable=False, primary_key=True)
+    id = db.Column(db.Integer, nullable=False, primary_key=True)  # noqa: A003
     sid = db.Column(db.String(80), db.ForeignKey('students.sid'), nullable=False)
     alert_type = db.Column(db.String(80), nullable=False)
     key = db.Column(db.String(255), nullable=False)
@@ -104,6 +104,28 @@ class Alert(Base):
             std_commit()
         else:
             raise BadRequestError(f'No alert found for id {alert_id}')
+
+    @classmethod
+    def current_alert_counts_for_viewer(cls, viewer_id):
+        query = text("""
+            SELECT * FROM students s JOIN (
+                SELECT alerts.sid, count(*) as alert_count
+                FROM alerts LEFT JOIN alert_views
+                    ON alert_views.alert_id = alerts.id
+                    AND alert_views.viewer_id = :viewer_id
+                WHERE alerts.active = true
+                    AND alerts.key LIKE :key
+                    AND alert_views.dismissed_at IS NULL
+                GROUP BY alerts.sid
+            ) alert_counts
+            ON s.sid = alert_counts.sid
+            ORDER BY s.last_name
+        """)
+        results = db.session.execute(query, {'viewer_id': viewer_id, 'key': current_term_id() + '_%'})
+
+        def result_to_dict(result):
+            return {camelize(key): result[key] for key in ['sid', 'uid', 'first_name', 'last_name', 'is_active_asc', 'alert_count']}
+        return [result_to_dict(result) for result in results]
 
     @classmethod
     def current_alert_counts_for_sids(cls, viewer_id, sids):

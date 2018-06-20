@@ -72,30 +72,11 @@
     };
 
     var init = function() {
-      // Maybe we are arriving from student page.
-      $scope.returnUrl = utilService.unpackReturnUrl();
-      $scope.returnLabel = utilService.constructReturnToLabel($scope.returnUrl);
-
       var args = _.clone($location.search());
-      // For now, exclude 'Average Student'
-      courseFactory.getSection($stateParams.termId, $stateParams.sectionId, false).then(function(response) {
+      courseFactory.getSection($stateParams.termId, $stateParams.sectionId).then(function(response) {
         $rootScope.pageTitle = response.data.displayName;
         $scope.section = response.data;
-        // averageStudent has averages of ALL students, not just athletes
-        var averageStudent = $scope.section.averageStudent;
-        if (averageStudent) {
-          if (averageStudent.warning) {
-            $scope.warning = averageStudent.warning;
-          } else {
-            $scope.section.students.unshift(averageStudent);
-          }
-        }
         page.loading(false);
-        if (args.a) {
-          // Scroll to anchor
-          $scope.anchor = args.a;
-          utilService.anchorScroll($scope.anchor);
-        }
         googleAnalyticsService.track(
           'course',
           'view',

@@ -28,15 +28,19 @@ import math
 from threading import Thread
 from boac import db, std_commit
 from boac.api.util import canvas_courses_api_feed
-from boac.externals import data_loch
+from boac.externals import data_loch, sis_degree_progress_api, sis_enrollments_api, sis_student_api
 from boac.lib import berkeley
 from boac.merged import import_asc_athletes
+from boac.merged.calnet import merge_student_calnet_data
 from boac.merged.sis_enrollments import merge_sis_enrollments_for_term
 from boac.merged.sis_profile import merge_sis_profile
 from boac.models import json_cache
 from boac.models.alert import Alert
 from boac.models.job_progress import JobProgress
 from boac.models.json_cache import JsonCache
+from boac.models.normalized_cache_enrollment import NormalizedCacheEnrollment
+from boac.models.normalized_cache_student import NormalizedCacheStudent
+from boac.models.normalized_cache_student_major import NormalizedCacheStudentMajor
 from boac.models.student import Student
 from flask import current_app as app
 from sqlalchemy import and_, or_
@@ -198,6 +202,13 @@ def do_import_asc():
     JobProgress().update(f'ASC import finished: {status}')
 
 
+def get_all_student_ids():
+    # Return all query results as a static list object. If we instead iterated over the Query object to
+    # fetch one row at a time, multiple iterations would re-run the query from scratch. This can
+    # lead to inconsistencies between different parts of the new cache.
+    return db.session.query(Student.sid, Student.uid).distinct().all()
+
+
 def load_all_terms():
     job_progress = JobProgress().get()
     terms_done = job_progress.get('terms_done', [])
@@ -220,10 +231,10 @@ def load_term(term_id=berkeley.current_term_id()):
     success_count = 0
     failures = []
 
-    # Return all query results as a static list object. If we instead iterated over the Query object to
-    # fetch one row at a time, the second Query iteration below would re-run the query from scratch. This can
-    # lead to inconsistencies between the two halves of the new cache.
-    ids = db.session.query(Student.sid, Student.uid).distinct().all()
+    # Load CalNet attributes from LDAP, including any missing UIDs.
+    merge_student_calnet_data()
+
+    ids = get_all_student_ids()
     nbr_students = len(ids)
     nbr_finished = 0
     for csid, uid in ids:
@@ -245,11 +256,15 @@ def load_term(term_id=berkeley.current_term_id()):
         if (nbr_finished == nbr_students) or not (nbr_finished % math.ceil(nbr_students / 20)):
             JobProgress().update(f'Analytics feeds loaded for {nbr_finished} of {nbr_students} students')
 
-    # Given a fresh start with no existing 'normalized' cache, merged profiles must be pre-fetched.
-    # Otherwise all team and cohort searches will return empty arrays in the UX.
     if term_id == berkeley.current_term_id():
         JobProgress().update(f'About to load merged profiles for current term')
-        load_merged_sis_profiles()
+        load_merged_sis_profiles(ids)
+
+    JobProgress().update(f'About to load normalized cache for current term')
+    load_normalized_cache(term_id, ids)
+
+    JobProgress().update(f'About to load alerts for current term')
+    load_alerts(term_id, ids)
 
     app.logger.warn(f'Term {term_id} load complete. Fetched {success_count} external feeds.')
     if len(failures):
@@ -284,9 +299,6 @@ def load_canvas_externals(uid, term_id):
 
 
 def load_sis_externals(uid, csid, term_id):
-    from boac.externals import sis_degree_progress_api, sis_student_api
-    from boac.merged.sis_enrollments import merge_enrollment
-
     term_name = berkeley.term_name_for_sis_id(term_id)
 
     success_count = 0
@@ -306,9 +318,10 @@ def load_sis_externals(uid, csid, term_id):
         failures.append(f'SIS get_student failed for CSID {csid}')
 
     enrollments = data_loch.get_sis_enrollments(uid, term_id) or []
+    if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
+        sis_enrollments_api.get_drops_and_midterms(csid, term_id)
+
     if enrollments:
-        # Perform higher-level enrollments feed processing; update NormalizedCacheEnrollment.
-        merge_enrollment(csid, enrollments, term_id, term_name)
         success_count += 1
     elif enrollments is None:
         failures.append(f'get_sis_enrollments failed for CSID {csid}, term_id {term_id}')
@@ -317,9 +330,6 @@ def load_sis_externals(uid, csid, term_id):
 
 def load_analytics_feeds(uid, sid, term_id):
     # Load distilled analytics feeds, one level up from the Canvas APIs already called by load_canvas_externals.
-    # Prior to load, existing assignment alerts for the student and term are deactivated.
-    # TODO Reinstate assignment alerts based on loch data.
-    Alert.deactivate_all(sid=sid, term_id=term_id, alert_types=['late_assignment', 'missing_assignment'])
     canvas_user_profile = data_loch.get_user_for_uid(uid)
     canvas_user_id = canvas_user_profile and canvas_user_profile['canvas_id']
     student_courses = data_loch.get_student_canvas_courses(uid)
@@ -331,7 +341,6 @@ def load_analytics_feeds(uid, sid, term_id):
 
     def load_analytics_for_sites(sites):
         for site in sites:
-            data_loch.get_course_page_views(site['canvasCourseId'], term_id)
             data_loch.get_canvas_course_scores(site['canvasCourseId'], term_id)
             if canvas_user_id:
                 data_loch.get_submissions_turned_in_relative_to_user(site['canvasCourseId'], canvas_user_id, term_id)
@@ -341,16 +350,50 @@ def load_analytics_feeds(uid, sid, term_id):
         load_analytics_for_sites(merged_term_feed['unmatchedCanvasSites'])
 
 
-def load_merged_sis_profiles():
-    from boac.models.student import Student
-
+def load_merged_sis_profiles(ids=None):
+    if not ids:
+        ids = get_all_student_ids()
     success_count = 0
     failures = []
 
-    for (sid,) in db.session.query(Student.sid).distinct():
-        sis_profile = merge_sis_profile(sid)
+    for csid, uid in ids:
+        sis_profile = merge_sis_profile(csid)
         if sis_profile:
             success_count += 1
         else:
-            failures.append(f'merge_sis_profile failed for SID {sid}')
+            failures.append(f'merge_sis_profile failed for SID {csid}')
     return success_count, failures
+
+
+def load_normalized_cache(term_id, ids=None):
+    if not ids:
+        ids = get_all_student_ids()
+    for csid, uid in ids:
+        # Load normalized enrollments table supporting BOAC's course-specific pages.
+        NormalizedCacheEnrollment.update_enrollments(term_id, uid, csid)
+        # If loading the current term, also update the normalized profiles table to support team and cohort searches.
+        if term_id == berkeley.current_term_id():
+            sis_profile = merge_sis_profile(csid)
+            if not sis_profile:
+                continue
+            gpa = sis_profile.get('cumulativeGPA')
+            level = sis_profile.get('level', {}).get('description')
+            units = sis_profile.get('cumulativeUnits')
+            NormalizedCacheStudent.update_profile(csid, gpa=gpa, level=level, units=units)
+
+            majors = [plan['description'] for plan in sis_profile.get('plans', [])]
+            NormalizedCacheStudentMajor.update_majors(csid, majors)
+
+
+def load_alerts(term_id, ids=None):
+    if not ids:
+        ids = get_all_student_ids()
+    # TODO Reinstate assignment alerts based on loch data.
+    for csid, uid in ids:
+        term_feed = json_cache.fetch(f'merged_enrollment_{csid}', term_id=term_id)
+        if not term_feed:
+            continue
+        for enrollment in term_feed['enrollments']:
+            for section in enrollment['sections']:
+                if section.get('midtermGrade'):
+                    Alert.update_midterm_grade_alerts(csid, term_id, section['ccn'], enrollment['displayName'], section['midtermGrade'])

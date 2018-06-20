@@ -23,11 +23,11 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
-from boac import std_commit
+from boac import db, std_commit
 from boac.externals import calnet
 from boac.models.json_cache import stow
 from boac.models.student import Student
+from flask import current_app as app
 
 
 @stow('calnet_user_for_uid_{uid}')
@@ -41,36 +41,39 @@ def get_calnet_user_for_uid(app, uid):
     }
 
 
-def refresh_cohort_attributes(app, cohorts=None):
-    students = cohorts or Student.query.all()
-    # Students who play more than one sport will have multiple records.
-    student_map = {}
+def update_student_attributes(students=None):
+    sid_map = {}
     for student in students:
-        student_map.setdefault(student.sid, []).append(student)
-    csids = list(student_map.keys())
+        sid_map.setdefault(student.sid, []).append(student)
+    sids = list(sid_map.keys())
 
     # Search LDAP.
-    all_attrs = calnet.client(app).search_csids(csids)
-    if len(csids) != len(all_attrs):
-        app.logger.warning(f'Looked for {len(csids)} CSIDS but only found {len(all_attrs)}')
+    all_attributes = calnet.client(app).search_csids(sids)
+    if len(sids) != len(all_attributes):
+        app.logger.warning(f'Looked for {len(sids)} SIDs but only found {len(all_attributes)}')
 
-    # Update the DB.
-    for attrs in all_attrs:
-        # Since we searched LDAP by CSID, we can be fairly sure that the results have CSIDs.
-        csid = attrs['csid']
-        name_split = attrs['sortable_name'].split(',') if 'sortable_name' in attrs else ''
+    # Update db
+    for a in all_attributes:
+        # Since we searched LDAP by SID, we can be fairly sure that the results have SIDs.
+        sid = a['csid']
+        name_split = a['sortable_name'].split(',') if 'sortable_name' in a else ''
         full_name = [name.strip() for name in reversed(name_split)]
-        for student in student_map[csid]:
-            student.uid = attrs['uid']
-            # A manually-entered ASC name may be more nicely formatted than a student's CalNet default.
-            # For now, don't overwrite it.
-            student.first_name = student.first_name or (full_name[0] if len(full_name) else '')
-            student.last_name = student.last_name or (full_name[1] if len(full_name) > 1 else '')
+        for m in sid_map[sid]:
+            new_uid = a['uid']
+            if m.uid != new_uid:
+                app.logger.info(f'For SID {sid}, changing UID {m.uid} to {new_uid}')
+                m.uid = new_uid
+            new_first_name = full_name[0] if len(full_name) else ''
+            new_last_name = full_name[1] if len(full_name) > 1 else ''
+            if (m.first_name != new_first_name) or (m.last_name != new_last_name):
+                app.logger.info(f'For SID {sid}, changing name "{m.first_name} {m.last_name}" to "{new_first_name} {new_last_name}"')
+                m.first_name = new_first_name
+                m.last_name = new_last_name
     return students
 
 
-def fill_cohort_uids(app):
-    to_update = Student.query.filter(Student.uid.is_(None)).all()
-    refresh_cohort_attributes(app, to_update)
+def merge_student_calnet_data():
+    students = Student.query.all()
+    update_student_attributes(students)
+    app.logger.info(f'Modified {len(db.session.dirty)} student records from calnet')
     std_commit()
-    return to_update
