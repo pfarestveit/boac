@@ -46,6 +46,7 @@ def all_students():
 @login_required
 def get_students():
     params = request.get_json()
+    coe_advisor_uid = util.get(params, 'coeAdvisorUid')
     gpa_ranges = util.get(params, 'gpaRanges')
     group_codes = util.get(params, 'groupCodes')
     levels = util.get(params, 'levels')
@@ -60,6 +61,7 @@ def get_students():
     if not asc_authorized and (in_intensive_cohort is not None or is_inactive_asc is not None):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
     results = Student.get_students(
+        coe_advisor_uid=coe_advisor_uid,
         gpa_ranges=gpa_ranges,
         group_codes=group_codes,
         levels=levels,
@@ -74,7 +76,7 @@ def get_students():
     alert_counts = Alert.current_alert_counts_for_viewer(current_user.id)
     students = results['students']
     add_alert_counts(alert_counts, students)
-    student_details.merge_all(students)
+    student_details.merge_external_students_data(students)
     return tolerant_jsonify({
         'students': students,
         'totalStudentCount': results['totalStudentCount'],
@@ -105,7 +107,7 @@ def search_for_students():
     alert_counts = Alert.current_alert_counts_for_viewer(current_user.id)
     students = results['students']
     add_alert_counts(alert_counts, students)
-    student_details.merge_all(students)
+    student_details.merge_external_students_data(students)
     return tolerant_jsonify({
         'students': students,
         'totalStudentCount': results['totalStudentCount'],

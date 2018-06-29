@@ -157,7 +157,7 @@ ACADEMIC_PLAN_TO_DEGREE_PROGRAM_PAGE = {
 
 BERKELEY_DEPT_NAME_TO_CODE = {
     'Athletic Study Center': 'UWASC',
-    'Electrical Engineering and Computer Science': 'EHEEC',
+    'College of Engineering': 'COENG',
 }
 
 
@@ -175,6 +175,20 @@ def all_term_ids():
         ids.append(str(term_id))
         term_id -= 4 if (term_id % 10 == 2) else 3
     return ids
+
+
+def reverse_terms_until(stop_term):
+    term_name = app.config['CANVAS_CURRENT_ENROLLMENT_TERM']
+    while True:
+        yield term_name
+        if (term_name == stop_term) or (term_name == app.config['CANVAS_EARLIEST_TERM']):
+            break
+        if term_name.startswith('Fall'):
+            term_name = term_name.replace('Fall', 'Summer')
+        elif term_name.startswith('Summer'):
+            term_name = term_name.replace('Summer', 'Spring')
+        elif term_name.startswith('Spring'):
+            term_name = 'Fall ' + str(int(term_name[-4:]) - 1)
 
 
 def sis_term_id_for_name(term_name=None):

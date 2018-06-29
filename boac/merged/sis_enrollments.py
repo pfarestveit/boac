@@ -26,27 +26,13 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 import boac.api.util as api_util
 from boac.externals import data_loch, sis_enrollments_api
-from boac.lib.berkeley import sis_term_id_for_name
+from boac.lib.berkeley import reverse_terms_until, sis_term_id_for_name
 from boac.models.json_cache import stow
 from flask import current_app as app
 
 
 def merge_sis_enrollments(canvas_course_sites, uid, cs_id, matriculation):
     courses_by_term = []
-
-    def reverse_terms_until(stop_term):
-        term_name = app.config['CANVAS_CURRENT_ENROLLMENT_TERM']
-        while True:
-            yield term_name
-            if (term_name == stop_term) or (term_name == app.config['CANVAS_EARLIEST_TERM']):
-                break
-            if term_name.startswith('Fall'):
-                term_name = term_name.replace('Fall', 'Summer')
-            elif term_name.startswith('Summer'):
-                term_name = term_name.replace('Summer', 'Spring')
-            elif term_name.startswith('Spring'):
-                term_name = 'Fall ' + str(int(term_name[-4:]) - 1)
-
     for term_name in reverse_terms_until(matriculation):
         merged_enrollments = merge_sis_enrollments_for_term(canvas_course_sites, uid, cs_id, term_name)
         if merged_enrollments and (len(merged_enrollments['enrollments']) or len(merged_enrollments['unmatchedCanvasSites'])):
@@ -60,7 +46,7 @@ def merge_sis_enrollments_for_term(canvas_course_sites, uid, cs_id, term_name):
     if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
         drops_and_midterms = sis_enrollments_api.get_drops_and_midterms(cs_id, term_id)
     else:
-        drops_and_midterms = None
+        drops_and_midterms = {}
     term_feed = merge_enrollment(cs_id, enrollments, term_id, term_name, drops_and_midterms)
 
     for site in canvas_course_sites:
@@ -76,7 +62,7 @@ def merge_drops_and_midterms(term_feed, drops_and_midterms):
     section_midterms = drops_and_midterms.get('midtermGrades', {})
     for enrollment in term_feed['enrollments']:
         for section in enrollment['sections']:
-            section_id = section['ccn']
+            section_id = str(section['ccn'])
             if section_id in section_midterms:
                 midterm_grade = section_midterms[section_id]
                 section['midtermGrade'] = midterm_grade
@@ -137,7 +123,7 @@ def merge_enrollment(cs_id, enrollments, term_id, term_name, drops_and_midterms)
         'enrolledUnits': enrolled_units,
         'unmatchedCanvasSites': [],
     }
-    if drops_and_midterms is not None:
+    if drops_and_midterms.get('midtermGrades') or drops_and_midterms.get('droppedPrimarySections'):
         merge_drops_and_midterms(term_feed, drops_and_midterms)
     return term_feed
 
