@@ -64,22 +64,28 @@
       };
     };
 
-    $scope.currentEnrollmentTerm = config.currentEnrollmentTerm;
-    $scope.demoMode = config.demoMode;
-    $scope.isCurrentUserAscAdvisor = authService.isCurrentUserAscAdvisor();
     page.loading(true);
-    $scope.isCreateCohortMode = false;
-    $scope.lastActivityDays = utilService.lastActivityDays;
-    $scope.showIntensiveCheckbox = false;
-    $scope.showInactiveCheckbox = false;
-    $scope.tab = 'list';
 
     $scope.cohort = {
       code: null,
       students: [],
       totalStudentCount: null
     };
-
+    $scope.currentEnrollmentTerm = config.currentEnrollmentTerm;
+    $scope.demoMode = config.demoMode;
+    $scope.isCreateCohortMode = false;
+    $scope.isAscUser = authService.isAscUser();
+    $scope.isCoeUser = authService.isCoeUser();
+    $scope.lastActivityDays = utilService.lastActivityDays;
+    $scope.orderBy = studentSearchService.getSortByOptionsForSearch();
+    $scope.pagination = {
+      enabled: true,
+      currentPage: 1,
+      itemsPerPage: 50,
+      noLimit: Number.MAX_SAFE_INTEGER
+    };
+    $scope.showInactiveCheckbox = false;
+    $scope.showIntensiveCheckbox = false;
     $scope.search = {
       count: {
         gpaRanges: 0,
@@ -90,6 +96,7 @@
       },
       dropdown: defaultDropdownState(),
       options: {
+        coeAdvisorUid: null,
         gpaRanges: null,
         groupCodes: null,
         inactive: null,
@@ -99,15 +106,36 @@
         unitRanges: null
       }
     };
+    $scope.tab = 'list';
 
-    $scope.orderBy = studentSearchService.getSortByOptionsForSearch();
-
-    // More info: https://angular-ui.github.io/bootstrap/
-    $scope.pagination = {
-      enabled: true,
-      currentPage: 1,
-      itemsPerPage: 50,
-      noLimit: Number.MAX_SAFE_INTEGER
+    var updateFiltersPerCohortType = function() {
+      var opts = $scope.search.options;
+      if ($scope.isAscUser) {
+        // 'Intensive' and 'Inactive' are relevant and available to ASC advisors only.
+        var intensive = _.get($scope.cohort, 'filterCriteria.inIntensiveCohort') || utilService.toBoolOrNull(opts.intensive);
+        if (intensive) {
+          $scope.showIntensiveCheckbox = opts.intensive = true;
+          // If no other search options are selected then it deserves 'Intensive' label.
+          var isIntensiveCohort = $scope.cohort.code === 'search' && !_.includes(JSON.stringify(opts), 'selected');
+          if (isIntensiveCohort) {
+            $scope.cohort.name = 'Intensive';
+          }
+        }
+        var inactiveAsc = _.get($scope.cohort, 'filterCriteria.isInactiveAsc') || utilService.toBoolOrNull(opts.inactiveAsc);
+        if (utilService.toBoolOrNull(inactiveAsc)) {
+          $scope.showInactiveCheckbox = opts.inactiveAsc = true;
+          // If no other search options are selected then it deserves 'Inactive' label.
+          var isInactiveCohort = $scope.cohort.code === 'search' && !_.includes(JSON.stringify(opts), 'selected');
+          if (isInactiveCohort) {
+            $scope.cohort.name = 'Inactive';
+          }
+        }
+      }
+      if ($scope.isCoeUser) {
+        if ($scope.cohort.isCannedCoeCohort) {
+          $scope.search.options.coeAdvisorUid = $rootScope.me.uid;
+        }
+      }
     };
 
     /**
@@ -120,24 +148,7 @@
       $scope.cohort = data;
       $scope.cohort.code = $scope.cohort.code || 'search';
       $rootScope.pageTitle = $scope.cohort.name || 'Filtered Cohort';
-      var intensive = _.get($scope.cohort, 'filterCriteria.inIntensiveCohort') || utilService.toBoolOrNull($scope.search.options.intensive);
-      if (intensive) {
-        $scope.showIntensiveCheckbox = $scope.search.options.intensive = true;
-        // If no other search options are selected then it deserves 'Intensive' label.
-        var isIntensiveCohort = $scope.cohort.code === 'search' && !_.includes(JSON.stringify($scope.search.options), 'selected');
-        if (isIntensiveCohort) {
-          $scope.cohort.name = 'Intensive';
-        }
-      }
-      var inactiveAsc = _.get($scope.cohort, 'filterCriteria.isInactiveAsc') || utilService.toBoolOrNull($scope.search.options.inactiveAsc);
-      if (utilService.toBoolOrNull(inactiveAsc)) {
-        $scope.showInactiveCheckbox = $scope.search.options.inactiveAsc = true;
-        // If no other search options are selected then it deserves 'Inactive' label.
-        var isInactiveCohort = $scope.cohort.code === 'search' && !_.includes(JSON.stringify($scope.search.options), 'selected');
-        if (isInactiveCohort) {
-          $scope.cohort.name = 'Inactive';
-        }
-      }
+      updateFiltersPerCohortType();
     };
 
     /**
@@ -180,8 +191,12 @@
         updateCohort(response.data);
         return callback();
       }).catch(function(err) {
-        $scope.error = validationService.parseError(err);
-        return callback(null);
+        if (err.status === 404) {
+          $location.replace().path('/404');
+        } else {
+          $scope.error = validationService.parseError(err);
+          return callback(null);
+        }
       });
     };
 
@@ -407,7 +422,7 @@
      * @return {void}
      */
     var presetAthleticStudyCenterControls = function(args) {
-      $scope.showIntensiveCheckbox = $scope.search.options.intensive = utilService.toBoolOrNull(args.i);
+      $scope.showIntensiveCheckbox = $scope.search.options.intensive = $scope.isAscUser && utilService.toBoolOrNull(args.i);
       if (args.inactive) {
         $scope.showInactiveCheckbox = $scope.search.options.inactive = true;
       } else {
@@ -427,7 +442,7 @@
           _.each(filters, function(key, filterName) {
             preset(filterName, args[key]);
           });
-          if ($scope.isCurrentUserAscAdvisor) {
+          if ($scope.isAscUser) {
             presetAthleticStudyCenterControls(args);
           }
         } else {
@@ -515,12 +530,21 @@
       }
     });
 
-    $scope.disableApplyButton = function() {
+    $scope.enableApplyButton = function() {
       // Disable button if page is loading or no filter criterion is selected
-      var count = $scope.search.count;
-      return page.isLoading() || $scope.isSaving || (!count.gpaRanges && !count.groupCodes && !count.levels &&
-        !count.majors && !count.unitRanges && (!$scope.showIntensiveCheckbox || !$scope.search.options.intensive) &&
-        (!$scope.showInactiveCheckbox || !$scope.search.options.inactive));
+      var enable = true;
+      if (page.isLoading() || $scope.isSaving) {
+        enable = false;
+      } else {
+        var count = $scope.search.count;
+        var selectedOptionsCount = count.gpaRanges + count.groupCodes + count.levels + count.majors + count.unitRanges;
+        var opts = $scope.search.options;
+        enable = selectedOptionsCount ||
+          ($scope.showIntensiveCheckbox && opts.intensive) ||
+          ($scope.showInactiveCheckbox && opts.inactive) ||
+          ($scope.cohort.isCannedCoeCohort && opts.coeAdvisorUid);
+      }
+      return enable;
     };
 
     var getMajors = function(callback) {
@@ -575,7 +599,7 @@
             gpaRanges: decorate(studentFactory.getGpaRanges(), 'name'),
             groupCodes: decorate(groupCodes, 'groupCode'),
             intensive: args.i,
-            inactive: args.inactive || ($scope.isCurrentUserAscAdvisor ? false : null),
+            inactive: args.inactive || ($scope.isAscUser ? false : null),
             levels: decorate(studentFactory.getStudentLevels(), 'name'),
             majors: decorate(majors, 'name'),
             unitRanges: decorate(studentFactory.getUnitRanges(), 'name')

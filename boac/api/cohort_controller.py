@@ -24,31 +24,28 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import decorate_cohort, get_dept_codes, is_read_only_cohort, strip_analytics
+from boac.api.util import decorate_cohort, is_canned_coe_cohort, strip_analytics
 from boac.lib import util
-from boac.lib.berkeley import is_department_member
+from boac.lib.berkeley import can_view_cohort, get_dept_codes
 from boac.lib.http import tolerant_jsonify
 from boac.merged import calnet
-from boac.merged import student_details
+from boac.merged.student import get_summary_student_profiles
 from boac.models.cohort_filter import CohortFilter
 from flask import current_app as app, request
-from flask import Response
 from flask_login import current_user, login_required
 
 
 @app.route('/api/cohorts/all')
 @login_required
 def all_cohorts():
-    # TODO: Implement BOAC-993 requirement w.r.t advisor permission to view other cohorts
-    if not current_user.is_admin and not is_department_member(current_user, 'UWASC'):
-        return Response(status=404)
     cohorts_per_uid = {}
     for cohort in CohortFilter.all_cohorts():
-        for authorized_user in cohort.owners:
-            uid = authorized_user.uid
-            if uid not in cohorts_per_uid:
-                cohorts_per_uid[uid] = []
-            cohorts_per_uid[uid].append(decorate_cohort(cohort, include_students=False))
+        if can_view_cohort(current_user, cohort):
+            for authorized_user in cohort.owners:
+                uid = authorized_user.uid
+                if uid not in cohorts_per_uid:
+                    cohorts_per_uid[uid] = []
+                cohorts_per_uid[uid].append(decorate_cohort(cohort, include_students=False))
     owners = []
     for uid in cohorts_per_uid.keys():
         owner = calnet.get_calnet_user_for_uid(app, uid)
@@ -66,6 +63,7 @@ def my_cohorts():
     uid = current_user.get_id()
     _my_cohorts = CohortFilter.all_owned_by(uid)
     if not _my_cohorts and 'COENG' in get_dept_codes(current_user):
+        # COE advisor, logging in for first time, gets a canned cohort sourced from COE UGRAD data in Nessie
         profile = calnet.get_calnet_user_for_uid(app, uid)
         first_name = profile.get('first_name')
         CohortFilter.create(
@@ -75,10 +73,15 @@ def my_cohorts():
         )
         _my_cohorts = CohortFilter.all_owned_by(uid)
     cohorts = [decorate_cohort(c, include_alerts_for_uid=uid, include_students=False) for c in _my_cohorts]
+    alert_sids = []
     for cohort in cohorts:
-        student_details.merge_external_students_data(cohort['alerts'])
-        for data in cohort['alerts']:
-            strip_analytics(data)
+        alert_sids += [a['sid'] for a in cohort['alerts']]
+    alert_profiles = get_summary_student_profiles(alert_sids)
+    alert_profiles_by_sid = {p['sid']: p for p in alert_profiles}
+    for cohort in cohorts:
+        for alert in cohort['alerts']:
+            alert.update(alert_profiles_by_sid[alert['sid']])
+            strip_analytics(alert)
     return tolerant_jsonify(cohorts)
 
 
@@ -89,12 +92,11 @@ def get_cohort(cohort_id):
     offset = util.get(request.args, 'offset', 0)
     limit = util.get(request.args, 'limit', 50)
     cohort = CohortFilter.find_by_id(int(cohort_id))
-    if cohort:
-        cohort = decorate_cohort(cohort, order_by, int(offset), int(limit))
+    if cohort and can_view_cohort(current_user, cohort):
+        cohort = decorate_cohort(cohort, order_by, int(offset), int(limit), include_profiles=True)
+        return tolerant_jsonify(cohort)
     else:
         raise ResourceNotFoundError(f'No cohort found with identifier: {cohort_id}')
-    student_details.merge_external_students_data(cohort['students'])
-    return tolerant_jsonify(cohort)
 
 
 @app.route('/api/cohort/create', methods=['POST'])
@@ -114,7 +116,7 @@ def create_cohort():
         raise ForbiddenRequestError(f'Only COE advisors have access to \'coeAdvisorUid\' criteria.')
     if not label:
         raise BadRequestError('Cohort creation requires \'label\'')
-    asc_authorized = current_user.is_admin or is_department_member(current_user, 'UWASC')
+    asc_authorized = current_user.is_admin or 'UWASC' in get_dept_codes(current_user)
     if not asc_authorized and (in_intensive_cohort is not None or is_inactive_asc is not None):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
     cohort = CohortFilter.create(
@@ -155,7 +157,7 @@ def delete_cohort(cohort_id):
         uid = current_user.get_id()
         cohort = next((c for c in CohortFilter.all_owned_by(uid) if c.id == cohort_id), None)
         if cohort:
-            if is_read_only_cohort(cohort):
+            if is_canned_coe_cohort(cohort):
                 raise ForbiddenRequestError(f'Programmatic deletion of canned cohorts is not allowed (id={cohort_id})')
             CohortFilter.delete(cohort_id)
             return tolerant_jsonify({'message': f'Cohort deleted (id={cohort_id})'}), 200

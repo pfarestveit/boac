@@ -23,10 +23,9 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-from boac.models.normalized_cache_enrollment import NormalizedCacheEnrollment
 import pytest
 
-test_login_uid = '1133399'
+coe_advisor_uid = '1133399'
 term_id = 2178
 student_uid = '61889'
 student_sid = '11667051'
@@ -34,14 +33,8 @@ section_id = 90100
 
 
 @pytest.fixture()
-def authenticated_session(fake_auth):
-    fake_auth.login(test_login_uid)
-
-
-@pytest.fixture()
-def course_data_load(fake_auth):
-    # Cache course data
-    NormalizedCacheEnrollment.update_enrollments(term_id=term_id, uid=student_uid, sid=student_sid)
+def coe_advisor(fake_auth):
+    fake_auth.login(coe_advisor_uid)
 
 
 class TestCourseController:
@@ -51,13 +44,13 @@ class TestCourseController:
         """Returns 401 if not authenticated."""
         assert client.get('/api/section/2182/1').status_code == 401
 
-    def test_api_route_not_found(self, authenticated_session, client):
+    def test_api_route_not_found(self, coe_advisor, client):
         """Returns a 404 for non-existent section_id."""
         response = client.get('/api/section/2222/1')
         assert response.status_code == 404
 
-    def test_get_section(self, authenticated_session, client, course_data_load):
-        """Finds section info in normalized cache."""
+    def test_get_section(self, coe_advisor, client):
+        """Returns section info from data loch."""
         response = client.get(f'/api/section/{term_id}/{section_id}')
         assert response.status_code == 200
         section = response.json
@@ -70,7 +63,7 @@ class TestCourseController:
         assert section['meetings'][0]['time'] == '12:00 pm - 12:59 pm'
         assert section['meetings'][0]['location'] == 'Wheeler 999'
 
-    def test_section_student_details(self, authenticated_session, client, course_data_load):
+    def test_section_student_details(self, coe_advisor, client):
         """Includes per-student details."""
         response = client.get(f'/api/section/{term_id}/{section_id}')
         students = response.json['students']
