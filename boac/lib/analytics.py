@@ -24,20 +24,41 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
-import re
+import math
+from statistics import mean
 
 
-class TestCasAuth:
-    """CAS login URL generation and redirects."""
+def mean_metrics_across_sites(canvas_sites):
+    """Mimic Data Loch's term-wide analytics summary, but restricted to a list of course sites."""
+    # Adapted from nessie.lib.analytics
+    mean_values = {}
+    for metric in ['assignmentsSubmitted', 'currentScore', 'lastActivity']:
+        percentiles = []
+        for site in canvas_sites:
+            percentile = site['analytics'].get(metric, {}).get('student', {}).get('percentile')
+            if percentile and not math.isnan(percentile):
+                percentiles.append(percentile)
+        if len(percentiles):
+            mean_percentile = mean(percentiles)
+            mean_values[metric] = {
+                'displayPercentile': ordinal(mean_percentile),
+                'percentile': mean_percentile,
+            }
+        else:
+            mean_values[metric] = None
+    return mean_values
 
-    def test_cas_login_url(self, client):
-        """Fails if the chosen UID does not match an authorized user."""
-        response = client.get('/cas/login_url')
-        assert response.status_code == 200
-        assert re.compile('.*berkeley.edu/cas/login').match(str(response.data)) is not None
 
-    def test_cas_callback_with_invalid_ticket(self, client):
-        """Fails if CAS can not verify the ticket."""
-        response = client.get('/cas/callback?ticket=is_invalid')
-        assert response.status_code == 302
-        assert 'casLoginError' in response.location
+def ordinal(nbr):
+    # Copied from nessie.lib.analytics
+    rounded = round(nbr)
+    mod_ten = rounded % 10
+    if (mod_ten == 1) and (rounded != 11):
+        suffix = 'st'
+    elif (mod_ten == 2) and (rounded != 12):
+        suffix = 'nd'
+    elif (mod_ten == 3) and (rounded != 13):
+        suffix = 'rd'
+    else:
+        suffix = 'th'
+    return f'{rounded}{suffix}'

@@ -109,7 +109,7 @@ class TestAthletics:
         athlete = students[0]
         assert athlete['name'] == 'Dave Doolittle'
         assert athlete['sid'] == '2345678901'
-        assert athlete['inIntensiveCohort'] is False
+        assert athlete['athleticsProfile']['inIntensiveCohort'] is False
 
     def test_includes_student_sis_data(self, asc_advisor, client):
         """Includes SIS data for team members."""
@@ -118,7 +118,7 @@ class TestAthletics:
         assert athlete['cumulativeGPA'] == 3.8
         assert athlete['cumulativeUnits'] == 101.3
         assert athlete['level'] == 'Junior'
-        assert athlete['majors'] == ['Astrophysics BS', 'English BA']
+        assert athlete['majors'] == ['English BA', 'Nuclear Engineering BS']
 
     def test_includes_student_current_enrollments(self, asc_advisor, client):
         """Includes current-term active enrollments and analytics for team members."""

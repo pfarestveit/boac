@@ -27,44 +27,27 @@
 
   'use strict';
 
-  angular.module('boac').factory('authFactory', function($http, $rootScope) {
+  angular.module('boac').controller('AdminController', function(adminFactory, config, page, $location, $scope) {
 
-    var loadUserProfile = function(results) {
-      // Refresh instance currently referenced in templates
-      var me = results.data;
-      $rootScope.me = me;
-      $rootScope.$broadcast('userStatusChange');
-      // Load user profile if authenticated
-      if (me.isAuthenticated) {
-        return $http.get('/api/profile/my').then(function(response) {
-          _.extend($rootScope.me, response.data);
+    $scope.become = function(uid) {
+      adminFactory.becomeUser(uid).then(function() {
+        window.location = '/';
+      });
+    };
+
+    var init = function() {
+      page.loading(true);
+      if (config.devAuthEnabled) {
+        adminFactory.getAllUserProfiles().then(function(response) {
+          $scope.allProfiles = response.data;
+          page.loading(false);
         });
+      } else {
+        $location.replace().path('/404');
       }
-      return results;
     };
 
-    var casLogIn = function() {
-      return $http.get('/cas/login_url');
-    };
-
-    var devAuthLogIn = function(uid, password) {
-      var credentials = {
-        uid: uid,
-        password: password
-      };
-      return $http.post('/devauth/login', credentials);
-    };
-
-    var logOut = function() {
-      return $http.get('/logout');
-    };
-
-    return {
-      casLogIn: casLogIn,
-      devAuthLogIn: devAuthLogIn,
-      loadUserProfile: loadUserProfile,
-      logOut: logOut
-    };
+    init();
   });
 
 }(window.angular));

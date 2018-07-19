@@ -26,8 +26,8 @@ ENHANCEMENTS, OR MODIFICATIONS.
 import json
 
 from boac.externals import data_loch
+from boac.lib import analytics
 from boac.lib.berkeley import current_term_id
-from flask import current_app as app
 from flask_login import current_user
 
 
@@ -38,7 +38,7 @@ def get_api_json(sids):
     def distill_profile(profile):
         distilled = {key: profile[key] for key in ['uid', 'sid', 'firstName', 'lastName', 'name']}
         if profile.get('athleticsProfile'):
-            distilled.update(profile['athleticsProfile'])
+            distilled['athleticsProfile'] = profile['athleticsProfile']
         return distilled
     return [distill_profile(profile) for profile in get_full_student_profiles(sids)]
 
@@ -63,6 +63,43 @@ def get_full_student_profiles(sids):
                 profile['athleticsProfile'] = json.loads(row['profile'])
 
     return profiles
+
+
+def get_course_student_profiles(term_id, section_id):
+    sids = [str(r['sid']) for r in data_loch.get_sis_section_enrollments(term_id, section_id, get_student_query_scope())]
+
+    # TODO It's probably more efficient to store class profiles in the loch, rather than distilling them
+    # on the fly from full profiles.
+    students = get_full_student_profiles(sids)
+
+    enrollments_for_term = data_loch.get_enrollments_for_term(term_id, sids)
+    enrollments_by_sid = {row['sid']: json.loads(row['enrollment_term']) for row in enrollments_for_term}
+    for student in students:
+        # Strip SIS details to lighten the API load.
+        sis_profile = student.pop('sisProfile', None)
+        if sis_profile:
+            student['cumulativeGPA'] = sis_profile.get('cumulativeGPA')
+            student['cumulativeUnits'] = sis_profile.get('cumulativeUnits')
+            student['level'] = sis_profile.get('level', {}).get('description')
+            student['majors'] = sorted(plan.get('description') for plan in sis_profile.get('plans', []))
+        term = enrollments_by_sid.get(student['sid'])
+        student['hasCurrentTermEnrollments'] = False
+        if term:
+            # Strip the enrollments list down to the section of interest.
+            enrollments = term.pop('enrollments', [])
+            for enrollment in enrollments:
+                _section = next((s for s in enrollment['sections'] if str(s['ccn']) == section_id), None)
+                if _section:
+                    canvas_sites = enrollment.get('canvasSites', [])
+                    student['enrollment'] = {
+                        'canvasSites': canvas_sites,
+                        'enrollmentStatus': _section.get('enrollmentStatus', None),
+                        'grade': enrollment.get('grade', None),
+                        'gradingBasis': enrollment.get('gradingBasis', None),
+                    }
+                    student['analytics'] = analytics.mean_metrics_across_sites(canvas_sites)
+                    continue
+    return students
 
 
 def get_summary_student_profiles(sids, term_id=None):
@@ -91,17 +128,12 @@ def get_summary_student_profiles(sids, term_id=None):
             profile['term'] = term
             if term['termId'] == current_term_id() and len(term['enrollments']) > 0:
                 profile['hasCurrentTermEnrollments'] = True
-        # TODO Our existing tests, and possibly the front end, inconsistently expect athletics properties under
-        # 'athleticsProfile', and also under the root profile. Clean this up along with the rest of the athletics
-        # profile merge.
-        if profile.get('athleticsProfile'):
-            profile.update(profile['athleticsProfile'])
     return profiles
 
 
 def get_student_and_terms(uid):
     """Provide external data for student-specific view."""
-    student = data_loch.get_student_for_uid(uid)
+    student = data_loch.get_student_for_uid_and_scope(uid, get_student_query_scope())
     if not student:
         return
     profiles = get_full_student_profiles([student['sid']])
@@ -120,7 +152,7 @@ def get_student_and_terms(uid):
 
 def query_students(
         include_profiles=False,
-        coe_advisor_uid=None,
+        advisor_ldap_uid=None,
         gpa_ranges=None,
         group_codes=None,
         in_intensive_cohort=None,
@@ -133,13 +165,13 @@ def query_students(
         sids_only=False,
         unit_ranges=None,
 ):
-    if coe_advisor_uid is not None:
-        app.logger.warning(f'Search by coe_advisor_uid is not yet supported; returning empty list.')
-        return {
-            'sids': [],
-            'students': [],
-            'totalStudentCount': 0,
-        }
+    scope = narrow_scope_by_criteria(
+        get_student_query_scope(),
+        in_intensive_cohort=in_intensive_cohort,
+        is_active_asc=is_active_asc,
+        group_codes=group_codes,
+        advisor_ldap_uid=advisor_ldap_uid,
+    )
     query_tables, query_filter, query_bindings = data_loch.get_students_query(
         group_codes=group_codes,
         gpa_ranges=gpa_ranges,
@@ -148,9 +180,16 @@ def query_students(
         unit_ranges=unit_ranges,
         in_intensive_cohort=in_intensive_cohort,
         is_active_asc=is_active_asc,
+        advisor_ldap_uid=advisor_ldap_uid,
+        scope=scope,
     )
-    # First, get total_count of matching students
-    result = data_loch.safe_execute(f'SELECT DISTINCT(s.sid) {query_tables} {query_filter}', **query_bindings)
+    if not query_tables:
+        return {
+            'sids': [],
+            'students': [],
+            'totalStudentCount': 0,
+        }    # First, get total_count of matching students
+    result = data_loch.safe_execute(f'SELECT DISTINCT(sas.sid) {query_tables} {query_filter}', **query_bindings)
     if result is None:
         return None
     summary = {
@@ -167,11 +206,11 @@ def query_students(
         if supplemental_query_tables:
             query_tables += supplemental_query_tables
         sql = f"""SELECT
-            s.sid, MIN({o}), MIN({o_secondary}), MIN({o_tertiary})
+            sas.sid, MIN({o}), MIN({o_secondary}), MIN({o_tertiary})
             {query_tables}
             {query_filter}
-            GROUP BY s.sid
-            ORDER BY MIN({o}), MIN({o_secondary}), MIN({o_tertiary})
+            GROUP BY sas.sid
+            ORDER BY MIN({o}) NULLS FIRST, MIN({o_secondary}) NULLS FIRST, MIN({o_tertiary}) NULLS FIRST
             OFFSET :offset
         """
         query_bindings['offset'] = offset
@@ -194,21 +233,31 @@ def search_for_students(
     offset=0,
     limit=None,
 ):
+    scope = narrow_scope_by_criteria(
+        get_student_query_scope(),
+        is_active_asc=is_active_asc,
+    )
     query_tables, query_filter, query_bindings = data_loch.get_students_query(
         search_phrase=search_phrase,
         is_active_asc=is_active_asc,
+        scope=scope,
     )
+    if not query_tables:
+        return {
+            'students': [],
+            'totalStudentCount': 0,
+        }
     o, o_secondary, o_tertiary, supplemental_query_tables = data_loch.get_students_ordering(order_by=order_by)
     if supplemental_query_tables:
         query_tables += supplemental_query_tables
-    result = data_loch.safe_execute(f'SELECT DISTINCT(s.sid) {query_tables} {query_filter}', **query_bindings)
+    result = data_loch.safe_execute(f'SELECT DISTINCT(sas.sid) {query_tables} {query_filter}', **query_bindings)
     total_student_count = len(result)
     sql = f"""SELECT
-        s.sid
+        sas.sid
         {query_tables}
         {query_filter}
-        GROUP BY s.sid
-        ORDER BY MIN({o}), MIN({o_secondary}), MIN({o_tertiary})
+        GROUP BY sas.sid
+        ORDER BY MIN({o}) NULLS FIRST, MIN({o_secondary}) NULLS FIRST, MIN({o_tertiary}) NULLS FIRST
         OFFSET {offset}
     """
     if limit and limit < 100:  # Sanity check large limits
@@ -227,9 +276,48 @@ def search_for_students(
 
 def get_student_query_scope():
     # Use department membership and admin status to determine what data we can surface about which students.
-    if not current_user.is_authenticated:
+    # If this code is being called outside an HTTP request context, then assume it is an administrative task.
+    # Not all current_user proxy types define all attributes, and so the ordering of these conditional checks
+    # is important.
+    if not current_user:
+        return ['ADMIN']
+    elif not current_user.is_authenticated:
         return []
     elif current_user.is_admin:
         return ['ADMIN']
     else:
         return [m.university_dept.dept_code for m in current_user.department_memberships]
+
+
+def narrow_scope_by_criteria(scope, **kwargs):
+    # Searching by ASC-specific criteria will constrain the scope to ASC students; likewise for COE.
+    criteria_for_code = {
+        'UWASC': [
+            'in_intensive_cohort',
+            'is_active_asc',
+            'group_codes',
+        ],
+        'COENG': [
+            'advisor_ldap_uid',
+        ],
+    }
+
+    # An explicit False counts as present, but other falsey criteria don't.
+    def any_criterion_present(criteria):
+        for c in criteria:
+            value = kwargs.get(c)
+            if value or value is False:
+                return True
+        return False
+
+    for code, criteria in criteria_for_code.items():
+        if any_criterion_present(criteria):
+            if 'ADMIN' in scope or code in scope:
+                # We've found a department-specific criterion; constrain scope to that department only.
+                return [code]
+            else:
+                # We've found a department-specific criterion but that department wasn't in the provided scope.
+                # Return empty.
+                return []
+    # No department-specific criteria found; return unmodified.
+    return scope

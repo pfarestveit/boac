@@ -25,21 +25,22 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 from boac.api import errors
-from boac.api.util import decorate_cohort
+from boac.api.util import admin_required, decorate_cohort
 from boac.externals import data_loch
 from boac.externals.cal1card_photo_api import get_cal1card_photo
 from boac.lib import util
 from boac.lib.http import tolerant_jsonify
 from boac.merged import calnet
-from boac.merged.student import get_student_and_terms
+from boac.merged.student import get_student_and_terms, get_student_query_scope
+from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 from boac.models.student_group import StudentGroup
 from flask import current_app as app, Response
 from flask_login import current_user, login_required
 
 
-@app.route('/api/profile')
-def user_profile():
+@app.route('/api/profile/my')
+def my_profile():
     uid = current_user.get_id()
     profile = calnet.get_calnet_user_for_uid(app, uid)
     if current_user.is_active:
@@ -72,6 +73,40 @@ def user_profile():
     return tolerant_jsonify(profile)
 
 
+@app.route('/api/profile/<uid>')
+@login_required
+def user_profile(uid):
+    match = next((u for u in AuthorizedUser.query.all() if u.uid == uid), None)
+    if not match:
+        raise errors.ResourceNotFoundError('Unknown path')
+    return tolerant_jsonify(calnet.get_calnet_user_for_uid(app, uid))
+
+
+@app.route('/api/profiles/all')
+@admin_required
+def all_user_profiles():
+    # This feature is not available in production
+    if app.config['DEVELOPER_AUTH_ENABLED']:
+        profiles = []
+        for user in AuthorizedUser.query.all():
+            profile = calnet.get_calnet_user_for_uid(app, user.uid)
+            profile.update({
+                'is_admin': user.is_admin,
+                'departments': {},
+            })
+            for m in user.department_memberships:
+                profile['departments'].update({
+                    m.university_dept.dept_code: {
+                        'isAdvisor': m.is_advisor,
+                        'isDirector': m.is_director,
+                    },
+                })
+            profiles.append(profile)
+        return tolerant_jsonify(sorted(profiles, key=lambda p: p.get('lastName') or ''))
+    else:
+        raise errors.ResourceNotFoundError('Unknown path')
+
+
 @app.route('/api/user/<uid>/analytics')
 @login_required
 def user_analytics(uid):
@@ -85,7 +120,7 @@ def user_analytics(uid):
 
 @app.route('/api/majors/relevant')
 def relevant_majors():
-    majors = [row['major'] for row in data_loch.get_majors()]
+    majors = [row['major'] for row in data_loch.get_majors(get_student_query_scope())]
     return tolerant_jsonify(majors)
 
 

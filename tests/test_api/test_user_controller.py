@@ -24,6 +24,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
+from boac.models import development_db
 import pytest
 
 
@@ -32,7 +33,7 @@ class TestUserProfile:
 
     def test_profile_not_authenticated(self, client):
         """Returns a well-formed response."""
-        response = client.get('/api/profile')
+        response = client.get('/api/profile/my')
         assert response.status_code == 200
         assert not response.json['uid']
 
@@ -40,7 +41,7 @@ class TestUserProfile:
         """Includes user profile info from Canvas."""
         test_uid = '2040'
         fake_auth.login(test_uid)
-        response = client.get('/api/profile')
+        response = client.get('/api/profile/my')
         assert response.json['uid'] == test_uid
         assert 'firstName' in response.json
         assert 'lastName' in response.json
@@ -48,7 +49,7 @@ class TestUserProfile:
     def test_user_with_no_dept_membership(self, client, fake_auth):
         """Returns zero or more departments."""
         fake_auth.login('2040')
-        response = client.get('/api/profile')
+        response = client.get('/api/profile/my')
         assert response.status_code == 200
         user = response.json
         assert user['isAdmin'] is True
@@ -57,7 +58,7 @@ class TestUserProfile:
     def test_department_beyond_asc(self, client, fake_auth):
         """Returns COENG director."""
         fake_auth.login('1022796')
-        response = client.get('/api/profile')
+        response = client.get('/api/profile/my')
         assert response.status_code == 200
         user = response.json
         assert user['isAdmin'] is False
@@ -70,7 +71,7 @@ class TestUserProfile:
         """Returns Athletic Study Center advisor."""
         test_uid = '1081940'
         fake_auth.login(test_uid)
-        response = client.get('/api/profile')
+        response = client.get('/api/profile/my')
         assert response.status_code == 200
         user = response.json
         assert 'UWASC' in user['departments']
@@ -80,11 +81,55 @@ class TestUserProfile:
     def test_includes_groups(self, client, fake_auth):
         test_uid = '6446'
         fake_auth.login(test_uid)
-        response = client.get('/api/profile')
+        response = client.get('/api/profile/my')
         groups = response.json['myGroups']
         assert len(groups) == 2
         assert groups[0]['name'] == 'Cool Kids'
         assert groups[0]['studentCount'] == 4
+
+    def test_other_user_profile(self, client, fake_auth):
+        fake_auth.login('2040')
+        response = client.get('/api/profile/6446')
+        assert response.json['uid'] == '6446'
+        assert 'firstName' in response.json
+        assert 'lastName' in response.json
+
+    def test_other_user_profile_not_found(self, client, fake_auth):
+        fake_auth.login('2040')
+        response = client.get('/api/profile/2549')
+        assert response.status_code == 404
+
+
+class TestAllUserProfiles:
+    """User Profiles API."""
+
+    admin_uid = '2040'
+    advisor_uid = '1133399'
+
+    def test_not_authenticated(self, client):
+        """Returns 'unauthorized' response status if user is not authenticated."""
+        response = client.get('/api/profiles/all')
+        assert response.status_code == 401
+
+    def test_disabled(self, app, client, fake_auth):
+        """Blocks access unless enabled."""
+        fake_auth.login(self.admin_uid)
+        app.config['DEVELOPER_AUTH_ENABLED'] = False
+        response = client.get('/api/profiles/all')
+        assert response.status_code == 404
+
+    def test_not_authorized(self, client, fake_auth):
+        """Returns 'unauthorized' response status if user is not admin."""
+        fake_auth.login(self.advisor_uid)
+        response = client.get('/api/profiles/all')
+        assert response.status_code == 401
+
+    def test_authorized(self, client, fake_auth):
+        """Returns a well-formed response."""
+        fake_auth.login(self.admin_uid)
+        response = client.get('/api/profiles/all')
+        assert response.status_code == 200
+        assert len(response.json) == len(development_db._test_users)
 
 
 class TestUserPhoto:
@@ -160,7 +205,7 @@ class TestUserAnalytics:
         response = client.get(TestUserAnalytics.deborah)
         assert response.status_code == 401
 
-    def test_user_with_no_enrollments_in_current_term(self, non_asc_advisor, client):
+    def test_user_with_no_enrollments_in_current_term(self, asc_advisor, client):
         """Identifies user with no enrollments in current term."""
         response = client.get(TestUserAnalytics.dave)
         assert response.status_code == 200
@@ -280,6 +325,11 @@ class TestUserAnalytics:
         assert response.status_code == 404
         assert response.json['message'] == 'Unknown student'
 
+    def test_user_analytics_not_department_authorized(self, non_asc_advisor, client):
+        """Returns 404 if attempting to view a user outside one's own department."""
+        response = client.get(TestUserAnalytics.dave)
+        assert response.status_code == 404
+
     def test_relevant_majors(self, non_asc_advisor, client):
         """Returns list of majors relevant to our student population."""
         response = client.get('/api/majors/relevant')
@@ -377,9 +427,9 @@ class TestUserAnalytics:
         assert sis_profile['plans'][0]['description'] == 'English BA'
         assert sis_profile['plans'][0]['program'] == 'Undergrad Letters & Science'
         assert sis_profile['plans'][0]['degreeProgramUrl'] == 'http://guide.berkeley.edu/undergraduate/degree-programs/english/'
-        assert sis_profile['plans'][1]['description'] == 'Astrophysics BS'
-        assert sis_profile['plans'][1]['program'] == 'Undergrad Letters & Science'
-        assert sis_profile['plans'][1]['degreeProgramUrl'] == 'http://guide.berkeley.edu/undergraduate/degree-programs/astrophysics/'
+        assert sis_profile['plans'][1]['description'] == 'Nuclear Engineering BS'
+        assert sis_profile['plans'][1]['program'] == 'Engineering'
+        assert sis_profile['plans'][1]['degreeProgramUrl'] == 'http://guide.berkeley.edu/undergraduate/degree-programs/nuclear-engineering/'
         assert sis_profile['preferredName'] == 'Osk Bear'
         assert sis_profile['primaryName'] == 'Oski Bear'
         assert sis_profile['termsInAttendance'] == 5

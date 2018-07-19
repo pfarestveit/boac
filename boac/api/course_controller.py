@@ -26,10 +26,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 from boac.api.errors import ResourceNotFoundError
 from boac.api.util import sort_students_by_name
-from boac.externals import data_loch
 from boac.lib.http import tolerant_jsonify
 from boac.merged.sis_sections import get_sis_section
-from boac.merged.student import get_summary_student_profiles
+from boac.merged.student import get_course_student_profiles
 from flask import current_app as app
 from flask_login import login_required
 
@@ -40,22 +39,6 @@ def get_section(term_id, section_id):
     section = get_sis_section(term_id, section_id)
     if not section:
         raise ResourceNotFoundError(f'No section {section_id} in term {term_id}')
-    sids = [str(r['sid']) for r in data_loch.get_sis_section_enrollments(term_id, section_id)]
-    students = get_summary_student_profiles(sids, section['termId'])
-    for student in students:
-        print(student)
-        # Cherry-pick enrollment of section requested
-        student_term = student.get('term')
-        if not student_term:
-            continue
-        for enrollment in student_term.get('enrollments', []):
-            _section = next((s for s in enrollment['sections'] if str(s['ccn']) == section_id), None)
-            if _section:
-                student['enrollment'] = {
-                    'canvasSites': enrollment.get('canvasSites', None),
-                    'enrollmentStatus': _section.get('enrollmentStatus', None),
-                    'grade': enrollment.get('grade', None),
-                    'gradingBasis': enrollment.get('gradingBasis', None),
-                }
+    students = get_course_student_profiles(term_id, section_id)
     section['students'] = sort_students_by_name(students)
     return tolerant_jsonify(section)

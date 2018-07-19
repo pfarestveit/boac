@@ -23,14 +23,31 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from functools import wraps
 import json
 from boac.lib import util
 from boac.merged import athletics
 from boac.merged.student import query_students
 from boac.models.alert import Alert
 from boac.models.authorized_user import AuthorizedUser
+from flask import current_app as app, request
+from flask_login import current_user
 
 """Utility module containing standard API-feed translations of data objects."""
+
+
+def admin_required(func):
+    @wraps(func)
+    def _admin_required(*args, **kw):
+        auth_key = app.config['API_KEY']
+        login_ok = current_user.is_authenticated and current_user.is_admin
+        api_key_ok = auth_key and (request.headers.get('App-Key') == auth_key)
+        if login_ok or api_key_ok:
+            return func(*args, **kw)
+        else:
+            app.logger.warn(f'Unauthorized request to {request.path}')
+            return app.login_manager.unauthorized()
+    return _admin_required
 
 
 def add_alert_counts(alert_counts, students):
@@ -68,18 +85,16 @@ def decorate_cohort(
     include_profiles=False,
     include_alerts_for_uid=None,
 ):
-    _is_canned_coe_cohort = is_canned_coe_cohort(cohort)
     decorated = {
         'id': cohort.id,
         'code': cohort.id,
-        'isReadOnly': _is_canned_coe_cohort,
-        'isCannedCoeCohort': _is_canned_coe_cohort,
+        'isReadOnly': is_read_only_cohort(cohort),
         'label': cohort.label,
         'name': cohort.label,
         'owners': [user.uid for user in cohort.owners],
     }
     criteria = cohort if isinstance(cohort.filter_criteria, dict) else json.loads(cohort.filter_criteria)
-    coe_advisor_uid = util.get(criteria, 'coeAdvisorUid')
+    advisor_ldap_uid = util.get(criteria, 'advisorLdapUid')
     gpa_ranges = util.get(criteria, 'gpaRanges', [])
     group_codes = util.get(criteria, 'groupCodes', [])
     levels = util.get(criteria, 'levels', [])
@@ -90,7 +105,7 @@ def decorate_cohort(
     team_groups = athletics.get_team_groups(group_codes) if group_codes else []
     decorated.update({
         'filterCriteria': {
-            'coeAdvisorUid': coe_advisor_uid,
+            'advisorLdapUid': advisor_ldap_uid,
             'gpaRanges': gpa_ranges,
             'groupCodes': group_codes,
             'levels': levels,
@@ -111,7 +126,7 @@ def decorate_cohort(
 
     results = query_students(
         include_profiles=(include_students and include_profiles),
-        coe_advisor_uid=coe_advisor_uid,
+        advisor_ldap_uid=advisor_ldap_uid,
         gpa_ranges=gpa_ranges,
         group_codes=group_codes,
         in_intensive_cohort=in_intensive_cohort,
@@ -146,10 +161,10 @@ def decorate_cohort(
     return decorated
 
 
-def is_canned_coe_cohort(cohort):
+def is_read_only_cohort(cohort):
     criteria = cohort if isinstance(cohort.filter_criteria, dict) else json.loads(cohort.filter_criteria)
     keys_with_not_none_value = [key for key, value in criteria.items() if value not in [None, []]]
-    return keys_with_not_none_value == ['coeAdvisorUid']
+    return keys_with_not_none_value == ['advisorLdapUid']
 
 
 def sis_enrollment_class_feed(enrollment):
