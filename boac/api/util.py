@@ -85,16 +85,19 @@ def decorate_cohort(
     include_profiles=False,
     include_alerts_for_uid=None,
 ):
+    criteria = cohort if isinstance(cohort.filter_criteria, dict) else json.loads(cohort.filter_criteria)
+    is_read_only = is_read_only_cohort(cohort)
+    advisor_ldap_uid = util.get(criteria, 'advisorLdapUid')
+    # In odd circumstances we override the cohort's actual name
+    cohort_name = 'My Students' if is_read_only and current_user.uid == advisor_ldap_uid else cohort.label
     decorated = {
         'id': cohort.id,
         'code': cohort.id,
-        'isReadOnly': is_read_only_cohort(cohort),
-        'label': cohort.label,
-        'name': cohort.label,
+        'isReadOnly': is_read_only,
+        'label': cohort_name,
+        'name': cohort_name,
         'owners': [user.uid for user in cohort.owners],
     }
-    criteria = cohort if isinstance(cohort.filter_criteria, dict) else json.loads(cohort.filter_criteria)
-    advisor_ldap_uid = util.get(criteria, 'advisorLdapUid')
     gpa_ranges = util.get(criteria, 'gpaRanges', [])
     group_codes = util.get(criteria, 'groupCodes', [])
     levels = util.get(criteria, 'levels', [])
@@ -194,7 +197,7 @@ def sis_enrollment_section_feed(enrollment):
 
 
 def sort_students_by_name(students):
-    return sorted(students, key=lambda s: (s['firstName'], s['lastName']))
+    return sorted(students, key=lambda s: (s['lastName'], s['firstName']))
 
 
 def strip_analytics(student_term_data):
