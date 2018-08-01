@@ -32,7 +32,7 @@
    */
   angular.module('boac').directive('searchStudentsForm', function(
     page,
-    studentGroupFactory,
+    curatedCohortFactory,
     $location,
     $rootScope,
     $state,

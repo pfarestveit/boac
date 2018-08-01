@@ -75,13 +75,17 @@ CAS_LOGOUT_URL = 'https://auth-test.berkeley.edu/cas/logout'
 # Enable with a valid Google id. For example, 'UA-999999999-1'
 GOOGLE_ANALYTICS_ID = False
 
-# Data Loch is treated as a readonly Postgres DB.
+# Data Loch Redshift and RDS are treated as readonly Postgres DBs.
 DATA_LOCH_URI = 'postgres://nessie:secret@secreturl.com:5432/canvas'
+DATA_LOCH_RDS_URI = 'postgres://nessie:secret@secret-rds-url.com:5432/canvas'
+
 DATA_LOCH_ASC_SCHEMA = 'boac_advising_asc'
 DATA_LOCH_BOAC_SCHEMA = 'boac_analytics'
 DATA_LOCH_COE_SCHEMA = 'boac_advising_coe'
 DATA_LOCH_INTERMEDIATE_SCHEMA = 'intermediate'
 DATA_LOCH_STUDENT_SCHEMA = 'student'
+
+DISABLE_MATRIX_VIEW_THRESHOLD = 800
 
 LDAP_HOST = 'nds-test.berkeley.edu'
 LDAP_BIND = 'mybind'

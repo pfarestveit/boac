@@ -27,7 +27,18 @@
 
   'use strict';
 
-  angular.module('boac').service('cohortService', function(cohortFactory, utilService) {
+  angular.module('boac').service('cohortService', function(filteredCohortFactory, utilService) {
+
+    var decorate = function(cohort) {
+      return {
+        id: cohort.id,
+        name: cohort.name,
+        studentCount: cohort.studentCount,
+        students: utilService.extendSortableNames(cohort.students),
+        sortBy: 'sortableName',
+        reverse: false
+      };
+    };
 
     var decorateCohortAlerts = function(cohort) {
       if (cohort.alerts && cohort.alerts.length) {
@@ -40,20 +51,21 @@
       }
     };
 
-    var loadMyCohorts = function(callback) {
-      cohortFactory.getMyCohorts().then(function(cohortsResponse) {
-        var myCohorts = [];
-        _.each(cohortsResponse.data, function(cohort) {
+    var loadMyFilteredCohorts = function(callback) {
+      filteredCohortFactory.getMyFilteredCohorts().then(function(response) {
+        var myFilteredCohorts = [];
+        _.each(response.data, function(cohort) {
           decorateCohortAlerts(cohort);
-          myCohorts.push(cohort);
+          myFilteredCohorts.push(cohort);
         });
-        return callback(myCohorts);
+        return callback(myFilteredCohorts);
       });
     };
 
     return {
+      decorate: decorate,
       decorateCohortAlerts: decorateCohortAlerts,
-      loadMyCohorts: loadMyCohorts
+      loadMyFilteredCohorts: loadMyFilteredCohorts
     };
 
   });

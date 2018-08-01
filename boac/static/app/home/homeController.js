@@ -30,35 +30,46 @@
   angular.module('boac').controller('HomeController', function(
     cohortService,
     config,
+    curatedCohortFactory,
     page,
-    studentGroupService,
     $rootScope,
     $scope
   ) {
 
     $scope.demoMode = config.demoMode;
 
+    var getMyCuratedCohorts = function(callback) {
+      curatedCohortFactory.getMyCuratedCohorts().then(function(response) {
+        var cohorts = response.data;
+        var decoratedCohorts = [];
+        _.each(cohorts, function(cohort) {
+          decoratedCohorts.push(cohortService.decorate(cohort));
+        });
+        return callback(decoratedCohorts);
+      });
+    };
+
     var init = function() {
       page.loading(true);
 
-      studentGroupService.loadMyGroups(function(myGroups) {
-        $scope.myGroups = myGroups;
+      getMyCuratedCohorts(function(cohorts) {
+        $scope.myCuratedCohorts = cohorts;
 
-        cohortService.loadMyCohorts(function(myCohorts) {
-          $scope.myCohorts = myCohorts;
+        cohortService.loadMyFilteredCohorts(function(myFilteredCohorts) {
+          $scope.myFilteredCohorts = myFilteredCohorts;
           page.loading(false);
         });
       });
     };
 
-    $rootScope.$on('groupCreated', function(event, data) {
-      $scope.myGroups.push(studentGroupService.decorateGroup(data.group));
+    $rootScope.$on('curatedCohortCreated', function(event, data) {
+      $scope.myCuratedCohorts.push(cohortService.decorate(data.cohort));
     });
 
-    $rootScope.$on('myCohortsUpdated', function() {
+    $rootScope.$on('myFilteredCohortsUpdated', function() {
       page.loading(true);
-      cohortService.loadMyCohorts(function(myCohorts) {
-        $scope.myCohorts = myCohorts;
+      cohortService.loadMyFilteredCohorts(function(myFilteredCohorts) {
+        $scope.myFilteredCohorts = myFilteredCohorts;
         page.loading(false);
       });
     });
