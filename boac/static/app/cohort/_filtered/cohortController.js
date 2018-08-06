@@ -27,8 +27,88 @@
 
   'use strict';
 
-  angular.module('boac').controller('_FilteredCohortController', function() {
+  angular.module('boac').controller('_FilteredCohortController', function(
+    $location,
+    $rootScope,
+    $scope,
+    cohortService,
+    filterCriteriaService,
+    filteredCohortFactory,
+    page,
+    studentFactory,
+    studentSearchService,
+    validationService
+  ) {
 
+    $scope.search = {
+      orderBy: studentSearchService.getSortByOptionsForSearch(),
+      pagination: studentSearchService.initPagination(),
+      results: {
+        students: [],
+        totalStudentCount: null
+      }
+    };
 
+    var errorHandler = function(error) {
+      if (error.status === 404) {
+        $location.replace().path('/404');
+      } else {
+        $scope.error = validationService.parseError(error);
+        page.loading(false);
+      }
+    };
+
+    $scope.rename = function(cohortName) {
+      validationService.validateName({id: $scope.cohort.id, name: cohortName}, function(error) {
+        if (error) {
+          errorHandler(error);
+        } else {
+          filteredCohortFactory.rename($scope.cohort.id, cohortName).then(function() {
+            cohort.name = cohortName;
+          }).catch(errorHandler);
+        }
+      });
+    };
+
+    var nextPage = $scope.nextPage = function() {
+      page.loading(true);
+      var cohortId = filterCriteriaService.getCohortIdFromLocation();
+      var orderBy = $scope.search.orderBy.selected;
+      var limit = $scope.search.pagination.itemsPerPage;
+      var offset = ($scope.search.pagination.currentPage - 1) * limit;
+
+      if (cohortId > 0) {
+        filteredCohortFactory.getCohort(cohortId, orderBy, offset, limit).then(function(response) {
+          var cohort = $scope.cohort = response.data;
+          // Update browser location
+          $location.url($location.path());
+          $location.search('c', cohort.id);
+          $scope.search.results = {
+            students: cohort.students,
+            totalStudentCount: cohort.totalStudentCount
+          };
+          filterCriteriaService.updateLocation(cohort.filterCriteria);
+          $rootScope.pageTitle = $scope.cohortName = cohort.name;
+          page.loading(false);
+
+        }).catch(errorHandler);
+
+      } else {
+        var filterCriteria = filterCriteriaService.getCriteriaFromLocation();
+        filterCriteriaService.updateLocation(filterCriteria);
+        studentFactory.getStudents(filterCriteria, orderBy, offset, limit).then(function(response) {
+          $scope.search.results = {
+            students: response.data.students,
+            totalStudentCount: response.data.totalStudentCount
+          };
+          $scope.cohortName = cohortService.getSearchPageTitle(filterCriteria);
+          $rootScope.pageTitle = $scope.cohortName || 'Filtered Cohort';
+          page.loading(false);
+
+        }).catch(errorHandler);
+      }
+    };
+
+    nextPage();
   });
 }(window.angular));

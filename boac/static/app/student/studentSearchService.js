@@ -27,7 +27,7 @@
 
   'use strict';
 
-  angular.module('boac').service('studentSearchService', function(authService, studentFactory, utilService, $location) {
+  angular.module('boac').service('studentSearchService', function($location, authService, studentFactory, utilService) {
 
     var getSortByOptionsForSearch = function() {
       var options = [
@@ -79,30 +79,39 @@
         $location.search('g', gpaRanges);
         // Use string 'true' rather than boolean so that the value persists in browser location.
         $location.search('i', intensive);
-        $location.search('inactive', inactive);
         $location.search('l', levels);
         $location.search('m', majors);
         $location.search('t', groupCodes);
         $location.search('u', unitRanges);
+        $location.search('v', inactive);
       }
-      return studentFactory.getStudents(
-        advisorLdapUid,
-        gpaRanges,
-        groupCodes,
-        intensive,
-        inactive,
-        levels,
-        majors,
-        unitRanges,
-        orderBy,
-        offset,
-        limit
-      );
+      var criteria = {
+        advisorLdapUid: advisorLdapUid,
+        gpaRanges: gpaRanges || [],
+        groupCodes: groupCodes || [],
+        inIntensiveCohort: intensive,
+        isInactiveAsc: inactive,
+        levels: levels || [],
+        majors: majors || [],
+        unitRanges: unitRanges || []
+      };
+
+      return studentFactory.getStudents(criteria, orderBy, offset, limit);
+    };
+
+    var initPagination = function() {
+      return {
+        enabled: true,
+        currentPage: 1,
+        itemsPerPage: 50,
+        noLimit: null
+      };
     };
 
     return {
       getSortByOptionsForSearch: getSortByOptionsForSearch,
-      getStudents: getStudents
+      getStudents: getStudents,
+      initPagination: initPagination
     };
   });
 

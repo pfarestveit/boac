@@ -1,1 +1,100 @@
-<new-filtered-cohort-menu></new-filtered-cohort-menu>
+<div class="cohort-container">
+  <div class="loading-spinner-large" data-ng-if="isLoading && !error">
+    <i class="fas fa-sync fa-spin fa-5x"></i>
+    <span class="sr-only">Loading...</span>
+  </div>
+  <div data-ng-if="error">
+    <h1 class="page-section-header">Error</h1>
+    <div class="faint-text has-error">
+      <span data-ng-bind="error.message" data-ng-if="error.message"></span>
+      <span data-ng-if="!error.message">Sorry, there was an error retrieving data.</span>
+    </div>
+  </div>
+  <div data-ng-if="!error && !isLoading">
+    <h1 class="page-section-header" data-ng-if="cohortName && !renameMode">
+      <span data-ng-bind="cohortName"></span>
+      <span class="faint-text">(<span data-ng-bind="search.results.totalStudentCount"></span> students)</span>
+    </h1>
+    <h1 data-ng-if="!cohortName">
+      <span data-ng-pluralize count="search.results.totalStudentCount" when="{'one': '1 Result', 'other': '{} Results'}"></span>
+    </h1>
+    <form name="renameCohortForm"
+          class="flex-container flex-space-between cohort-manage-row"
+          data-ng-submit="renameCohort(cohort, cohort.name)"
+          data-ng-if="renameMode">
+      <div class="cohort-manage-text-input">
+        <input aria-required="true"
+               class="form-control"
+               data-ng-change="cohort.hideError = true"
+               data-ng-model="cohortName"
+               focus-on="cohort.editMode"
+               id="filtered-cohort-name-input-{{$index}}"
+               maxlength="255"
+               name="name"
+               required
+               type="text"/>
+        <div class="has-error" data-ng-bind="cohort.error" data-ng-if="cohort.error && !cohort.hideError"></div>
+        <div class="faint-text">255 character limit <span data-ng-if="cohort.name.length">({{255 - cohort.name.length}} left)</span></div>
+      </div>
+      <div class="edit-mode-button-container">
+        <button type="button"
+                id="filtered-cohort-save-btn-{{$index}}"
+                class="btn btn-sm btn-primary cohort-manage-btn"
+                data-ng-click="rename()">
+          Rename
+        </button>
+        <button type="button"
+                id="filtered-cohort-cancel-btn-{{$index}}"
+                class="btn btn-sm btn-default cohort-manage-btn"
+                data-ng-click="cancel()">
+          Cancel
+        </button>
+      </div>
+    </form>
+    <hr/>
+    <div>
+      Show Filters
+      <span data-ng-if="cohort.isOwnedByCurrentUser && !cohort.isReadOnly">
+        <span class="faint-text">|</span>
+        <button type="button"
+                id="rename-cohort-button"
+                class="btn-link cohort-manage-btn-link"
+                data-ng-click="renameMode = true">
+          Rename
+        </button>
+        <span data-ng-controller="DeleteCohortController" data-ng-if="!cohort.isReadOnly">
+          <span class="faint-text">|</span>
+          <button type="button"
+                  id="delete-cohort-button"
+                  class="btn-link cohort-manage-btn-link"
+                  data-ng-click="openDeleteCohortModal(cohort, 'home')">
+            Delete
+          </button>
+        </span>
+      </span>
+    </div>
+    <hr/>
+    <div id="cohort-filters">
+      <filtered-cohort-menu-beta></filtered-cohort-menu-beta>
+    </div>
+    <hr/>
+    <ul>
+      <li data-ng-repeat="student in search.results.students track by $index">
+        {{student}}
+      </li>
+    </ul>
+    <ul uib-pagination
+        boundary-link-numbers="true"
+        force-ellipses="true"
+        max-size="9"
+        rotate="false"
+        direction-links="false"
+        items-per-page="search.pagination.itemsPerPage"
+        ng-model="search.pagination.currentPage"
+        total-items="search.results.totalStudentCount"
+        data-ng-click="nextPage()"
+        data-ng-if="search.results.totalStudentCount > search.pagination.itemsPerPage"></ul>
+
+  </div>
+</div>
+
