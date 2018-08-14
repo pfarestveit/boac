@@ -27,91 +27,172 @@
 
   'use strict';
 
-  angular.module('boac').service('filterCriteriaService', function($location, utilService) {
-
-    var asArray = function(obj) {
-      if (_.isNil(obj)) {
-        return null;
-      }
-      return Array.isArray(obj) ? obj : [ obj ];
-    };
-
-    var criteriaRef = [
-      {
-        filter: 'advisorLdapUid',
-        param: 'a',
-        handler: asArray
-      },
-      {
-        filter: 'gpaRanges',
-        param: 'g',
-        handler: asArray
-      },
-      {
-        filter: 'groupCodes',
-        param: 't',
-        handler: asArray
-      },
-      {
-        filter: 'intensive',
-        param: 'i',
-        handler: utilService.toBoolOrNull
-      },
-      {
-        filter: 'inactive',
-        param: 'v',
-        handler: utilService.toBoolOrNull
-      },
-      {
-        filter: 'levels',
-        param: 'l',
-        handler: asArray
-      },
-      {
-        filter: 'majors',
-        param: 'm',
-        handler: asArray
-      },
-      {
-        filter: 'unitRanges',
-        param: 'u',
-        handler: asArray
-      }
-    ];
+  angular.module('boac').service('filterCriteriaService', function(
+    $location,
+    athleticsFactory,
+    authService,
+    filterCriteriaFactory,
+    studentFactory,
+    userFactory
+  ) {
 
     var getCohortIdFromLocation = function() {
       return parseInt($location.search().c, 10);
     };
 
-    var getCriteriaFromLocation = function() {
+    var getFilterCriteriaFromLocation = function() {
       var queryArgs = _.clone($location.search());
-      var criteria = {};
+      var filterCriteria = {};
 
-      _.each(criteriaRef, function(c) {
-        criteria[c.filter] = c.handler(queryArgs[c.param]);
+      _.each(filterCriteriaFactory.getFilterDefinitions(), function(d) {
+        filterCriteria[d.key] = d.handler(queryArgs[d.param]);
       });
-      return criteria;
+      return filterCriteria;
     };
 
     var updateLocation = function(filterCriteria) {
-      var updates = [];
-
-      _.each(filterCriteria, function(value, filterName) {
-        var ref = _.find(criteriaRef, ['filter', filterName]);
-        if (ref && !_.isNil(value)) {
-          updates.push({param: ref.param, value: value});
-        }
-      });
       // Clear browser location then update
       $location.url($location.path());
-      _.each(updates, function(update) {
-        $location.search(update.param, update.value);
+      var definitions = filterCriteriaFactory.getFilterDefinitions();
+
+      _.each(filterCriteria, function(value, key) {
+        var definition = _.find(definitions, ['key', key]);
+        if (definition && _.size(value)) {
+          $location.search(definition.param, value);
+        }
       });
+    };
+
+    /**
+     * @param  {Array}     allOptions     All options of dropdown
+     * @param  {Function}  isSelected     Determines value of 'selected' property
+     * @return {void}
+     */
+    var setSelected = function(allOptions, isSelected) {
+      _.each(allOptions, function(option) {
+        if (option) {
+          option.selected = isSelected(option);
+        }
+      });
+    };
+
+    /**
+     * @param  {String}    menuName      For example, 'majors'
+     * @param  {Object}    optionGroup   Menu represents a group of options (see option-group definition)
+     * @return {void}
+     */
+    var onClickMajorOptionGroup = function(menuName, optionGroup) {
+      if (menuName === 'majors') {
+        if (optionGroup.selected) {
+          if (optionGroup.name === 'Declared') {
+            // If user selects "Declared" then all other checkboxes are deselected
+            $scope.search.count.majors = 1;
+            setSelected($scope.search.options.majors, function(major) {
+              return major.name === optionGroup.name;
+            });
+          } else if (optionGroup.name === 'Undeclared') {
+            // If user selects "Undeclared" then "Declared" is deselected
+            manualSetSelected(menuName, 'Declared', false);
+            onClickOption(menuName, optionGroup);
+          }
+        } else {
+          onClickOption(menuName, optionGroup);
+        }
+      }
+    };
+
+    var getMajors = function(callback) {
+      studentFactory.getRelevantMajors().then(function(response) {
+        // Remove '*-undeclared' options in favor of generic 'Undeclared'
+        var majors = _.filter(response.data, function(major) {
+          return !major.match(/undeclared/i);
+        });
+        majors = _.map(majors, function(name) {
+          return {
+            name: name,
+            value: name
+          };
+        });
+        majors.unshift(
+          {
+            name: 'Declared',
+            value: 'Declared',
+            onClick: onClickMajorOptionGroup
+          },
+          {
+            name: 'Undeclared',
+            value: 'Undeclared',
+            onClick: onClickMajorOptionGroup
+          },
+          null
+        );
+        return callback(majors);
+      });
+    };
+
+    var setMenuOptions = function(definitions, key, options) {
+      _.find(definitions, ['key', key]).options = options;
+    };
+
+    /**
+     * @param   {Object}      definitions         Filter definitions will be populated according to user privileges.
+     * @param   {Function}    callback            Standard callback
+     * @returns {Array}                           Available filter-criteria with populated menu options.
+     */
+    var getAvailableFilters = function(definitions, callback) {
+      async.series([
+        function(done) {
+          getMajors(function(majors) {
+            setMenuOptions(definitions, 'majors', majors);
+            setMenuOptions(definitions, 'gpaRanges', studentFactory.getGpaRanges());
+            setMenuOptions(definitions, 'levels', studentFactory.getStudentLevels());
+            setMenuOptions(definitions, 'unitRanges', studentFactory.getUnitRanges());
+
+            return done();
+          });
+        },
+        function(done) {
+          if (authService.canViewAsc()) {
+            athleticsFactory.getAllTeamGroups().then(function(response) {
+              setMenuOptions(definitions, 'groupCodes', _.map(response.data, function(group) {
+                return {
+                  name: group.name,
+                  value: group.groupCode
+                };
+              }));
+              return done();
+            });
+          } else {
+            return done();
+          }
+        },
+        function(done) {
+          if (authService.canViewCoe()) {
+            // The 'Advisor' dropdown has UIDs and names
+            userFactory.getProfilesPerDeptCode('COENG').then(function(response) {
+              setMenuOptions(definitions, 'advisorLdapUid', _.map(response.data, function(user) {
+                return {
+                  name: user.firstName + ' ' + user.lastName,
+                  value: user.uid
+                };
+              }));
+              return done();
+            });
+          } else {
+            return done();
+          }
+        },
+        function() {
+          return callback(definitions);
+        }
+      ]);
     };
 
     return {
       getCohortIdFromLocation: getCohortIdFromLocation,
-      getCriteriaFromLocation: getCriteriaFromLocation,
+      getFilterCriteriaFromLocation: getFilterCriteriaFromLocation,
+      getMajors: getMajors,
+      getAvailableFilters: getAvailableFilters,
       updateLocation: updateLocation
     };
 

@@ -1,0 +1,67 @@
+<div data-ng-if="filters.isLoading">
+  <i class="fas fa-sync fa-spin fa-2x"></i>
+</div>
+<div data-ng-if="!filters.isLoading">
+  <div>
+    <div data-ng-repeat="added in filters.added track by $index">
+      <span data-ng-bind="added.name"></span>
+      <span data-ng-if="added.subCategory"> | {{added.subCategory.name}}</span>
+      <span>
+        <button type="button"
+                id="remove-added-filter-{{$index}}"
+                class="btn-link cohort-manage-btn-link"
+                data-ng-click="buttons.removeButton.onClick($index)"
+                data-ng-if="buttons.removeButton.show">
+          Remove
+        </button>
+      </span>
+    </div>
+    <div>
+      <select id="draft-filter"
+              data-ng-model="filters.draft"
+              data-ng-options="o.name disable when o.disabled for o in filters.available">
+      </select>
+      <select id="draft-filter-sub-category"
+              data-ng-model="filters.draft.subCategory"
+              data-ng-options="o.name disable when o.disabled for o in filters.draft.options"
+              data-ng-if="filters.draft.options">
+      </select>
+      <div data-ng-if="filters.draft">
+        <button type="button"
+                id="unsaved-filter-add"
+                class="btn btn-primary"
+                data-ng-click="buttons.addButton.onClick()"
+                data-ng-if="buttons.addButton.show">
+          Add
+        </button>
+        <button type="button"
+                id="unsaved-filter-reset"
+                class="btn-link cohort-manage-btn-link"
+                data-ng-click="buttons.cancelButton.onClick()"
+                data-ng-if="buttons.cancelButton.show">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div>
+      <button type="button"
+              id="unsaved-filter-apply"
+              class="btn btn-primary"
+              data-ng-click="buttons.applyButton.onClick()"
+              data-ng-disabled="buttons.applyButton.disabled"
+              data-ng-if="buttons.applyButton.show">
+        Apply
+      </button>
+      <button type="button"
+              id="unsaved-filter-save-cohort"
+              class="btn btn-secondary"
+              data-ng-disabled="buttons.saveButton.disabled"
+              data-ng-click="buttons.saveButton.onClick(createFilter)"
+              data-ng-if="buttons.saveButton.show">
+        Save Cohort
+      </button>
+    </div>
+  </div>
+</div>
