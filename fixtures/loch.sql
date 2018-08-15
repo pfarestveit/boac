@@ -79,6 +79,7 @@ VALUES
 ('5678901234', FALSE, TRUE, 'Compete', 'MFB-DL', 'Football, Defensive Line', 'FBM', 'Football'),
 ('5678901234', FALSE, TRUE, 'Compete', 'MTE', 'Men''s Tennis', 'TNM', 'Men''s Tennis'),
 ('7890123456', TRUE, TRUE, 'Compete', 'MBB', 'Men''s Baseball', 'BAM', 'Men''s Baseball'),
+('3456789012', TRUE, TRUE, 'Compete', 'MBB-AA', 'Men''s Baseball', 'BAM', 'Men''s Baseball'),
 -- 'A mug is a mug in everything.' - Colonel Harrington
 ('890127492', TRUE, FALSE, 'Trouble', 'MFB-DB', 'Football, Defensive Backs', 'FBM', 'Football'),
 ('890127492', TRUE, FALSE, 'Trouble', 'MFB-DL', 'Football, Defensive Line', 'FBM', 'Football'),
@@ -160,4 +161,5 @@ VALUES
 ('11667051', '2162', :enrollment_term_11667051_2162),
 ('11667051', '2172', :enrollment_term_11667051_2172),
 ('11667051', '2178', :enrollment_term_11667051_2178),
+('11667051', '2182', :enrollment_term_11667051_2182),
 ('2345678901', '2172', :enrollment_term_2345678901_2172);

@@ -290,6 +290,44 @@
     };
 
     /**
+     * @param  {Array}     allOptions     All options of dropdown
+     * @param  {Function}  isSelected     Determines value of 'selected' property
+     * @return {void}
+     */
+    var setSelected = function(allOptions, isSelected) {
+      _.each(allOptions, function(option) {
+        if (option) {
+          option.selected = isSelected(option);
+        }
+      });
+    };
+
+    /**
+     * @param  {String}    menuName      For example, 'majors'
+     * @param  {Object}    optionGroup   Menu represents a group of options (see option-group definition)
+     * @return {void}
+     */
+    var onClickDeclaredUndeclared = function(menuName, optionGroup) {
+      if (menuName === 'majors') {
+        if (optionGroup.selected) {
+          if (optionGroup.name === 'Declared') {
+            // If user selects "Declared" then all other checkboxes are deselected
+            $scope.search.count.majors = 1;
+            setSelected($scope.search.options.majors, function(major) {
+              return major.name === optionGroup.name;
+            });
+          } else if (optionGroup.name === 'Undeclared') {
+            // If user selects "Undeclared" then "Declared" is deselected
+            manualSetSelected(menuName, 'Declared', false);
+            onClickOption(menuName, optionGroup);
+          }
+        } else {
+          onClickOption(menuName, optionGroup);
+        }
+      }
+    };
+
+    /**
      * The search form must reflect the team codes of the saved cohort.
      *
      * @param  {Function}    callback    Follow up activity per caller
@@ -453,9 +491,7 @@
       if (args.p && !isNaN(args.p)) {
         $scope.pagination.currentPage = parseInt(args.p, 10);
       }
-      if (args.v && _.includes(['list', 'matrix'], args.v)) {
-        $scope.tab = args.v;
-      }
+      $scope.tab = _.includes(['list', 'matrix'], args.tab) ? args.tab : $scope.tab;
     };
 
     /**
@@ -466,7 +502,7 @@
      */
     $scope.onTab = function(tabName) {
       $scope.tab = tabName;
-      $location.search('v', $scope.tab);
+      $location.search('tab', $scope.tab);
       // Lazy load matrix data
       if (tabName === 'matrix' && !$scope.matrix) {
         matrixViewRefresh(function() {
@@ -558,7 +594,7 @@
       athleticsFactory.getAllTeamGroups().then(function(teamsResponse) {
         var groupCodes = teamsResponse.data;
 
-        filterCriteriaService.getMajors(function(majors) {
+        filterCriteriaService.getMajors(onClickDeclaredUndeclared, function(majors) {
           var decorate = utilService.decorateOptions;
           $scope.search.options = {
             gpaRanges: decorate(studentFactory.getGpaRanges(), 'name'),

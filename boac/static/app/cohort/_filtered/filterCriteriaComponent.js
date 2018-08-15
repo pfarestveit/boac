@@ -42,16 +42,24 @@
       isLoading: true
     };
 
+    $scope.onDraftFilterClick = function(option) {
+      if (option && !option.disabled) {
+        $scope.filters.draft = option;
+      }
+    };
+
+    $scope.onDraftSubCategoryClick = function(option) {
+      if (option && !option.disabled) {
+        $scope.filters.draft.subCategory = option;
+      }
+    };
+
     var executeSearchFunction = null;
 
     var redrawButtons = function(isInitPhase) {
       _.each($scope.buttons, function(button) {
         button.redraw(isInitPhase);
       });
-    };
-
-    var onAddedFiltersChange = function() {
-      $rootScope.$broadcast('filterCriteriaComponent.filters.added', $scope.filters.added);
     };
 
     var onDraftFilterChange = function() {
@@ -64,13 +72,16 @@
       var filterCriteria = _.clone(this.cohort.filterCriteria);
       executeSearchFunction = this.executeSearchFunction;
 
-      $scope.$watch('filters.added', onAddedFiltersChange);
       $scope.$watch('filters.draft', onDraftFilterChange);
       $scope.$watch('filters.draft.subCategory', onDraftFilterChange);
 
       filterCriteriaService.getAvailableFilters(filterCriteriaFactory.getFilterDefinitions(), function(availableFilters) {
         cohortUtils.initFiltersForDisplay(filterCriteria, availableFilters, function(addedFilters) {
-          $scope.filters.available = availableFilters;
+          var sortOrder = filterCriteriaFactory.getPrimaryFilterSortOrder();
+          $scope.filters.available = _.map(sortOrder, function(key) {
+            // Return null to insert divider in dropdown menu.
+            return key && _.find(availableFilters, ['key', key]);
+          });
           $scope.filters.added = addedFilters;
           redrawButtons(true);
           $scope.filters.isLoading = false;
@@ -87,12 +98,14 @@
       if (depth === 1) {
         filter.disabled = disable;
       } else {
-        // Depth is 2. Disable selected option in available-filters list.
+        // Disable option in sub-categories.
         var value = updatedFilter.subCategory.value;
         var option = _.find(filter.options, ['value', value]);
         if (option) {
           option.disabled = disable;
         }
+        var remainingAvailable = _.omitBy(updatedFilter.options, 'disabled');
+        filter.disabled = _.isEmpty(remainingAvailable);
       }
     };
 
@@ -103,23 +116,24 @@
           var addedFilter = _.clone($scope.filters.draft);
           updateDisableAfterAddOrRemove(addedFilter, true);
           $scope.filters.added.push(addedFilter);
+          // Remove pointer to subCategory in availableFilters and then set draft to null.
+          $scope.filters.draft.subCategory = null;
           $scope.filters.draft = null;
         },
         show: false,
         redraw: function(isInitPhase) {
           var depth = _.get($scope.filters.draft, 'depth');
-          var secondaryValue = _.get($scope.filters.draft, 'subCategory.value');
-          $scope.buttons.addButton.show = !isInitPhase && depth && (depth === 1 || (depth === 2 && secondaryValue));
+          var subCategoryValue = _.get($scope.filters.draft, 'subCategory.value');
+          $scope.buttons.addButton.show = !isInitPhase && depth && (depth === 1 || (depth === 2 && subCategoryValue));
+          $scope.buttons.applyButton.redraw(false);
         }
       },
       applyButton: {
         // Button to search for students based on added filters.
         disabled: true,
         onClick: function() {
-          $scope.filters.isLoading = true;
           var filterCriteria = cohortUtils.toFilterCriteria($scope.filters.added);
           executeSearchFunction(filterCriteria);
-          $scope.filters.isLoading = false;
         },
         show: false,
         redraw: function(isInitPhase) {
@@ -137,8 +151,8 @@
         show: false,
         redraw: function(isInitPhase) {
           var depth = _.get($scope.filters.draft, 'depth');
-          var secondaryValue = _.get($scope.filters.draft, 'subCategory.value');
-          $scope.buttons.cancelButton.show = !isInitPhase && depth && (depth === 1 || (depth === 2 && secondaryValue));
+          var subCategoryValue = _.get($scope.filters.draft, 'subCategory.value');
+          $scope.buttons.cancelButton.show = !isInitPhase && depth && (depth === 1 || (depth === 2 && subCategoryValue));
         }
       },
       removeButton: {
@@ -147,6 +161,7 @@
           var removedFilter = _.pullAt($scope.filters.added, [ indexOfAddedFilter ]);
           if (removedFilter.length) {
             updateDisableAfterAddOrRemove(removedFilter[0], false);
+            $scope.buttons.applyButton.redraw(false);
           }
         },
         show: false,
