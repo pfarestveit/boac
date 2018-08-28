@@ -23,11 +23,15 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 import json
-import re
+
 from boac import db, std_commit
 from boac.api.errors import InternalServerError
+from boac.lib import util
+from boac.lib.berkeley import get_dept_codes
+from boac.merged import athletics
+from boac.merged.student import query_students
+from boac.models.alert import Alert
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.authorized_user import cohort_filter_owners
 from boac.models.base import Base
@@ -57,35 +61,17 @@ class CohortFilter(Base, UserMixin):
             created_at={self.created_at}>"""
 
     @classmethod
-    def create(
-            cls,
-            uid,
-            label,
-            advisor_ldap_uid=None,
-            gpa_ranges=None,
-            group_codes=None,
-            levels=None,
-            majors=None,
-            unit_ranges=None,
-            in_intensive_cohort=None,
-            is_inactive_asc=None,
-    ):
-        # If in_intensive_cohort is True then search intensive cohort; if equals False then search
-        # non-intensive students; if equals None then search all students.
-        criteria = cls.compose_filter_criteria(
-            gpa_ranges=gpa_ranges,
-            group_codes=group_codes,
-            advisor_ldap_uid=advisor_ldap_uid,
-            in_intensive_cohort=in_intensive_cohort,
-            is_inactive_asc=is_inactive_asc,
-            levels=levels,
-            majors=majors,
-            unit_ranges=unit_ranges,
-        )
-        cohort = CohortFilter(label=label, filter_criteria=json.dumps(criteria))
+    def create(cls, uid, label, **kwargs):
+        at_least_one_is_defined = False
+        filter_criteria = {}
+        for k, v in kwargs.items():
+            at_least_one_is_defined = at_least_one_is_defined or (len(v) if isinstance(v, list) else v is not None)
+            filter_criteria[util.camelize(k)] = v
+        if not at_least_one_is_defined:
+            raise InternalServerError('Cohort creation requires at least one filter specification.')
+        cohort = CohortFilter(label=label, filter_criteria=filter_criteria)
         user = AuthorizedUser.find_by_uid(uid)
         user.cohort_filters.append(cohort)
-        # The new Cohort Filter's primary ID column is not generated until the DB session is flushed.
         db.session.flush()
         std_commit()
         return cohort
@@ -128,47 +114,102 @@ class CohortFilter(Base, UserMixin):
         db.session.delete(cohort_filter)
         std_commit()
 
-    @classmethod
-    def compose_filter_criteria(
-            cls,
-            advisor_ldap_uid=None,
-            gpa_ranges=None,
-            group_codes=None,
-            in_intensive_cohort=None,
-            is_inactive_asc=None,
-            levels=None,
-            majors=None,
-            unit_ranges=None,
+    def to_api_json(
+        self,
+        order_by=None,
+        offset=0,
+        limit=50,
+        include_students=True,
+        include_profiles=False,
+        include_alerts_for_uid=None,
     ):
-        has_criteria = next((c for c in [gpa_ranges, group_codes, levels, majors, unit_ranges] if c), None)
-        has_criteria = has_criteria or next((c for c in [advisor_ldap_uid, in_intensive_cohort, is_inactive_asc] if c is not None), None)
-        if not has_criteria:
-            raise InternalServerError('CohortFilter creation requires one or more non-empty criteria.')
-        # Validate
-        for arg in [gpa_ranges, group_codes, levels, majors, unit_ranges]:
-            if arg and not isinstance(arg, list):
-                raise InternalServerError('Certain \'filter_criteria\' must be instance of \'list\' type.')
-        group_code_syntax = re.compile('^[A-Z\-]+$')
-        if group_codes and any(not group_code_syntax.match(code) for code in group_codes):
-            raise InternalServerError('\'group_codes\' arg has invalid data: ' + str(group_codes))
-        level_syntax = re.compile('^[A-Z][a-z]+$')
-        if levels and any(not level_syntax.match(level) for level in levels):
-            raise InternalServerError('\'levels\' arg has invalid data: ' + str(levels))
-        if majors and any(not isinstance(m, str) for m in majors):
-            raise InternalServerError('\'majors\' arg has invalid data: ' + str(majors))
-        # The 'numrange' syntax is based on https://www.postgresql.org/docs/9.3/static/rangetypes.html
-        numrange_syntax = re.compile('^numrange\([0-9\.NUL]+, [0-9\.NUL]+, \'..\'\)$')
-        for r in (gpa_ranges or []) + (unit_ranges or []):
-            if not numrange_syntax.match(r):
-                msg = f'Range argument \'{r}\' does not match expected \'numrange\' syntax: {numrange_syntax.pattern}'
-                raise InternalServerError(msg)
-        return {
-            'gpaRanges': gpa_ranges or [],
-            'groupCodes': group_codes or [],
-            'inIntensiveCohort': in_intensive_cohort,
-            'advisorLdapUid': advisor_ldap_uid,
-            'isInactiveAsc': is_inactive_asc,
-            'levels': levels or [],
-            'majors': majors or [],
-            'unitRanges': unit_ranges or [],
+        c = self.filter_criteria
+        c = c if isinstance(c, dict) else json.loads(c)
+        advisor_ldap_uids = util.get(c, 'advisorLdapUids')
+        if not isinstance(advisor_ldap_uids, list):
+            advisor_ldap_uids = [advisor_ldap_uids] if advisor_ldap_uids else None
+        cohort_name = self.label
+        cohort_json = {
+            'id': self.id,
+            'code': self.id,
+            'label': cohort_name,
+            'name': cohort_name,
+            'owners': [user.uid for user in self.owners],
         }
+        coe_prep_statuses = c.get('coePrepStatuses')
+        ethnicities = c.get('ethnicities')
+        genders = c.get('genders')
+        gpa_ranges = c.get('gpaRanges')
+        group_codes = c.get('groupCodes')
+        in_intensive_cohort = util.to_bool_or_none(c.get('inIntensiveCohort'))
+        is_inactive_asc = util.to_bool_or_none(c.get('isInactiveAsc'))
+        levels = c.get('levels')
+        majors = c.get('majors')
+        team_groups = athletics.get_team_groups(group_codes) if group_codes else []
+        unit_ranges = c.get('unitRanges')
+        cohort_json.update({
+            'filterCriteria': {
+                'advisorLdapUids': advisor_ldap_uids,
+                'coePrepStatuses': coe_prep_statuses,
+                'ethnicities': ethnicities,
+                'genders': genders,
+                'gpaRanges': gpa_ranges,
+                'groupCodes': group_codes,
+                'inIntensiveCohort': in_intensive_cohort,
+                'isInactiveAsc': is_inactive_asc,
+                'levels': levels,
+                'majors': majors,
+                'unitRanges': unit_ranges,
+            },
+            'teamGroups': team_groups,
+        })
+
+        if not include_students and not include_alerts_for_uid and self.student_count is not None:
+            # No need for a students query; return the database-stashed student count.
+            cohort_json.update({
+                'totalStudentCount': self.student_count,
+            })
+            return cohort_json
+        owner = self.owners[0] if len(self.owners) else None
+        if owner and 'UWASC' in get_dept_codes(owner):
+            is_active_asc = not is_inactive_asc
+        else:
+            is_active_asc = None if is_inactive_asc is None else not is_inactive_asc
+        results = query_students(
+            include_profiles=(include_students and include_profiles),
+            advisor_ldap_uids=advisor_ldap_uids,
+            coe_prep_statuses=coe_prep_statuses,
+            ethnicities=ethnicities,
+            genders=genders,
+            gpa_ranges=gpa_ranges,
+            group_codes=group_codes,
+            in_intensive_cohort=in_intensive_cohort,
+            is_active_asc=is_active_asc,
+            levels=levels,
+            majors=majors,
+            unit_ranges=unit_ranges,
+            order_by=order_by,
+            offset=offset,
+            limit=limit,
+            sids_only=not include_students,
+        )
+        if results:
+            # If the cohort is newly created or a cache refresh is underway, store the student count in the database
+            # to save future queries.
+            if self.student_count is None:
+                self.update_student_count(results['totalStudentCount'])
+            cohort_json.update({
+                'totalStudentCount': results['totalStudentCount'],
+            })
+            if include_students:
+                cohort_json.update({
+                    'students': results['students'],
+                })
+            if include_alerts_for_uid:
+                viewer = AuthorizedUser.find_by_uid(include_alerts_for_uid)
+                if viewer:
+                    alert_counts = Alert.current_alert_counts_for_sids(viewer.id, results['sids'])
+                    cohort_json.update({
+                        'alerts': alert_counts,
+                    })
+        return cohort_json

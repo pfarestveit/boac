@@ -90,33 +90,15 @@ class TestCohortDetail:
         assert defense_backs_all['totalStudentCount'] == 2
         assert defense_backs_inactive['totalStudentCount'] == 1
 
-    def test_create_cohort_if_first_coe_login(self, client, fake_auth):
-        # COE advisor logs in for the first time
-        uid = '90412'
-        fake_auth.login(uid)
-        cohorts = client.get('/api/filtered_cohorts/my').json
-        assert len(cohorts) == 1
-        cohort = cohorts[0]
-        assert cohort['name'] == 'My Students'
-        assert cohort['filterCriteria']['advisorLdapUid'] == uid
-        assert cohort['isOwnedByCurrentUser'] is True
-        assert cohort['totalStudentCount'] == 2
-        response = client.get(f"/api/filtered_cohort/{cohort['id']}")
-        assert response.status_code == 200
-        students = response.json['students']
-        assert len(students) == 2
-        assert next(s for s in students if s['name'] == 'Nora Stanton Barney')
-        assert next(s for s in students if s['name'] == 'Deborah Davies')
-
     def test_my_cohorts_includes_students_with_alert_counts(self, asc_advisor_session, client, create_alerts, db_session):
         # Pre-load students into cache for consistent alert data.
-        client.get('/api/user/61889/analytics')
-        client.get('/api/user/98765/analytics')
-        from boac.api.cache_utils import load_alerts
-        load_alerts(2178)
+        client.get('/api/student/61889/analytics')
+        client.get('/api/student/98765/analytics')
+        from boac.models.alert import Alert
+        Alert.update_all_for_term(2178)
 
         cohorts = client.get('/api/filtered_cohorts/my').json
-        assert len(cohorts[0]['alerts']) == 2
+        assert len(cohorts[0]['alerts']) == 3
 
         deborah = cohorts[0]['alerts'][0]
         assert deborah['sid'] == '11667051'
@@ -148,7 +130,7 @@ class TestCohortDetail:
         client.get('/api/alerts/' + str(alert_to_dismiss) + '/dismiss')
 
         cohorts = client.get('/api/filtered_cohorts/my').json
-        assert len(cohorts[0]['alerts']) == 1
+        assert len(cohorts[0]['alerts']) == 2
         assert cohorts[0]['alerts'][0]['sid'] == '11667051'
         assert cohorts[0]['alerts'][0]['alertCount'] == 2
         assert len(cohorts[1]['alerts']) == 0
@@ -315,28 +297,10 @@ class TestCohortDetail:
         f = cohort['filterCriteria']
         assert 'majors' in f and len(f['majors']) == 2
 
-    def test_read_only_cohort(self, client, fake_auth):
-        uid = '1022796'
-        fake_auth.login(uid)
-        data = {
-            'label': 'Students of Jane the COE Advisor',
-            'advisorLdapUid': uid,
-            'groupCodes': [],
-            'majors': [],
-        }
-        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
-        assert response.status_code == 200
-        cohort = json.loads(response.data)
-        assert cohort['isReadOnly'] is True
-        assert cohort['filterCriteria']['advisorLdapUid'] == uid
-        cohort_id = cohort['id']
-        response = client.delete(f'/api/filtered_cohort/delete/{cohort_id}')
-        assert response.status_code == 403
-
     def test_forbidden_create_of_coe_uid_cohort(self, asc_advisor_session, client, fake_auth):
         data = {
             'label': 'ASC advisor wants to see students of COE advisor',
-            'advisorLdapUid': '1133399',
+            'advisorLdapUids': '1133399',
         }
         response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
         assert response.status_code == 403
@@ -344,51 +308,10 @@ class TestCohortDetail:
     def test_admin_create_of_coe_uid_cohort(self, admin_session, client, fake_auth):
         data = {
             'label': 'Admin wants to see students of COE advisor',
-            'advisorLdapUid': '1133399',
+            'advisorLdapUids': '1133399',
         }
         response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
         assert response.status_code == 200
-
-    def test_invalid_create_cohort_params(self, client, coe_advisor_session):
-        bad_range_syntax = 'numrange(2, BLARGH, \'[)\')'
-        data = {
-            'label': 'Problematic Cohort',
-            'gpaRanges': [bad_range_syntax],
-            'levels': ['Sophomore'],
-        }
-        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 500 == response.status_code
-        assert 'BLARGH' in str(response.data)
-        assert 'does not match expected' in str(response.data)
-
-    def test_invalid_group_code(self, client, coe_advisor_session):
-        data = {
-            'label': 'groupCodes must be uppercase',
-            'groupCodes': ['mte'],
-        }
-        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 500 == response.status_code and 'mte' in str(response.data)
-
-    def test_invalid_level(self, client, coe_advisor_session):
-        data = {
-            'label': 'Levels must be capitalized',
-            'levels': ['sophomore'],
-        }
-        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 500 == response.status_code and 'sophomore' in str(response.data)
-
-    def test_create_cohort_with_invalid_data_structure(self, client, coe_advisor_session):
-        data = {
-            'label': 'Majors must be a list of strings',
-            'majors': [
-                {
-                    'label': 'American Studies',
-                    'selected': True,
-                },
-            ],
-        }
-        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 500 == response.status_code
 
     def test_create_cohort_with_complex_filters(self, client, coe_advisor_session):
         """Creates custom cohort, with many non-empty filter_criteria."""
@@ -464,3 +387,61 @@ class TestCohortDetail:
         assert response.status_code == 200
         cohorts = CohortFilter.all_owned_by(coe_advisor_uid)
         assert not next((c for c in cohorts if c.id == cohort.id), None)
+
+    def test_coe_filter_definitions(self, client, coe_advisor_session):
+        """Gets filters available to COE users."""
+        response = client.get('/api/filter_cohort/definitions')
+        assert response.status_code == 200
+        definitions = response.json
+        assert len(definitions) == 8
+        assert definitions[0]['key'] == 'advisorLdapUids'
+
+    def test_asc_filter_definitions(self, client, asc_advisor_session):
+        """Gets filters available to ASC users."""
+        response = client.get('/api/filter_cohort/definitions')
+        assert response.status_code == 200
+        definitions = response.json
+        assert len(definitions) == 7
+        assert definitions[2]['key'] == 'isInactiveAsc'
+        assert definitions[2]['defaultValue'] is False
+
+    def test_admin_filter_definitions(self, client, admin_session):
+        """Gets filters available to Admin users."""
+        response = client.get('/api/filter_cohort/definitions')
+        assert response.status_code == 200
+        definitions = response.json
+        assert len(definitions) == 11
+        # COE advisors
+        assert definitions[0]['key'] == 'advisorLdapUids'
+        assert len(definitions[0]['options']) == 3
+        # Ethnicity
+        assert definitions[1]['key'] == 'ethnicities'
+        assert len(definitions[0]['options']) == 3
+        # Gender
+        assert definitions[2]['key'] == 'genders'
+        assert len(definitions[2]['options']) == 2
+        # GPA
+        assert definitions[3]['key'] == 'gpaRanges'
+        assert len(definitions[3]['options']) == 5
+        # Teams
+        assert definitions[4]['key'] == 'groupCodes'
+        assert len(definitions[4]['options']) == 7
+        # ASC Inactive
+        assert definitions[5]['key'] == 'isInactiveAsc'
+        assert len(definitions[5]['options']) == 2
+        assert definitions[5]['defaultValue'] is None
+        # ASC Intensive
+        assert definitions[6]['key'] == 'inIntensiveCohort'
+        assert len(definitions[6]['options']) == 2
+        # Levels
+        assert definitions[7]['key'] == 'levels'
+        assert len(definitions[7]['options']) == 4
+        # Majors
+        assert definitions[8]['key'] == 'majors'
+        assert len(definitions[8]['options']) == 8
+        # COE PREP
+        assert definitions[9]['key'] == 'coePrepStatuses'
+        assert len(definitions[9]['options']) == 4
+        # Units
+        assert definitions[10]['key'] == 'unitRanges'
+        assert len(definitions[10]['options']) == 5

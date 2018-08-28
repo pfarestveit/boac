@@ -29,7 +29,6 @@ import re
 from boac.lib.berkeley import sis_term_id_for_name
 from boac.lib.mockingdata import fixture
 from boac.lib.util import tolerant_remove
-from boac.models.json_cache import stow
 from flask import current_app as app
 import sqlalchemy
 from sqlalchemy import create_engine
@@ -86,6 +85,10 @@ def intermediate_schema():
     return app.config['DATA_LOCH_INTERMEDIATE_SCHEMA']
 
 
+def sis_schema():
+    return app.config['DATA_LOCH_SIS_SCHEMA']
+
+
 def student_schema():
     return app.config['DATA_LOCH_STUDENT_SCHEMA']
 
@@ -94,31 +97,17 @@ def earliest_term_id():
     return sis_term_id_for_name(app.config['CANVAS_EARLIEST_TERM'])
 
 
-@stow('loch_canvas_course_scores_{course_id}', for_term=True)
-def get_canvas_course_scores(course_id, term_id):
-    return _get_canvas_course_scores(course_id)
-
-
-@fixture('loch_canvas_course_scores_{course_id}.csv')
-def _get_canvas_course_scores(course_id):
-    sql = f"""SELECT
-                canvas_user_id,
-                current_score,
-                EXTRACT(EPOCH FROM last_activity_at) AS last_activity_at,
-                sis_enrollment_status
-              FROM {boac_schema()}.course_enrollments
-              WHERE course_id={course_id}
-              ORDER BY canvas_user_id
-        """
-    return safe_execute_redshift(sql)
-
-
-def get_sis_enrollments(uid, term_id):
-    return _get_sis_enrollments(uid, term_id)
+def get_regular_undergraduate_session(term_id):
+    sql = f"""SELECT * FROM {sis_schema()}.sis_terms
+              WHERE term_id = '{term_id}'
+              AND academic_career = 'UGRD'
+              AND session_id = '1'
+           """
+    return safe_execute_rds(sql)
 
 
 @fixture('loch_sis_enrollments_{uid}_{term_id}.csv')
-def _get_sis_enrollments(uid, term_id):
+def get_sis_enrollments(uid, term_id):
     sql = f"""SELECT
                   enr.grade, enr.units, enr.grading_basis, enr.sis_enrollment_status, enr.sis_term_id, enr.ldap_uid,
                   crs.sis_course_title, crs.sis_course_name,
@@ -188,49 +177,6 @@ def get_sis_section_enrollments_count(term_id, sis_section_id, scope):
     return safe_execute_redshift(sql, **params)
 
 
-@stow('loch_sis_sections_in_canvas_course_{canvas_course_id}', for_term=True)
-def get_sis_sections_in_canvas_course(canvas_course_id, term_id):
-    return _get_sis_sections_in_canvas_course(canvas_course_id)
-
-
-@fixture('loch_sis_sections_in_canvas_course_{canvas_course_id}.csv')
-def _get_sis_sections_in_canvas_course(canvas_course_id):
-    # The GROUP BY clause eliminates duplicates when multiple site sections include the same SIS class section.
-    sql = f"""SELECT sis_section_id
-        FROM {intermediate_schema()}.course_sections
-        WHERE canvas_course_id={canvas_course_id}
-        GROUP BY sis_section_id
-        """
-    return safe_execute_redshift(sql)
-
-
-@stow('loch_student_canvas_courses_{uid}.csv')
-def get_student_canvas_courses(uid):
-    return _get_student_canvas_courses(uid)
-
-
-@fixture('loch_student_canvas_courses_{uid}.csv')
-def _get_student_canvas_courses(uid):
-    sql = f"""SELECT DISTINCT enr.canvas_course_id, cs.canvas_course_name, cs.canvas_course_code, cs.canvas_course_term
-        FROM {intermediate_schema()}.active_student_enrollments enr
-        JOIN {intermediate_schema()}.course_sections cs
-            ON cs.canvas_course_id = enr.canvas_course_id
-        WHERE enr.uid = {uid}
-        """
-    return safe_execute_redshift(sql)
-
-
-def get_all_teams():
-    # TODO: Remove this query after we launch new filtered-cohort view
-    sql = f"""SELECT team_code, team_name, COUNT(DISTINCT sid)
-        FROM {asc_schema()}.students
-        WHERE active = TRUE
-        AND team_code IS NOT NULL
-        GROUP BY team_name, team_code
-        ORDER BY team_name"""
-    return safe_execute_rds(sql)
-
-
 def get_team_groups(group_codes=None, team_code=None):
     params = {}
     sql = f"""SELECT group_code, group_name, team_code, team_name, COUNT(DISTINCT sid)
@@ -250,6 +196,14 @@ def get_team_groups(group_codes=None, team_code=None):
 def get_athletics_profiles(sids):
     sql = f"""SELECT sid, profile
         FROM {asc_schema()}.student_profiles
+        WHERE sid = ANY(:sids)
+        """
+    return safe_execute_redshift(sql, sids=sids)
+
+
+def get_coe_profiles(sids):
+    sql = f"""SELECT sid, profile
+        FROM {coe_schema()}.student_profiles
         WHERE sid = ANY(:sids)
         """
     return safe_execute_redshift(sql, sids=sids)
@@ -292,54 +246,24 @@ def get_enrollments_for_sid(sid, latest_term_id=None):
     return safe_execute_redshift(sql, sid=sid)
 
 
-def get_enrollments_for_term(term_id, sids):
+def get_enrollments_for_term(term_id, sids=None):
     sql = f"""SELECT sid, enrollment_term
         FROM {student_schema()}.student_enrollment_terms
-        WHERE term_id = :term_id
-        AND sid = ANY(:sids)
-        """
+        WHERE term_id = :term_id"""
+    if sids:
+        sql += ' AND sid = ANY(:sids)'
     return safe_execute_redshift(sql, term_id=term_id, sids=sids)
 
 
-@stow('loch_submissions_turned_in_relative_to_user_{course_id}_{user_id}', for_term=True)
-def get_submissions_turned_in_relative_to_user(course_id, user_id, term_id):
-    return _get_submissions_turned_in_relative_to_user(course_id, user_id)
-
-
-@fixture('loch_submissions_turned_in_relative_to_user_{course_id}_{user_id}.csv')
-def _get_submissions_turned_in_relative_to_user(course_id, user_id):
-    sql = f"""SELECT canvas_user_id,
-        COUNT(CASE WHEN
-          assignment_status IN ('graded', 'late', 'on_time', 'submitted')
-        THEN 1 ELSE NULL END) AS submissions_turned_in
-        FROM {boac_schema()}.assignment_submissions_scores
-        WHERE assignment_id IN
-        (
-          SELECT DISTINCT assignment_id FROM {boac_schema()}.assignment_submissions_scores
-          WHERE canvas_user_id = {user_id} AND course_id = {course_id}
-        )
-        GROUP BY canvas_user_id
-        HAVING count(*) = (
-          SELECT count(*) FROM {boac_schema()}.assignment_submissions_scores
-          WHERE canvas_user_id = {user_id} AND course_id = {course_id}
-        )
-        """
-    return safe_execute_redshift(sql)
-
-
-@stow('loch_user_for_uid_{uid}')
-def get_user_for_uid(uid):
-    rows = _get_user_for_uid(uid)
-    return False if not rows or (len(rows) == 0) else rows[0]
-
-
-@fixture('loch_user_for_uid_{uid}.csv')
-def _get_user_for_uid(uid):
-    sql = f"""SELECT canvas_id, name, uid
-        FROM {intermediate_schema()}.users
-        WHERE uid = {uid}
-        """
-    return safe_execute_redshift(sql)
+def get_ethnicity_codes(scope=()):
+    query_tables = _student_query_tables_for_scope(scope)
+    if not query_tables:
+        return []
+    return safe_execute_rds(f"""SELECT DISTINCT s.ethnicity AS ethnicity_code
+        {query_tables}
+        WHERE s.ethnicity IS NOT NULL AND s.ethnicity != ''
+        ORDER BY ethnicity_code
+        """)
 
 
 def get_majors(scope=[]):
@@ -355,6 +279,9 @@ def get_majors(scope=[]):
 
 def get_students_query(
         search_phrase=None,
+        coe_prep_statuses=None,
+        ethnicities=None,
+        genders=None,
         group_codes=None,
         gpa_ranges=None,
         levels=None,
@@ -362,12 +289,13 @@ def get_students_query(
         unit_ranges=None,
         in_intensive_cohort=None,
         is_active_asc=None,
-        advisor_ldap_uid=None,
+        advisor_ldap_uids=None,
         scope=[],
 ):  # noqa
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
         return None, None, None
+
     query_filter = ' WHERE true'
     query_bindings = {}
 
@@ -387,8 +315,9 @@ def get_students_query(
         })
 
     # Generic SIS criteria
-    if gpa_ranges:
-        query_filter += numranges_to_sql('sas.gpa', gpa_ranges)
+    query_filter += _numranges_to_sql('sas.gpa', gpa_ranges) if gpa_ranges else ''
+    query_filter += _numranges_to_sql('sas.units', unit_ranges) if unit_ranges else ''
+
     if levels:
         query_filter += ' AND sas.level = ANY(:levels)'
         query_bindings.update({'levels': [level_to_code(l) for l in levels]})
@@ -407,26 +336,26 @@ def get_students_query(
         query_filter += ' AND (' + ' OR '.join(major_filters) + ')'
         query_tables += f' LEFT JOIN {student_schema()}.student_majors maj ON maj.sid = sas.sid'
         query_bindings.update({'majors': _majors})
-    if unit_ranges:
-        query_filter += numranges_to_sql('sas.units', unit_ranges)
 
     # ASC criteria
-    if is_active_asc is not None:
-        query_filter += ' AND s.active IS :is_active_asc'
-        query_bindings.update({'is_active_asc': is_active_asc})
-    if in_intensive_cohort is not None:
-        query_filter += f' AND s.intensive IS :in_intensive_cohort'
-        query_bindings.update({
-            'in_intensive_cohort': in_intensive_cohort,
-        })
+    query_filter += f' AND s.active IS {is_active_asc}' if is_active_asc is not None else ''
+    query_filter += f' AND s.intensive IS {in_intensive_cohort}' if in_intensive_cohort is not None else ''
     if group_codes:
         query_filter += ' AND s.group_code = ANY(:group_codes)'
         query_bindings.update({'group_codes': group_codes})
 
     # COE criteria
-    if advisor_ldap_uid:
-        query_filter += ' AND s.advisor_ldap_uid = :advisor_ldap_uid'
-        query_bindings.update({'advisor_ldap_uid': advisor_ldap_uid})
+    if advisor_ldap_uids:
+        query_filter += ' AND s.advisor_ldap_uid = ANY(:advisor_ldap_uids)'
+        query_bindings.update({'advisor_ldap_uids': advisor_ldap_uids})
+    for coe_prep_status in coe_prep_statuses or []:
+        query_filter += f' AND s.{coe_prep_status} IS TRUE'
+    if ethnicities:
+        query_filter += ' AND s.ethnicity = ANY(:ethnicities)'
+        query_bindings.update({'ethnicities': ethnicities})
+    if genders:
+        query_filter += ' AND s.gender = ANY(:genders)'
+        query_bindings.update({'genders': genders})
 
     return query_tables, query_filter, query_bindings
 
@@ -514,7 +443,7 @@ def numrange_to_sql(column, numrange):
         return sql_clause
 
 
-def numranges_to_sql(column, numranges):
+def _numranges_to_sql(column, numranges):
     sql_ranges = [numrange_to_sql(column, numrange) for numrange in numranges]
     sql_ranges = [r for r in sql_ranges if r]
     if len(sql_ranges):
@@ -534,6 +463,14 @@ def _student_query_tables_for_scope(scope):
             'COENG': coe_schema(),
         }
         tables = []
+        # A dictionary with key 'intersection' indicates that multiple scopes should be treated as an intersection
+        # rather than a union.
+        if 'intersection' in scope:
+            scope = scope['intersection']
+            join_type = 'intersection'
+        else:
+            join_type = 'union'
+
         for code in scope:
             schema = schemas_for_codes.get(code)
             if schema:
@@ -544,8 +481,22 @@ def _student_query_tables_for_scope(scope):
             # If we are pulling from a single schema, include all schema-specific columns.
             table_sql = f"""FROM {tables[0]} s
                 JOIN {student_schema()}.student_academic_status sas ON sas.sid = s.sid"""
-        else:
-            # If we are pulling from multiple schemas, SID will be the only common element in the union.
+        elif join_type == 'union':
+            # In a union of multiple schemas, SID will be the only common element.
             table_sql = f"""FROM ({' UNION '.join(['SELECT sid FROM ' + t for t in tables])}) s
+                JOIN {student_schema()}.student_academic_status sas ON sas.sid = s.sid"""
+        elif join_type == 'intersection':
+            # In an intersection of multiple schemas, all queryable columns should be returned.
+            columns_for_codes = {
+                'UWASC': ['advisor_ldap_uid', 'gender', 'ethnicity', 'did_prep', 'prep_eligible', 'did_tprep', 'tprep_eligible'],
+                'COENG': ['active', 'intensive', 'group_code'],
+            }
+            intersection_columns = []
+            for code in scope:
+                intersection_columns += columns_for_codes[code]
+            intersection_sql = f"SELECT {tables[0]}.sid, {', '.join(intersection_columns)} FROM {tables[0]}"
+            for table in tables[1:]:
+                intersection_sql += f' INNER JOIN {table} ON {table}.sid = {tables[0]}.sid'
+            table_sql = f"""FROM ({intersection_sql}) s
                 JOIN {student_schema()}.student_academic_status sas ON sas.sid = s.sid"""
     return table_sql

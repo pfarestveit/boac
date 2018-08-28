@@ -40,27 +40,21 @@
     <script src="/static/app/bootstrap.js"></script>
     <script src="/static/app/routes.js"></script>
     <script src="/static/app/admin/adminController.js"></script>
-    <script src="/static/app/athletics/athleticsFactory.js"></script>
     <script src="/static/app/athletics/teamsController.js"></script>
-    <script src="/static/app/cohort/cohortService.js"></script>
     <script src="/static/app/cohort/curated/createController.js"></script>
     <script src="/static/app/cohort/curated/cohortController.js"></script>
     <script src="/static/app/cohort/curated/curatedCohortFactory.js"></script>
     <script src="/static/app/cohort/curated/deleteController.js"></script>
     <script src="/static/app/cohort/curated/manageController.js"></script>
     <script src="/static/app/cohort/curated/selectorDirective.js"></script>
-    <script src="/static/app/cohort/_filtered/cohortController.js"></script>
-    <script src="/static/app/cohort/_filtered/cohortUtils.js"></script>
-    <script src="/static/app/cohort/_filtered/filterCriteriaComponent.js"></script>
-    <script src="/static/app/cohort/_filtered/filterCriteriaService.js"></script>
-    <script src="/static/app/cohort/_filtered/filterCriteriaFactory.js"></script>
     <script src="/static/app/cohort/filtered/allController.js"></script>
     <script src="/static/app/cohort/filtered/cohortController.js"></script>
+    <script src="/static/app/cohort/filtered/cohortService.js"></script>
+    <script src="/static/app/cohort/filtered/cohortUtils.js"></script>
     <script src="/static/app/cohort/filtered/createController.js"></script>
     <script src="/static/app/cohort/filtered/deleteController.js"></script>
     <script src="/static/app/cohort/filtered/filteredCohortFactory.js"></script>
-    <script src="/static/app/cohort/filtered/menuDirective.js"></script>
-    <script src="/static/app/cohort/filtered/manageController.js"></script>
+    <script src="/static/app/cohort/filtered/filterCriteriaComponent.js"></script>
     <script src="/static/app/course/courseController.js"></script>
     <script src="/static/app/course/courseFactory.js"></script>
     <script src="/static/app/home/homeController.js"></script>
@@ -79,7 +73,6 @@
     <script src="/static/app/student/studentAlertMessageDirective.js"></script>
     <script src="/static/app/student/studentController.js"></script>
     <script src="/static/app/student/studentFactory.js"></script>
-    <script src="/static/app/student/studentSearchService.js"></script>
     <script src="/static/app/user/authFactory.js"></script>
     <script src="/static/app/user/authService.js"></script>
     <script src="/static/app/user/userFactory.js"></script>
@@ -97,8 +90,8 @@
       <div class="index-container-header" data-ui-view="header"></div>
       <div class="index-container-body">
         <div class="index-container-sidebar" data-ui-view="sidebar"></div>
-        <div id="content" class="index-container-content">
-          <div class="body-text" data-ui-view="content"></div>
+        <div class="index-container-content">
+          <div id="content" class="body-text" data-ui-view="content"></div>
           <div class="index-container-footer" data-ui-view="footer"></div>
         </div>
       </div>

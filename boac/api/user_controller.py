@@ -25,18 +25,13 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 from boac.api import errors
-from boac.api.util import admin_required, authorized_users_api_feed, can_current_user_view_dept, decorate_cohort
-from boac.externals import data_loch
-from boac.externals.cal1card_photo_api import get_cal1card_photo
-from boac.lib.berkeley import get_dept_codes
+from boac.api.util import admin_required, authorized_users_api_feed
 from boac.lib.http import tolerant_jsonify
 from boac.merged import calnet
-from boac.merged.student import get_student_and_terms, get_student_query_scope
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 from boac.models.curated_cohort import CuratedCohort
-from boac.models.university_dept import UniversityDept
-from flask import current_app as app, Response
+from flask import current_app as app
 from flask_login import current_user, login_required
 
 
@@ -58,7 +53,7 @@ def my_profile():
             })
         my_cohorts = CohortFilter.all_owned_by(uid)
         profile.update({
-            'myFilteredCohorts': [decorate_cohort(c, include_students=False) for c in my_cohorts],
+            'myFilteredCohorts': [c.to_api_json(include_students=False) for c in my_cohorts],
             'myCuratedCohorts': curated_cohorts,
             'isAdmin': current_user.is_admin,
             'departments': departments,
@@ -91,45 +86,3 @@ def all_user_profiles():
         return tolerant_jsonify(authorized_users_api_feed(users))
     else:
         raise errors.ResourceNotFoundError('Unknown path')
-
-
-@app.route('/api/profiles/dept/<dept_code>')
-@login_required
-def all_user_profiles_of_dept(dept_code):
-    dept = UniversityDept.find_by_dept_code(dept_code=dept_code)
-    if dept:
-        if can_current_user_view_dept(dept_code):
-            users = list(filter(lambda user: dept_code in get_dept_codes(user), AuthorizedUser.query.all()))
-            return tolerant_jsonify(authorized_users_api_feed(users))
-        else:
-            raise errors.ForbiddenRequestError(f'{current_user.uid} is not authorized to access {dept_code}')
-    else:
-        raise errors.ResourceNotFoundError('Unknown path')
-
-
-@app.route('/api/user/<uid>/analytics')
-@login_required
-def user_analytics(uid):
-    feed = get_student_and_terms(uid)
-    if not feed:
-        raise errors.ResourceNotFoundError('Unknown student')
-    # CalCentral's Student Overview page is advisors' official information source for the student.
-    feed['studentProfileLink'] = f'https://calcentral.berkeley.edu/user/overview/{uid}'
-    return tolerant_jsonify(feed)
-
-
-@app.route('/api/majors/relevant')
-def relevant_majors():
-    majors = [row['major'] for row in data_loch.get_majors(get_student_query_scope())]
-    return tolerant_jsonify(majors)
-
-
-@app.route('/api/user/<uid>/photo')
-@login_required
-def user_photo(uid):
-    photo = get_cal1card_photo(uid)
-    if photo:
-        return Response(photo, mimetype='image/jpeg')
-    else:
-        # Status is NO_DATA
-        return Response('', status=204)

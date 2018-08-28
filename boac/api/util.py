@@ -24,15 +24,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from functools import wraps
-import json
-from boac.lib import util
+
 from boac.lib.berkeley import get_dept_codes
-from boac.merged import athletics
 from boac.merged import calnet
-from boac.merged.student import query_students
-from boac.models.alert import Alert
-from boac.models.authorized_user import AuthorizedUser
-from boac.models.cohort_filter import CohortFilter
 from flask import current_app as app, request
 from flask_login import current_user
 
@@ -100,116 +94,6 @@ def canvas_courses_api_feed(courses):
     return [canvas_course_api_feed(course) for course in courses]
 
 
-def create_my_students_cohort(uid, first_name=None):
-    return CohortFilter.create(
-        uid=uid,
-        label=f'{first_name}\'s Students' if first_name else 'My Students',
-        advisor_ldap_uid=uid,
-    )
-
-
-def decorate_cohort(
-    cohort,
-    order_by=None,
-    offset=0,
-    limit=50,
-    include_students=True,
-    include_profiles=False,
-    include_alerts_for_uid=None,
-):
-    criteria = cohort if isinstance(cohort.filter_criteria, dict) else json.loads(cohort.filter_criteria)
-    is_read_only = is_read_only_cohort(cohort)
-    advisor_ldap_uid = util.get(criteria, 'advisorLdapUid')
-    # In odd circumstances we override the cohort's actual name
-    cohort_name = cohort.label
-    current_user_uid = current_user.uid if current_user and hasattr(current_user, 'uid') else None
-    if is_read_only and current_user_uid == advisor_ldap_uid:
-        cohort_name = 'My Students'
-    decorated = {
-        'id': cohort.id,
-        'code': cohort.id,
-        'isReadOnly': is_read_only,
-        'isOwnedByCurrentUser': current_user_uid in [o.uid for o in cohort.owners],
-        'label': cohort_name,
-        'name': cohort_name,
-        'owners': [user.uid for user in cohort.owners],
-    }
-    gpa_ranges = util.get(criteria, 'gpaRanges', [])
-    group_codes = util.get(criteria, 'groupCodes', [])
-    levels = util.get(criteria, 'levels', [])
-    majors = util.get(criteria, 'majors', [])
-    unit_ranges = util.get(criteria, 'unitRanges', [])
-    in_intensive_cohort = util.to_bool_or_none(util.get(criteria, 'inIntensiveCohort'))
-    is_inactive_asc = util.get(criteria, 'isInactiveAsc')
-    team_groups = athletics.get_team_groups(group_codes) if group_codes else []
-    decorated.update({
-        'filterCriteria': {
-            'advisorLdapUid': advisor_ldap_uid,
-            'gpaRanges': gpa_ranges,
-            'groupCodes': group_codes,
-            'levels': levels,
-            'majors': majors,
-            'unitRanges': unit_ranges,
-            'inIntensiveCohort': in_intensive_cohort,
-            'isInactiveAsc': is_inactive_asc,
-        },
-        'teamGroups': team_groups,
-    })
-
-    if not include_students and not include_alerts_for_uid and cohort.student_count is not None:
-        # No need for a students query; return the database-stashed student count.
-        decorated.update({
-            'totalStudentCount': cohort.student_count,
-        })
-        return decorated
-    owner = cohort.owners[0] if len(cohort.owners) else None
-    if owner and 'UWASC' in get_dept_codes(owner):
-        is_active_asc = not is_inactive_asc
-    else:
-        is_active_asc = None if is_inactive_asc is None else not is_inactive_asc
-    results = query_students(
-        include_profiles=(include_students and include_profiles),
-        advisor_ldap_uid=advisor_ldap_uid,
-        gpa_ranges=gpa_ranges,
-        group_codes=group_codes,
-        in_intensive_cohort=in_intensive_cohort,
-        is_active_asc=is_active_asc,
-        levels=levels,
-        majors=majors,
-        unit_ranges=unit_ranges,
-        order_by=order_by,
-        offset=offset,
-        limit=limit,
-        sids_only=not include_students,
-    )
-    if results:
-        # If the cohort is newly created or a cache refresh is underway, store the student count in the database
-        # to save future queries.
-        if cohort.student_count is None:
-            cohort.update_student_count(results['totalStudentCount'])
-        decorated.update({
-            'totalStudentCount': results['totalStudentCount'],
-        })
-        if include_students:
-            decorated.update({
-                'students': results['students'],
-            })
-        if include_alerts_for_uid:
-            viewer = AuthorizedUser.find_by_uid(include_alerts_for_uid)
-            if viewer:
-                alert_counts = Alert.current_alert_counts_for_sids(viewer.id, results['sids'])
-                decorated.update({
-                    'alerts': alert_counts,
-                })
-    return decorated
-
-
-def is_read_only_cohort(cohort):
-    criteria = cohort if isinstance(cohort.filter_criteria, dict) else json.loads(cohort.filter_criteria)
-    keys_with_not_none_value = [key for key, value in criteria.items() if value not in [None, []]]
-    return keys_with_not_none_value == ['advisorLdapUid']
-
-
 def sis_enrollment_class_feed(enrollment):
     return {
         'displayName': enrollment['sis_course_name'],
@@ -262,8 +146,12 @@ def translate_grading_basis(code):
     return bases.get(code) or code
 
 
-def can_current_user_view_dept(dept_code):
-    return current_user.is_admin or dept_code in get_dept_codes(current_user)
+def is_asc_authorized():
+    return current_user.is_admin or 'UWASC' in get_dept_codes(current_user)
+
+
+def is_coe_authorized():
+    return current_user.is_admin or 'COENG' in get_dept_codes(current_user)
 
 
 def is_current_user_asc_affiliated():

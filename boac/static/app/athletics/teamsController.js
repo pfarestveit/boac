@@ -27,13 +27,13 @@
 
   'use strict';
 
-  angular.module('boac').controller('TeamsController', function($location, $scope, athleticsFactory, page, validationService) {
+  angular.module('boac').controller('TeamsController', function($location, $scope, page, studentFactory, validationService) {
 
     page.loading(true);
 
     var init = function() {
       var teams = {};
-      athleticsFactory.getAllTeamGroups().then(function(response) {
+      studentFactory.getAllTeamGroups().then(function(response) {
         var teamGroups = response.data;
         _.each(teamGroups, function(t) {
           var teamCode = t.teamCode;
@@ -42,12 +42,11 @@
             teams[teamCode] = {
               code: t.teamCode,
               name: teamName,
-              totalStudentCount: t.totalStudentCount,
-              url: '/cohort/filtered?name=' + encodeURI(teamName) + '&',
+              url: '/cohort/filtered?cohortName=' + encodeURI(teamName) + '&',
               teamGroups: []
             };
           }
-          teams[teamCode].url += 't=' + encodeURI(t.groupCode) + '&';
+          teams[teamCode].url += 'team=' + encodeURI(t.groupCode) + '&';
         });
         $scope.teams = _.values(teams);
         page.loading(false);

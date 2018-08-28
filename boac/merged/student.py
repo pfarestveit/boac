@@ -35,6 +35,9 @@ from flask_login import current_user
 
 
 def get_api_json(sids):
+    if not sids:
+        return []
+
     def distill_profile(profile):
         distilled = {key: profile[key] for key in ['uid', 'sid', 'firstName', 'lastName', 'name']}
         if profile.get('athleticsProfile'):
@@ -44,6 +47,8 @@ def get_api_json(sids):
 
 
 def get_full_student_profiles(sids):
+    if not sids:
+        return []
     profile_results = data_loch.get_student_profiles(sids)
     if not profile_results:
         return []
@@ -61,6 +66,13 @@ def get_full_student_profiles(sids):
             profile = profiles_by_sid.get(row['sid'])
             if profile:
                 profile['athleticsProfile'] = json.loads(row['profile'])
+    if 'COENG' in scope or 'ADMIN' in scope:
+        coe_profiles = data_loch.get_coe_profiles(sids)
+        if coe_profiles:
+            for row in coe_profiles:
+                profile = profiles_by_sid.get(row['sid'])
+                if profile:
+                    profile['coeProfile'] = json.loads(row['profile'])
 
     return profiles
 
@@ -117,6 +129,8 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
 
 
 def get_summary_student_profiles(sids, term_id=None):
+    if not sids:
+        return []
     # TODO It's probably more efficient to store summary profiles in the loch, rather than distilling them
     # on the fly from full profiles.
     profiles = get_full_student_profiles(sids)
@@ -160,13 +174,18 @@ def get_student_and_terms(uid):
     for term in profile['enrollmentTerms']:
         if term['termId'] == current_term_id():
             profile['hasCurrentTermEnrollments'] = len(term['enrollments']) > 0
-            break
+        else:
+            # Omit dropped sections for past terms.
+            term.pop('droppedSections', None)
     return profile
 
 
 def query_students(
         include_profiles=False,
-        advisor_ldap_uid=None,
+        advisor_ldap_uids=None,
+        coe_prep_statuses=None,
+        ethnicities=None,
+        genders=None,
         gpa_ranges=None,
         group_codes=None,
         in_intensive_cohort=None,
@@ -181,20 +200,26 @@ def query_students(
 ):
     scope = narrow_scope_by_criteria(
         get_student_query_scope(),
+        advisor_ldap_uids=advisor_ldap_uids,
+        coe_prep_statuses=coe_prep_statuses,
+        ethnicities=ethnicities,
+        genders=genders,
+        group_codes=group_codes,
         in_intensive_cohort=in_intensive_cohort,
         is_active_asc=is_active_asc,
-        group_codes=group_codes,
-        advisor_ldap_uid=advisor_ldap_uid,
     )
     query_tables, query_filter, query_bindings = data_loch.get_students_query(
-        group_codes=group_codes,
+        advisor_ldap_uids=advisor_ldap_uids,
+        coe_prep_statuses=coe_prep_statuses,
+        ethnicities=ethnicities,
+        genders=genders,
         gpa_ranges=gpa_ranges,
+        group_codes=group_codes,
+        in_intensive_cohort=in_intensive_cohort,
+        is_active_asc=is_active_asc,
         levels=levels,
         majors=majors,
         unit_ranges=unit_ranges,
-        in_intensive_cohort=in_intensive_cohort,
-        is_active_asc=is_active_asc,
-        advisor_ldap_uid=advisor_ldap_uid,
         scope=scope,
     )
     if not query_tables:
@@ -314,7 +339,10 @@ def narrow_scope_by_criteria(scope, **kwargs):
             'group_codes',
         ],
         'COENG': [
-            'advisor_ldap_uid',
+            'advisor_ldap_uids',
+            'coe_prep_statuses',
+            'ethnicities',
+            'genders',
         ],
     }
 
@@ -326,14 +354,23 @@ def narrow_scope_by_criteria(scope, **kwargs):
                 return True
         return False
 
+    narrowed_scope = []
     for code, criteria in criteria_for_code.items():
         if any_criterion_present(criteria):
             if 'ADMIN' in scope or code in scope:
-                # We've found a department-specific criterion; constrain scope to that department only.
-                return [code]
+                # We've found a department-specific criterion; add a scope constraint for that department.
+                narrowed_scope.append(code)
             else:
                 # We've found a department-specific criterion but that department wasn't in the provided scope.
                 # Return empty.
                 return []
-    # No department-specific criteria found; return unmodified.
-    return scope
+
+    if not narrowed_scope:
+        # No department-specific criteria found; return the original scope unmodified.
+        return scope
+    elif len(narrowed_scope) == 1:
+        # Criteria were found for one department; return a single-item array including that department.
+        return narrowed_scope
+    else:
+        # Criteria were found for more than one department; return an intersection of those departments.
+        return {'intersection': narrowed_scope}

@@ -23,23 +23,13 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
-from boac.api import util as api_util
-from boac.models.authorized_user import AuthorizedUser
+from contextlib import contextmanager
 
 
-coe_advisor_uid = '1133399'
-
-
-class TestUtil:
-    """Generic API utilities."""
-
-    def test_cohort_decoration_outside_request_context(self):
-        """Personalize the cohort name."""
-        cohort_filters = AuthorizedUser.find_by_uid(coe_advisor_uid).cohort_filters
-        assert len(cohort_filters)
-        canned_cohort = next((c for c in cohort_filters if api_util.is_read_only_cohort(c)), None)
-        assert canned_cohort
-        decorated_cohort = api_util.decorate_cohort(canned_cohort)
-        assert decorated_cohort['name'] == 'Sandeep\'s Students'
-        assert decorated_cohort['isReadOnly'] is True
+@contextmanager
+def override_config(app, key, value):
+    """Temporarily override an app config value."""
+    old_value = app.config[key]
+    app.config[key] = value
+    yield
+    app.config[key] = old_value

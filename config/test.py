@@ -32,3 +32,5 @@ TESTING = True
 INDEX_HTML = 'boac/templates/index.html'
 
 LOGGING_LOCATION = 'STDOUT'
+
+ALERT_INFREQUENT_ACTIVITY_ENABLED = False

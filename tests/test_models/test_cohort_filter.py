@@ -30,6 +30,10 @@ from boac.models.cohort_filter import CohortFilter
 import pytest
 
 
+asc_advisor_uid = '2040'
+coe_advisor_uid = '1133399'
+
+
 @pytest.mark.usefixtures('db_session')
 class TestCohortFilter:
     """Cohort filter."""
@@ -40,7 +44,7 @@ class TestCohortFilter:
 
     def test_cohort_rename(self):
         group_codes = ['MSW', 'MSW-DV', 'MSW-SW']
-        cohort = CohortFilter.create(uid='2040', label='Swimming, Men\'s', group_codes=group_codes)
+        cohort = CohortFilter.create(uid=asc_advisor_uid, label='Swimming, Men\'s', group_codes=group_codes)
         foosball_label = 'Foosball teams'
         cohort = CohortFilter.rename(cohort.id, foosball_label)
         assert cohort.label == foosball_label
@@ -69,28 +73,31 @@ class TestCohortFilter:
         )
         cohort = CohortFilter.find_by_id(cohort.id)
         expected = {
-            'advisorLdapUid': None,
             'gpaRanges': gpa_ranges,
             'groupCodes': group_codes,
             'inIntensiveCohort': None,
-            'isInactiveAsc': None,
             'levels': levels,
             'majors': majors,
             'unitRanges': unit_ranges,
         }
-        filter_criteria = json.loads(cohort.filter_criteria)
-        assert expected == filter_criteria
-        assert 2 == len(filter_criteria['gpaRanges'])
-        assert 2 == len(filter_criteria['unitRanges'])
 
-    def test_invalid_create(self):
+        def sort_and_format(filter_criteria):
+            return json.dumps(filter_criteria, sort_keys=True, indent=2)
+        assert sort_and_format(expected) == sort_and_format(cohort.filter_criteria)
+
+    def test_undefined_filter_criteria(self):
         with pytest.raises(InternalServerError):
-            CohortFilter.create(uid='2040', label='Cohort with undefined filter criteria')
+            CohortFilter.create(
+                uid=asc_advisor_uid,
+                label='Cohort with undefined filter criteria',
+                genders=[],
+                in_intensive_cohort=None,
+            )
 
     def test_create_and_delete_cohort(self):
         """Cohort_filter record to Flask-Login for recognized UID."""
-        owner = AuthorizedUser.find_by_uid('2040').uid
-        shared_with = AuthorizedUser.find_by_uid('1133399').uid
+        owner = AuthorizedUser.find_by_uid(asc_advisor_uid).uid
+        shared_with = AuthorizedUser.find_by_uid(coe_advisor_uid).uid
         # Check validity of UIDs
         assert owner
         assert shared_with
@@ -108,6 +115,13 @@ class TestCohortFilter:
         CohortFilter.delete(cohort.id)
         assert cohort_count(owner) == previous_owner_count - 1
         assert cohort_count(shared_with) == previous_shared_count - 1
+
+    def test_jsonify_cohort(self):
+        """Can be JSONified."""
+        cohorts = AuthorizedUser.find_by_uid(coe_advisor_uid).cohort_filters
+        assert len(cohorts) == 2
+        jsonified_cohort = cohorts[0].to_api_json()
+        assert jsonified_cohort['name'] == 'Sandeep\'s Students'
 
 
 def cohort_count(user_uid):

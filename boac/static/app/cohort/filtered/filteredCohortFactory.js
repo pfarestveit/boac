@@ -31,30 +31,8 @@
 
   boac.factory('filteredCohortFactory', function($http, $rootScope, googleAnalyticsService, utilService) {
 
-    var createCohort = function(
-      label,
-      advisorLdapUid,
-      gpaRanges,
-      groupCodes,
-      levels,
-      majors,
-      unitRanges,
-      intensive,
-      inactiveAsc
-    ) {
-      var args = {
-        label: label,
-        advisorLdapUid: advisorLdapUid,
-        gpaRanges: gpaRanges,
-        groupCodes: groupCodes,
-        isInactiveAsc: utilService.toBoolOrNull(inactiveAsc),
-        levels: levels,
-        majors: majors,
-        unitRanges: unitRanges
-      };
-      if (utilService.toBoolOrNull(intensive)) {
-        args.inIntensiveCohort = true;
-      }
+    var createCohort = function(label, filterCriteria) {
+      var args = _.merge({label: label}, filterCriteria);
       return $http.post('/api/filtered_cohort/create', args).then(function(response) {
         var cohort = response.data;
         $rootScope.$broadcast('filteredCohortCreated', {
@@ -63,6 +41,7 @@
         $rootScope.$broadcast('myFilteredCohortsUpdated');
         // Track the event
         googleAnalyticsService.track('cohort', 'create', cohort.name, cohort.id);
+        return cohort;
       });
     };
 
@@ -90,6 +69,10 @@
       return $http.get(apiPath);
     };
 
+    var getFilterDefinitions = function() {
+      return $http.get('/api/filter_cohort/definitions');
+    };
+
     var getMyFilteredCohorts = function() {
       return $http.get('/api/filtered_cohorts/my');
     };
@@ -112,6 +95,7 @@
       deleteCohort: deleteCohort,
       getAll: getAll,
       getCohort: getCohort,
+      getFilterDefinitions: getFilterDefinitions,
       getMyFilteredCohorts: getMyFilteredCohorts,
       rename: rename
     };

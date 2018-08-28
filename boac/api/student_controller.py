@@ -24,22 +24,49 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
-from boac.api.errors import BadRequestError, ForbiddenRequestError
-from boac.api.util import add_alert_counts, can_current_user_view_dept, is_current_user_asc_affiliated
+from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
+from boac.api.util import add_alert_counts, is_asc_authorized, is_coe_authorized, is_current_user_asc_affiliated
+from boac.externals.cal1card_photo_api import get_cal1card_photo
 from boac.lib import util
 from boac.lib.berkeley import get_dept_codes
 from boac.lib.http import tolerant_jsonify
-from boac.merged.student import query_students, search_for_students
+from boac.merged import athletics
+from boac.merged.student import get_student_and_terms, query_students, search_for_students
 from boac.models.alert import Alert
-from flask import current_app as app, request
+from flask import current_app as app, request, Response
 from flask_login import current_user, login_required
+
+
+@app.route('/api/student/<uid>/analytics')
+@login_required
+def user_analytics(uid):
+    feed = get_student_and_terms(uid)
+    if not feed:
+        raise ResourceNotFoundError('Unknown student')
+    # CalCentral's Student Overview page is advisors' official information source for the student.
+    feed['studentProfileLink'] = f'https://calcentral.berkeley.edu/user/overview/{uid}'
+    return tolerant_jsonify(feed)
+
+
+@app.route('/api/student/<uid>/photo')
+@login_required
+def user_photo(uid):
+    photo = get_cal1card_photo(uid)
+    if photo:
+        return Response(photo, mimetype='image/jpeg')
+    else:
+        # Status is NO_DATA
+        return Response('', status=204)
 
 
 @app.route('/api/students', methods=['POST'])
 @login_required
 def get_students():
     params = request.get_json()
-    advisor_ldap_uid = util.get(params, 'advisorLdapUid')
+    advisor_ldap_uids = util.get(params, 'advisorLdapUids')
+    coe_prep_statuses = util.get(params, 'coePrepStatuses')
+    ethnicities = util.get(params, 'ethnicities')
+    genders = util.get(params, 'genders')
     gpa_ranges = util.get(params, 'gpaRanges')
     group_codes = util.get(params, 'groupCodes')
     levels = util.get(params, 'levels')
@@ -50,13 +77,18 @@ def get_students():
     order_by = util.get(params, 'orderBy', None)
     offset = util.get(params, 'offset', 0)
     limit = util.get(params, 'limit', 50)
-    can_view_asc_data = can_current_user_view_dept('UWASC')
+    # Authorization check
     is_asc_data_request = in_intensive_cohort is not None or is_inactive_asc is not None
-    if is_asc_data_request and not can_view_asc_data:
+    is_coe_data_request = next((f for f in [advisor_ldap_uids, coe_prep_statuses, ethnicities, genders] if f), False)
+    if (is_asc_data_request and not is_asc_authorized()) or (is_coe_data_request and not is_coe_authorized()):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
+
     results = query_students(
         include_profiles=True,
-        advisor_ldap_uid=advisor_ldap_uid,
+        advisor_ldap_uids=advisor_ldap_uids,
+        coe_prep_statuses=coe_prep_statuses,
+        ethnicities=ethnicities,
+        genders=genders,
         gpa_ranges=gpa_ranges,
         group_codes=group_codes,
         levels=levels,
@@ -68,6 +100,8 @@ def get_students():
         offset=offset,
         limit=limit,
     )
+    if results is None:
+        raise BadRequestError('Invalid search criteria')
     alert_counts = Alert.current_alert_counts_for_viewer(current_user.id)
     students = results['students'] if results else []
     add_alert_counts(alert_counts, students)
@@ -106,6 +140,15 @@ def search_students():
         'students': students,
         'totalStudentCount': results['totalStudentCount'],
     })
+
+
+@app.route('/api/team_groups/all')
+@login_required
+def get_all_team_groups():
+    # TODO: Give unauthorized user a 404 without disrupting COE advisors on the filtered-cohort view.
+    _authorized = current_user.is_admin or is_current_user_asc_affiliated()
+    data = athletics.all_team_groups() if _authorized else []
+    return tolerant_jsonify(data)
 
 
 def _convert_asc_inactive_arg(is_inactive_asc):

@@ -24,20 +24,33 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
-from boac.models.alert import Alert
-import pytest
+import json
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..')))
+
+from boac.lib import scriptify
 
 
-@pytest.mark.usefixtures('db_session')
-class TestCacheUtils:
-    """Test cache utils."""
+@scriptify.in_app
+def main(app):
+    from boac import std_commit
+    from boac.models.cohort_filter import CohortFilter
 
-    def test_creates_alert_for_midterm_grade(self, app):
-        from boac.api.cache_utils import refresh_alerts
-        refresh_alerts(2178)
-        alerts = Alert.current_alerts_for_sid(sid='11667051', viewer_id='2040')['shown']
-        assert 1 == len(alerts)
-        assert 0 < alerts[0]['id']
-        assert 'midterm' == alerts[0]['alertType']
-        assert '2178_90100' == alerts[0]['key']
-        assert 'BURMESE 1A midterm grade of D+.' == alerts[0]['message']
+    legacy_key = 'advisorLdapUid'
+    pluralized_key = 'advisorLdapUids'
+
+    for cohort in CohortFilter.query.all():
+        if pluralized_key not in cohort.filter_criteria:
+            # Pop legacy key
+            criteria = json.loads(cohort.filter_criteria)
+            uid = criteria.pop(legacy_key, None)
+            # Use pluralized key
+            criteria[pluralized_key] = [uid] if uid else None
+            # Update db
+            cohort.filter_criteria = json.dumps(criteria)
+            std_commit()
+            print(f'Cohort {cohort.id} updated to have {pluralized_key}: {criteria[pluralized_key]}')
+
+
+main()
