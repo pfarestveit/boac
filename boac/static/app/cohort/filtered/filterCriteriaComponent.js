@@ -30,63 +30,23 @@
   var FilterCriteriaController = function(
     $rootScope,
     $scope,
-    cohortUtils
+    $timeout,
+    cohortUtils,
+    filteredCohortFactory
   ) {
 
     $scope.filters = {
       added: [],
       definitions: [],
-      draft: null,
+      isEditMode: false,
       isLoading: true
     };
 
-    var redrawButtons = function(isInitPhase) {
-      _.each($scope.buttons, function(button) {
-        button.redraw(isInitPhase);
-      });
-    };
-
-    $scope.onDraftFilterClick = function(option) {
-      if (option && !option.disabled) {
-        _.set($scope.filters.draft, 'subcategory', null);
-        $scope.filters.draft = option;
-        $scope.buttons.addButton.show = _.get(option, 'type') !== 'array';
-        redrawButtons();
-      }
-    };
-
-    $scope.onDraftSubCategoryClick = function(option) {
-      if (option !== null && !option.disabled) {
-        $scope.filters.draft.subcategory = option;
-        $scope.buttons.addButton.show = true;
-        $scope.buttons.cancelButton.show = true;
-      }
-    };
-
-    var resetDraftFilter = function() {
-      _.set($scope.filters.draft, 'subcategory', null);
-      $scope.filters.draft = null;
-      $scope.buttons.addButton.show = false;
-      $scope.buttons.cancelButton.show = false;
-    };
-
-    this.$onInit = function() {
-      var definitions = _.clone(this.filterDefinitions);
-      var filterCriteria = _.clone(this.cohort.filterCriteria);
-
-      $scope.callbacks = this.callbacks;
-      $scope.filters.definitions = _.reject(_.map(cohortUtils.getFilterOrder(), function(key) {
-        // Return null to insert divider in dropdown menu.
-        return key && _.find(definitions, ['key', key]);
-      }), _.isUndefined);
-
-      cohortUtils.initFiltersForDisplay(filterCriteria, $scope.filters.definitions, function(addedFilters) {
-        $scope.filters.added = addedFilters;
-        redrawButtons(true);
-        $scope.filters.isLoading = false;
-      });
-    };
-
+    /**
+     * @param  {Object}    updatedFilter    Filter (eg, Levels) with a newly selected subcategory or boolean value.
+     * @param  {Boolean}   disable          True or false to disable or enable the select menu option.
+     * @return {void}
+     */
     var updateDisableAfterAddOrRemove = function(updatedFilter, disable) {
       var filter = _.find($scope.filters.definitions, ['key', updatedFilter.key]);
       if (updatedFilter.type === 'array') {
@@ -103,93 +63,253 @@
       }
     };
 
-    $scope.buttons = {
-      addButton: {
-        // Button to add a "draft" filter to the list of added-filters.
-        onClick: function() {
-          var addedFilter = _.clone($scope.filters.draft);
-          resetDraftFilter();
+    /**
+     * @param  {String}    key    Primary key (eg, unitRange) of desired filter definition.
+     * @return {Object}           Matching filter definition
+     */
+    var getFilterDefinition = function(key) {
+      return _.find($scope.filters.definitions, ['key', key]);
+    };
 
-          updateDisableAfterAddOrRemove(addedFilter, true);
-          $scope.filters.added = cohortUtils.sortAddedFilters(_.union($scope.filters.added, [ addedFilter ]));
-          $scope.buttons.applyButton.show = true;
-        },
-        show: false,
-        redraw: function() {
-          // addButton.show is managed in the onClick() of other buttons.
-        }
-      },
-      applyButton: {
-        // Button to search for students based on added filters.
-        disabled: true,
-        onClick: function() {
-          var filterCriteria = cohortUtils.toFilterCriteria($scope.filters.definitions, $scope.filters.added);
-          $scope.callbacks.executeSearch(filterCriteria);
-          $scope.buttons.saveButton.show = true;
-        },
-        show: false,
-        redraw: function(isInitPhase) {
-          // Show 'Apply' button (ie, perform search) if non-empty criteria and no "draft" filter is in-progress.
-          var emptyDraft = !_.get($scope.filters.draft, 'key');
-          var show = $scope.buttons.applyButton.show = !isInitPhase && emptyDraft && $scope.filters.added.length;
-          $scope.buttons.applyButton.disabled = !show && emptyDraft && !$scope.filters.added.length;
-        }
-      },
-      cancelButton: {
-        // Button to reset draft filter.
-        onClick: function() {
-          resetDraftFilter();
-          redrawButtons();
-        },
-        show: false,
-        redraw: function(isInitPhase) {
-          $scope.buttons.cancelButton.show = !isInitPhase && _.get($scope.filters.draft, 'key');
-        }
-      },
-      removeButton: {
-        // Button to remove an added filter.
-        onClick: function(indexOfAddedFilter) {
-          var removedFilter = _.pullAt($scope.filters.added, [ indexOfAddedFilter ]);
-          if (removedFilter.length) {
-            updateDisableAfterAddOrRemove(removedFilter[0], false);
-            $scope.buttons.applyButton.redraw(false);
+    /**
+     * @param  {String}    key                 Primary key of filter definition
+     * @param  {String}    subcategoryValue    Value of targeted select menu option
+     * @param  {String}    disabled            True of false will be applied to select menu option
+     * @return {void}
+     */
+    var setFilterOptionDisabled = function(key, subcategoryValue, disabled) {
+      var matchingOption = _.find(getFilterDefinition(key).options, ['value', subcategoryValue]);
+      _.set(matchingOption, [ 'disabled' ], disabled ? true : null);
+    };
+
+    /**
+     * @param  {Object}      filters    The filter criteria of a cohort or search.
+     * @return {Object}                 The provided filters sorted and decorated for display on the page.
+     */
+    var decorateAddedFilters = function(filters) {
+      return _.merge(cohortUtils.sortAddedFilters($scope.filters.definitions, filters), {
+        buttons: {
+          cancel: {
+            onClick: function(row) {
+              setFilterOptionDisabled(row.key, row.previousSubcategory.value, true);
+              row.subcategory = row.previousSubcategory;
+              row.isEditMode = $scope.filters.isEditMode = false;
+            }
+          },
+          edit: {
+            onClick: function(row) {
+              var onOptionClick = function(subcategory) {
+                row.subcategory = subcategory;
+              };
+              var definition = getFilterDefinition(row.key);
+              // Populate dropdown with filter options
+              setFilterOptionDisabled(row.key, row.subcategory.value, false);
+              _.merge(row, {
+                isMenuOpen: true,
+                onOptionClick: onOptionClick,
+                options: definition.options,
+                previousSubcategory: row.subcategory,
+                subcategory: row.subcategory,
+                subcategoryHeader: definition.subcategoryHeader
+              });
+              $scope.draft = null;
+              $scope.filters.isEditMode = row.isEditMode = true;
+            }
+          },
+          remove: {
+            onClick: function(index) {
+              var removed = _.pullAt($scope.filters.added, [ index ]);
+              if (removed.length) {
+                updateDisableAfterAddOrRemove(removed[0], false);
+                $scope.search.buttons.apply.redraw();
+                $scope.search.buttons.save.show = false;
+              }
+            }
+          },
+          update: {
+            onClick: function(row) {
+              setFilterOptionDisabled(row.key, row.subcategory.value, true);
+              setFilterOptionDisabled(row.key, row.previousSubcategory.value, false);
+              $scope.search.buttons.apply.show = row.previousSubcategory !== row.subcategory;
+              if (row.type === 'range') {
+                var start = row.subcategory.range.start;
+                var stop = row.subcategory.range.stop;
+                row.subcategory.name = cohortUtils.getRangeDisplayName(start, stop);
+                row.subcategory.value = [start, stop];
+              }
+              row.previousSubcategory = null;
+              $scope.filters.isEditMode = row.isEditMode = false;
+            }
           }
-          $scope.buttons.saveButton.redraw(false);
-        },
-        show: true,
-        redraw: function() {
-          // 'show' is always true
         }
-      },
-      saveButton: {
-        // Button to save/update the cohort in the db.
-        disabled: false,
-        onClick: function(openCreateCohortModal) {
-          $scope.buttons.saveButton.disabled = true;
-          var filterCriteria = cohortUtils.toFilterCriteria($scope.filters.definitions, $scope.filters.added);
-          openCreateCohortModal(filterCriteria, function(cohort) {
-            $scope.buttons.saveButton.show = $scope.buttons.saveButton.disabled = false;
-            $scope.callbacks.onSave(cohort);
-          });
-        },
-        show: false,
-        redraw: function(isInitPhase) {
-          // We set 'show' to true when user clicks Apply. We set 'show' to false if filters are altered.
-          if (isInitPhase && _.size($scope.filters.added)) {
-            $scope.buttons.saveButton.show = true;
-          } else if (_.isEmpty($scope.filters.added)) {
-            $scope.buttons.saveButton.show = false;
+      });
+    };
+
+    /**
+     * @return {Object}  The set of buttons adjacent to 'Add a filter' dropdown menu.
+     */
+    var getDraftButtons = function() {
+      return {
+        buttons: {
+          add: {
+            disabled: false,
+            onClick: function() {
+              var addedFilter = _.clone($scope.draft);
+
+              $scope.draft = null;
+              $scope.search.buttons.save.show = false;
+              updateDisableAfterAddOrRemove(addedFilter, true);
+              $scope.filters.added = decorateAddedFilters(_.union($scope.filters.added, [ addedFilter ]));
+              $scope.search.buttons.apply.show = true;
+            },
+            show: false
+          },
+          cancel: {
+            onClick: function() {
+              $scope.draft = null;
+              $scope.search.buttons.apply.redraw();
+            },
+            show: false
           }
         }
+      };
+    };
+
+    var initDraft = function(filterDefinition) {
+      var draft = _.merge(_.clone(filterDefinition), getDraftButtons());
+      var type = _.get(draft, 'type');
+      if (type === 'range') {
+        // Range form elements
+        draft.subcategory = {
+          error: null,
+          name: null,
+          onChange: function() {
+            var start = _.upperCase(_.get(draft, 'subcategory.range.start'));
+            var stop = _.upperCase(_.get(draft, 'subcategory.range.stop'));
+            var error = start.length && stop.length && start > stop;
+            if (error) {
+              draft.subcategory.error = 'The range values \'' + start + '\' and \'' + stop + '\' must be in ascending order.';
+            } else {
+              draft.subcategory.error = null;
+              draft.subcategory.name = cohortUtils.getRangeDisplayName(start, stop);
+              draft.subcategory.value = [start, stop];
+            }
+            draft.buttons.add.disabled = _.isEmpty(start) || _.isEmpty(stop) || start > stop;
+          },
+          range: {
+            lower: null,
+            upper: null
+          },
+          value: null
+        };
+        draft.buttons.add.show = draft.buttons.add.disabled = true;
+      } else if (type === 'boolean') {
+        draft.buttons.add.show = true;
       }
+      return draft;
+    };
+
+    var onSuccessfulCohortSave = function(cohort) {
+      // If user clicked 'Cancel' then do nothing.
+      if (cohort) {
+        $scope.search.cohort = cohort;
+        $scope.callbacks.onSave($scope.search.cohort);
+        $scope.acknowledgeSave = true;
+        $timeout(function() {
+          $scope.search.buttons.save.show = $scope.acknowledgeSave = false;
+        }, 2000);
+      }
+    };
+
+    var initSearch = function(search, allowSave) {
+      return _.merge(search, {
+        buttons: {
+          apply: {
+            // Button to search for students based on added filters.
+            onClick: function() {
+              var filterCriteria = cohortUtils.toFilterCriteria($scope.filters.definitions, $scope.filters.added);
+              $scope.callbacks.applyFilters(filterCriteria);
+            },
+            show: false,
+            redraw: function() {
+              // Show 'Apply' button (ie, perform search) if non-empty criteria and no "draft" filter is in-progress.
+              var emptyDraft = !_.get($scope.draft, 'key');
+              $scope.search.buttons.apply.show = emptyDraft && $scope.filters.added.length;
+            }
+          },
+          save: {
+            onClick: function(openCreateCohortModal) {
+              var filterCriteria = cohortUtils.toFilterCriteria($scope.filters.definitions, $scope.filters.added);
+              var cohortId = $scope.search.cohort.id;
+
+              if (cohortId) {
+                var count = $scope.search.results.totalStudentCount;
+                filteredCohortFactory.update(cohortId, null, filterCriteria, count, onSuccessfulCohortSave);
+              } else {
+                openCreateCohortModal(filterCriteria, onSuccessfulCohortSave);
+              }
+            },
+            show: allowSave
+          }
+        }
+      });
+    };
+
+    $scope.onDraftFilterClick = function(filterDefinition) {
+      if (filterDefinition && !filterDefinition.disabled) {
+        $scope.draft = initDraft(filterDefinition);
+        $scope.search.buttons.apply.redraw();
+        $scope.draft.buttons.cancel.show = true;
+      }
+    };
+
+    $scope.onDraftSubcategoryOptionClick = function(option) {
+      if (option !== null && !option.disabled) {
+        $scope.draft.subcategory = option;
+        $scope.draft.buttons.add.show = true;
+      }
+    };
+
+    /**
+     * Invoked on page load only. If user has just clicked 'Create New Cohort' then the 'cohort' object is undefined.
+     * If user is viewing an existing cohort then s/he can save changes if and only if 'isOwnedByCurrentUser' is true.
+     * We never offer a 'Save As' option therefore other people's cohorts are strictly read-only.
+     *
+     * @returns {void}
+     */
+    this.$onInit = function() {
+      var filterCategories = _.clone(this.filterCategories);
+      var filterCriteria = _.clone(this.search.filterCriteria);
+      var isOwnedByCurrentUser = _.get(this.search.cohort, 'isOwnedByCurrentUser');
+      // See documentation above
+      $scope.allowEdits = _.isNil(isOwnedByCurrentUser) || isOwnedByCurrentUser;
+      $scope.callbacks = this.callbacks;
+      $scope.filters.definitions = [];
+      $scope.search = initSearch(this.search, this.allowSave);
+
+      _.each(filterCategories, function(category, index) {
+        _.each(category, function(definition) {
+          $scope.filters.definitions.push(definition);
+        });
+        var isLast = index === filterCategories.length - 1;
+        if (!isLast) {
+          // Null causes divider in filter dropdown
+          $scope.filters.definitions.push(null);
+        }
+      });
+      cohortUtils.initFiltersForDisplay(filterCriteria, $scope.filters.definitions, function(addedFilters) {
+        $scope.filters.added = decorateAddedFilters(addedFilters);
+        $scope.filters.isLoading = false;
+      });
     };
   };
 
   angular.module('boac').component('filterCriteria', {
     bindings: {
-      filterDefinitions: '=',
-      cohort: '=',
-      callbacks: '='
+      allowSave: '=',
+      callbacks: '=',
+      filterCategories: '=',
+      search: '='
     },
     controller: FilterCriteriaController,
     templateUrl: '/static/app/cohort/filtered/filterCriteria.html'

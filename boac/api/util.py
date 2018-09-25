@@ -42,7 +42,7 @@ def admin_required(func):
         if login_ok or api_key_ok:
             return func(*args, **kw)
         else:
-            app.logger.warn(f'Unauthorized request to {request.path}')
+            app.logger.warning(f'Unauthorized request to {request.path}')
             return app.login_manager.unauthorized()
     return _admin_required
 
@@ -154,5 +154,16 @@ def is_coe_authorized():
     return current_user.is_admin or 'COENG' in get_dept_codes(current_user)
 
 
-def is_current_user_asc_affiliated():
-    return 'UWASC' in get_dept_codes(current_user)
+def is_unauthorized_search(params):
+    return (_is_asc_data_request(params) and not is_asc_authorized()) or (_is_coe_data_request(params) and not is_coe_authorized())
+
+
+def _is_coe_data_request(params):
+    keys = ['advisorLdapUids', 'coePrepStatuses', 'ethnicities', 'genders']
+    return next((key for key in keys if params.get(key) is not None), False)
+
+
+def _is_asc_data_request(params):
+    keys = ['inIntensiveCohort', 'isInactiveAsc', 'groupCodes']
+    is_asc_request = next((key for key in keys if params.get(key) is not None), False)
+    return is_asc_request or params.get('orderBy') in ['group_name']

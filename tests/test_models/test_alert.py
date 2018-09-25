@@ -116,14 +116,14 @@ class TestNoActivityAlert:
     """Alerts for no bCourses activity."""
 
     def test_update_no_activity_alerts(self):
-        """Can be created from bCourses analytics feeds."""
+        """Can be created from bCourses analytics feeds, at most one per enrollment."""
         Alert.update_all_for_term(2178)
         alerts = get_current_alerts('3456789012')
         assert len(alerts) == 1
         assert alerts[0]['id'] > 0
         assert alerts[0]['alertType'] == 'no_activity'
-        assert alerts[0]['key'] == '2178_7654321'
-        assert alerts[0]['message'] == 'No activity! Student has yet to use the MED ST 205 bCourses site for Fall 2017.'
+        assert alerts[0]['key'] == '2178_MED ST 205'
+        assert alerts[0]['message'] == 'No activity! Student has never visited the MED ST 205 bCourses site for Fall 2017.'
 
     def test_no_activity_percentile_cutoff(self, app):
         """Respect percentile cutoff for alert creation."""
@@ -139,14 +139,14 @@ class TestInfrequentActivityAlert:
     """Alerts for infrequent bCourses activity."""
 
     def test_update_infrequent_activity_alerts(self, app):
-        """Can be created from bCourses analytics feeds."""
+        """Can be created from bCourses analytics feeds, at most one per enrollment."""
         with override_config(app, 'ALERT_INFREQUENT_ACTIVITY_ENABLED', True):
             Alert.update_all_for_term(2178)
             alerts = get_current_alerts('5678901234')
             assert len(alerts) == 1
             assert alerts[0]['id'] > 0
             assert alerts[0]['alertType'] == 'infrequent_activity'
-            assert alerts[0]['key'] == '2178_7654321'
+            assert alerts[0]['key'] == '2178_MED ST 205'
             assert alerts[0]['message'].startswith('Infrequent activity! Last MED ST 205 bCourses activity')
 
     def test_infrequent_activity_percentile_cutoff(self, app):
@@ -158,3 +158,31 @@ class TestInfrequentActivityAlert:
             with override_config(app, 'ALERT_INFREQUENT_ACTIVITY_PERCENTILE_CUTOFF', 20):
                 Alert.update_all_for_term(2178)
                 assert len(get_current_alerts('5678901234')) == 1
+
+
+class TestHoldAlert:
+    """Alerts for SIS holds."""
+
+    def test_update_hold_alerts(self, app):
+        """Can be created from SIS feeds."""
+        with override_config(app, 'ALERT_HOLDS_ENABLED', True):
+            Alert.update_all_for_term(2178)
+            alerts = get_current_alerts('5678901234')
+            assert len(alerts) == 2
+            assert alerts[0]['key'] == '2178_S01_CSBAL'
+            assert alerts[0]['message'].startswith('Hold: Past due balance! Your student account has a past due balance.')
+            assert alerts[1]['key'] == '2178_V00_SMOUT'
+            assert alerts[1]['message'].startswith('Hold: Semester Out! You are not eligible to register')
+
+
+class TestHoldWithdrawal:
+    """Alerts for withdrawal/cancellation status."""
+
+    def test_update_withdrawal_alerts(self, app):
+        """Can be created from SIS feeds."""
+        with override_config(app, 'ALERT_WITHDRAWAL_ENABLED', True):
+            Alert.update_all_for_term(2178)
+            alerts = get_current_alerts('2345678901')
+            assert len(alerts) == 1
+            assert alerts[0]['key'] == '2178_withdrawal'
+            assert alerts[0]['message'] == 'Withdrawal! Student has withdrawn from the Fall 2017 term.'

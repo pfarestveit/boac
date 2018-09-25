@@ -40,35 +40,37 @@
     page,
     studentFactory,
     utilService,
-    validationService,
-    visualizationService
+    validationService
   ) {
 
     /**
      * Cohort metadata ONLY. Search results (ie, students) are kept in $scope.search. Properties are null if user is
      * viewing unsaved search results.
      */
-    $scope.cohort = {
-      id: null,
-      name: null,
-      isOwnedByCurrentUser: null
-    };
     $scope.demoMode = config.demoMode;
-    $scope.exceedsMatrixThresholdMessage = utilService.exceedsMatrixThresholdMessage;
-    $scope.hasFilterCriteria = false;
+    $scope.isSearching = false;
+    $scope.lastActivityDays = utilService.lastActivityDays;
     $scope.renameMode = {
       error: null,
       input: null,
       on: false
     };
-    $scope.tab = $location.search().tab || 'list';
 
     /**
      * Object (ie, model) rendered on page.
      */
+    var pageArg = $location.search().page;
     $scope.search = {
+      cohort: {
+        id: null,
+        name: null,
+        isOwnedByCurrentUser: null
+      },
+      pagination: {
+        currentPage: pageArg ? parseInt(pageArg, 10) : 1,
+        itemsPerPage: 50
+      },
       orderBy: cohortService.getSortByOptionsForSearch(),
-      pagination: cohortService.initPagination(),
       results: {
         students: null,
         totalStudentCount: null
@@ -82,7 +84,7 @@
     };
 
     $rootScope.$on('filteredCohortDeleted', function(event, data) {
-      if (data.cohort.id === $scope.cohort.id) {
+      if (data.cohort.id === $scope.search.cohort.id) {
         $state.go('home');
       }
     });
@@ -110,89 +112,39 @@
     $scope.rename = function($event) {
       $event.stopPropagation();
       var cohortName = $scope.renameMode.input;
-      validationService.validateName({id: $scope.cohort.id, name: cohortName}, function(error) {
+      validationService.validateName({id: $scope.search.cohort.id, name: cohortName}, function(error) {
         if (error) {
           $scope.renameMode.error = errorHandler(error);
         } else {
-          filteredCohortFactory.rename($scope.cohort.id, cohortName).then(function() {
-            $scope.cohort.name = cohortName;
+          filteredCohortFactory.update($scope.search.cohort.id, cohortName, null, null, _.noop).then(function() {
+            $scope.search.cohort.name = cohortName;
             exitRenameMode();
           }).catch(errorHandler);
         }
       });
     };
 
-    var scatterplotRefresh = function() {
-      if ($scope.tab === 'matrix') {
-        var goToUserPage = function(uid) {
-          $location.state($location.absUrl());
-          $location.path('/student/' + uid);
-          // The intervening visualizationService code moves out of Angular and into d3 thus the extra kick of $apply.
-          $scope.$apply();
-        };
-        visualizationService.scatterplotRefresh($scope.search.results.students, goToUserPage, function(yAxisMeasure, studentsWithoutData) {
-          $scope.yAxisMeasure = yAxisMeasure;
-          // List of students-without-data is rendered below the scatterplot.
-          $scope.studentsWithoutData = studentsWithoutData;
-        });
-      }
-    };
-
-    var registerCohortMetadata = function(cohort) {
-      $rootScope.pageTitle = cohort.name;
-      // Reset browser location
+    var resetAddressBar = function(cohort) {
       $location.url($location.path());
-      $location.search('c', cohort.id);
-      $location.search('details', $scope.filtersVisible);
+      $location.search('id', cohort.id);
+      $location.search('details', _.toString($scope.filtersVisible));
       $location.search('orderBy', $scope.search.orderBy.selected);
-      $location.search('tab', $scope.tab);
-      // Grab a limited set of properties
-      var metadataKeys = _.keys($scope.cohort);
-      $scope.cohort = _.pick(cohort, metadataKeys);
+      $location.search('page', $scope.search.pagination.currentPage);
+
+      $rootScope.pageTitle = cohort.name;
     };
 
-    var loadSavedCohort = function(cohortId, orderBy, offset, limit, callback) {
-      filteredCohortFactory.getCohort(cohortId, orderBy, offset, limit).then(function(response) {
-        var cohort = response.data;
-
-        registerCohortMetadata(cohort);
-        _.extend($scope.search, {
-          filterCriteria: cohort.filterCriteria,
-          results: {
-            students: cohort.students,
-            totalStudentCount: cohort.totalStudentCount
-          }
-        });
-
-      }).then(scatterplotRefresh).then(callback).catch(errorHandler);
-    };
-
-    var updateLocation = function(definitions, filterCriteria, currentPage) {
+    var updateAddressBar = function(currentPage, filterCriteria, definitions) {
       $location.search('page', currentPage);
 
-      _.each(filterCriteria, function(value, key) {
-        var definition = _.find(definitions, ['key', key]);
-        if (definition && _.size(typeof value === 'boolean' ? _.toString(value) : value)) {
-          $location.search(definition.param, value);
-        }
-      });
-    };
-
-    var executeSearch = function(filterCriteria, orderBy, offset, limit, callback) {
-      updateLocation($scope.filterDefinitions, filterCriteria, $scope.search.pagination.currentPage);
-      studentFactory.getStudents(filterCriteria, orderBy, offset, limit).then(function(response) {
-        $scope.cohort.name = $location.search().cohortName;
-        $scope.cohort.name = $scope.cohort.name || cohortService.getSearchPageTitle(filterCriteria);
-        $rootScope.pageTitle = $scope.cohort.name || 'Filtered Cohort';
-        _.extend($scope.search, {
-          filterCriteria: filterCriteria,
-          results: {
-            students: response.data.students,
-            totalStudentCount: response.data.totalStudentCount
+      if (!_.isNil(filterCriteria)) {
+        _.each(filterCriteria, function(value, key) {
+          var definition = _.find(definitions, ['key', key]);
+          if (definition && _.size(typeof value === 'boolean' ? _.toString(value) : value)) {
+            $location.search(definition.param, value);
           }
         });
-
-      }).then(scatterplotRefresh).then(callback).catch(errorHandler);
+      }
     };
 
     var makeFiltersVisible = $scope.makeFiltersVisible = function(show, defaultValue) {
@@ -211,52 +163,98 @@
       return filterCriteria;
     };
 
-    var init = $scope.nextPage = $scope.onTab = function(tab, searchCriteria, offsetOverride, limitOverride) {
-      var cohortId = parseInt($location.search().c, 10);
-      var limit = limitOverride || $scope.search.pagination.itemsPerPage;
-      var offset = _.isNil(offsetOverride) ? ($scope.search.pagination.currentPage - 1) * limit : offsetOverride;
-      offset = offset < 0 ? 0 : offset;
-      var queryArgs = _.clone($location.search());
-      var done = function() {
-        $scope.studentCountExceedsMatrixThreshold = utilService.exceedsMatrixThreshold(_.get($scope, 'search.results.totalStudentCount'));
-        page.loading(false);
-      };
+    var render = function(cohort, filterCriteria, students, totalStudentCount) {
+      if (cohort || filterCriteria) {
+        _.extend($scope.search, {
+          cohort: _.pick(cohort, ['id', 'name', 'isOwnedByCurrentUser']),
+          filterCriteria: filterCriteria,
+          results: {
+            students: students,
+            totalStudentCount: totalStudentCount
+          }
+        });
+        $rootScope.pageTitle = $scope.search.cohort.name || 'Filtered Cohort';
 
+      } else {
+        $rootScope.pageTitle = 'Create a Filtered Cohort';
+        makeFiltersVisible(true);
+      }
+      page.loading(false);
+    };
+
+    var init = $scope.nextPage = function(searchCriteria, offsetOverride, limitOverride) {
+      // This function is invoked via 'Apply' button or pagination click.
       page.loading(true);
       $anchorScroll();
 
-      filteredCohortFactory.getFilterDefinitions().then(function(response) {
-        var definitions = $scope.filterDefinitions = response.data;
-        var criteria = searchCriteria || getFilterCriteriaFromLocation(definitions) || null;
-        var hasFilterCriteria = $scope.hasFilterCriteria = !!cohortId || !!_.find(_.values(criteria));
-
-        $scope.tab = hasFilterCriteria ? tab || $scope.tab : 'list';
-        $location.search('tab', $scope.tab);
+      filteredCohortFactory.getFilterCategories().then(function(response) {
+        var filterCategories = $scope.filterCategories = response.data;
+        var filterDefinitions = _.flatten(filterCategories);
+        var criteria = searchCriteria || getFilterCriteriaFromLocation(filterDefinitions) || null;
+        var isSearching = $scope.isSearching = !!_.find(_.values(criteria));
+        var currentPage = $scope.search.pagination.currentPage;
+        var queryArgs = _.clone($location.search());
+        var limit = limitOverride || $scope.search.pagination.itemsPerPage;
+        var offset = _.isNil(offsetOverride) ? (currentPage - 1) * limit : offsetOverride;
 
         if (queryArgs.orderBy && _.find($scope.search.orderBy.options, ['value', queryArgs.orderBy])) {
           $scope.search.orderBy.selected = queryArgs.orderBy;
         }
-        if ($scope.tab === 'matrix') {
-          if (cohortId > 0) {
-            loadSavedCohort(cohortId, null, 0, Number.MAX_SAFE_INTEGER, done);
-          } else {
-            executeSearch(criteria, null, 0, Number.MAX_SAFE_INTEGER, done);
+        updateAddressBar(currentPage);
+        makeFiltersVisible(queryArgs.details, !!isSearching);
+        // Get cohort metadata and students.
+        async.series([
+          function(callback) {
+            var cohortId = parseInt($location.search().id, 10);
+
+            if (cohortId) {
+              var includeStudents = !isSearching;
+              // If user 'isSearching' then we ignore the cohort's stored filterCriteria. We get students per 'criteria'.
+              filteredCohortFactory.getCohort(cohortId, includeStudents, $scope.search.orderBy.selected, offset, limit).then(function(response2) {
+                var cohort = response2.data;
+                resetAddressBar(cohort);
+                callback(null, cohort);
+
+              }).catch(function(err) {
+                callback(err);
+              });
+
+            } else {
+              callback();
+            }
           }
+        ],
+        function(err, data) {
+          if (err) {
+            errorHandler(err);
 
-        } else if (cohortId > 0) {
-          loadSavedCohort(cohortId, $scope.search.orderBy.selected, offset, limit, done);
-          makeFiltersVisible(queryArgs.details, false);
+          } else {
+            // If getCohort() was invoked above then the result is in 'data'.
+            var cohort = data.length ? data[0] : null;
 
-        } else if (hasFilterCriteria) {
-          executeSearch(criteria, $scope.search.orderBy.selected, offset, limit, done);
-          makeFiltersVisible(queryArgs.details, true);
+            if (isSearching) {
+              studentFactory.getStudents(criteria, $scope.search.orderBy.selected, offset, limit).then(function(response3) {
+                var students = response3.data.students;
+                var totalStudentCount = response3.data.totalStudentCount;
+                // If cohort.id is present then the 'Save' button will update cohort with this latest search criteria.
+                cohort = {
+                  id: _.get(cohort, 'id'),
+                  name: _.get(cohort, 'name') || $location.search().name || cohortService.getSearchPageTitle(criteria),
+                  isOwnedByCurrentUser: _.get(cohort, 'isOwnedByCurrentUser')
+                };
+                updateAddressBar($scope.search.pagination.currentPage, criteria, filterDefinitions);
+                render(cohort, criteria, students, totalStudentCount);
 
-        } else {
-          // No query args is create-cohort mode
-          makeFiltersVisible(true);
-          $rootScope.pageTitle = 'Create a Filtered Cohort';
-          done();
-        }
+              }).catch(errorHandler);
+
+            } else if (cohort) {
+              render(cohort, cohort.filterCriteria, cohort.students, cohort.totalStudentCount);
+            } else {
+              // Create new cohort mode.
+              render();
+            }
+          }
+        });
       });
     };
 
@@ -269,15 +267,14 @@
     });
 
     $scope.callbacks = {
-      executeSearch: function(searchCriteria) {
-        $scope.search.pagination.currentPage = 0;
-        $scope.cohort = {id: null, name: null, isOwnedByCurrentUser: null};
-        registerCohortMetadata($scope.cohort);
-        init('list', searchCriteria);
+      applyFilters: function(filterCriteria) {
+        $scope.search.pagination.currentPage = 1;
+        init(filterCriteria);
       },
       onSave: function(cohort) {
-        // Grab metadata without reloading page
-        registerCohortMetadata(cohort);
+        // Do not reload the page
+        $scope.search.cohort = _.pick(cohort, ['id', 'name', 'isOwnedByCurrentUser']);
+        resetAddressBar(cohort);
       }
     };
 

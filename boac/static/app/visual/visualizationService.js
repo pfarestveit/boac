@@ -29,13 +29,17 @@
 
   angular.module('boac').service('visualizationService', function($location, config) {
 
-    var showUnitsChart = function(student) {
+    var showUnitsChart = function(student, currentTermId) {
       var cumulativeUnits = _.get(student, 'sisProfile.cumulativeUnits');
-      var currentEnrolledUnits = _.get(student, 'enrollmentTerms[0].enrolledUnits');
+      var currentEnrolledUnits = 0;
+      var currentEnrollmentTerm = _.find(_.get(student, 'enrollmentTerms'), {termId: currentTermId});
+      if (currentEnrollmentTerm) {
+        currentEnrolledUnits = _.get(currentEnrollmentTerm, 'enrolledUnits');
+      }
       var tooltipBodyFormat = '<div class="profile-tooltip-content">' +
                               '<div class="profile-tooltip-row">' +
                               '<div class="profile-tooltip-swatch" style="background-color:#aec9eb"></div>' +
-                              '<div class="profile-tooltip-label">Cumulative Units</div>' +
+                              '<div class="profile-tooltip-label">Units Completed</div>' +
                               '<div class="profile-tooltip-value">' + cumulativeUnits + '</div></div>' +
                               '<div class="profile-tooltip-row">' +
                               '<div class="profile-tooltip-swatch" style="background-color:#d6e4f9"></div>' +
@@ -150,6 +154,8 @@
       function y(d) { return _.get(d, yAxisMeasure).percentile; }
       function key(d) { return d.uid; }
 
+      var classMean = students[students.length - 1];
+
       var yAxisName = 'Assignments Submitted';
       if (yAxisMeasure === 'analytics.currentScore') {
         yAxisName = 'Assignment grades';
@@ -169,27 +175,6 @@
         .ticks(10, d3.format(',d'))
         .tickSize(-width);
 
-      var zoom = d3.zoom()
-        .scaleExtent([1, 10])
-        .translateExtent([[0, 0], [width, height]])
-        .on('zoom', function() {
-          var transform = d3.event.transform;
-
-          var xNewScale = transform.rescaleX(xScale);
-          xAxis.scale(xNewScale);
-          svg.select('.x.matrix-axis').call(xAxis);
-
-          var yNewScale = transform.rescaleY(yScale);
-          yAxis.scale(yNewScale);
-          svg.select('.y.matrix-axis').call(yAxis);
-
-          svg.select('.matrix-gradient-rect').attr('transform', transform);
-
-          svg.selectAll('.dot')
-            .attr('cx', function(d) { return transform.applyX(xScale(x(d))); })
-            .attr('cy', function(d) { return transform.applyY(yScale(y(d))); });
-        });
-
       var container = d3.select('#matrix-container');
 
       // We clear the '#scatterplot' div with `html()` in case the current search results are replacing previous results.
@@ -199,16 +184,47 @@
         .attr('class', 'matrix-svg')
         .attr('width', width)
         .attr('height', height)
-        .attr('stroke', 1)
-        .call(zoom);
+        .attr('stroke', 1);
 
       svg.append('g')
         .attr('clip-path', 'url(#clip-inner)')
         .append('rect')
-        .attr('width', width)
-        .attr('height', height)
-        .attr('class', 'matrix-gradient-rect')
-        .attr('fill', 'url(#matrix-background-gradient)');
+        .attr('width', xScale(x(classMean)))
+        .attr('height', yScale(y(classMean)))
+        .attr('stroke', '#ccc')
+        .attr('stroke-width', 1)
+        .attr('fill', '#fffbda');
+
+      svg.append('g')
+        .attr('clip-path', 'url(#clip-inner)')
+        .append('rect')
+        .attr('width', xScale(x(classMean)))
+        .attr('height', height - yScale(y(classMean)))
+        .attr('y', yScale(y(classMean)))
+        .attr('stroke', '#ccc')
+        .attr('stroke-width', 1)
+        .attr('fill', '#ffdcda');
+
+      svg.append('g')
+        .attr('clip-path', 'url(#clip-inner)')
+        .append('rect')
+        .attr('width', width - xScale(x(classMean)))
+        .attr('height', yScale(y(classMean)))
+        .attr('x', xScale(x(classMean)))
+        .attr('stroke', '#ccc')
+        .attr('stroke-width', 1)
+        .attr('fill', '#e6ffda');
+
+      svg.append('g')
+        .attr('clip-path', 'url(#clip-inner)')
+        .append('rect')
+        .attr('width', width - xScale(x(classMean)))
+        .attr('height', height - yScale(y(classMean)))
+        .attr('x', xScale(x(classMean)))
+        .attr('y', yScale(y(classMean)))
+        .attr('stroke', '#ccc')
+        .attr('stroke-width', 1)
+        .attr('fill', '#fffbda');
 
       svg.append('g')
         .attr('class', 'x matrix-axis')
@@ -221,26 +237,6 @@
         .call(yAxis);
 
       var defs = svg.append('svg:defs');
-
-      var linearGradient = defs.append('linearGradient')
-        .attr('id', 'matrix-background-gradient')
-        .attr('x1', '0%')
-        .attr('y1', '100%')
-        .attr('x2', '100%')
-        .attr('y2', '0%')
-        .attr('spreadMethod', 'pad');
-      linearGradient.append('stop')
-        .attr('offset', '0%')
-        .attr('stop-color', '#ffe5e5')
-        .attr('stop-opacity', '1');
-      linearGradient.append('stop')
-        .attr('offset', '50%')
-        .attr('stop-color', '#fffde5')
-        .attr('stop-opacity', '1');
-      linearGradient.append('stop')
-        .attr('offset', '100%')
-        .attr('stop-color', '#e8ffe5')
-        .attr('stop-opacity', '1');
 
       defs.append('svg:clipPath')
         .attr('id', 'clip-inner')
@@ -260,7 +256,12 @@
           .attr('width', '100%')
           .attr('height', '100%')
           .attr('patternContentUnits', 'objectBoundingBox');
-        var photoUri = config.demoMode.blur ? avatarBackgroundPath : '/api/student/' + d.uid + '/photo';
+        var photoUri = null;
+        if (d.isClassMean) {
+          photoUri = '/static/app/course/class-mean-avatar.svg';
+        } else {
+          photoUri = config.demoMode.blur ? avatarBackgroundPath : '/api/student/' + d.uid + '/photo';
+        }
         var avatarImage = pattern.append('svg:image')
           .attr('xlink:href', photoUri)
           .attr('width', 1)
@@ -297,14 +298,12 @@
         .data(students, key)
         .enter().append('circle')
         .attr('class', 'dot')
-        .style('fill', function(d) { return avatar(d); })
-        .style('background-image', 'url(' + avatarBackgroundPath + ')')
-        .style('background-size', 'cover')
-        .style('stroke-width', 5)
-        .style('stroke', '#ccc')
+        .style('fill', function(d) { return d.isClassMean ? avatar(d) : '#8bbdda'; })
+        .style('opacity', function(d) { return d.isClassMean ? 1 : 0.66; })
+        .style('stroke-width', 0)
         .attr('cx', function(d) { return xScale(x(d)); })
         .attr('cy', function(d) { return yScale(y(d)); })
-        .attr('r', '30');
+        .attr('r', function(d) { return d.isClassMean ? 22 : 9; });
 
       // Add x-axis labels.
       svg.append('text')
@@ -317,13 +316,13 @@
         .attr('text-anchor', 'start')
         .attr('x', 0)
         .attr('y', height + 22)
-        .text('Previously');
+        .text('Less Recently');
       svg.append('text')
         .attr('class', 'matrix-axis-label')
         .attr('text-anchor', 'end')
         .attr('x', width)
         .attr('y', height + 22)
-        .text('Recently');
+        .text('More Recently');
 
       // Add y-axis labels.
       svg.append('text')
@@ -365,8 +364,13 @@
         this.parentNode.appendChild(this);
         // Stroke highlight.
         var selection = d3.select(this);
-        selection.attr('r', '50')
-          .style('stroke', '#ada');
+        selection.attr('r', '45')
+          .style('stroke-width', function(_d) { return _d.isClassMean ? 0 : 5; })
+          .style('stroke', '#ccc')
+          .style('fill', function(_d) { return avatar(_d); })
+          .style('background-image', 'url(' + avatarBackgroundPath + ')')
+          .style('background-size', 'cover')
+          .style('opacity', 1);
 
         var tooltip = container.append('div')
           .attr('class', 'matrix-tooltip')
@@ -396,8 +400,11 @@
       };
 
       var onDotDeselected = function() {
-        d3.select(this).attr('r', '30')
-          .style('stroke', '#ccc');
+        d3.select(this)
+          .attr('r', function(_d) { return _d.isClassMean ? 22 : 9; })
+          .style('fill', function(_d) { return _d.isClassMean ? avatar(_d) : '#8bbdda'; })
+          .style('opacity', function(_d) { return _d.isClassMean ? 1 : 0.66; })
+          .style('stroke-width', 0);
 
         container.select('.matrix-tooltip')
           .transition(d3.transition().duration(500))
@@ -411,29 +418,46 @@
       dot.on('mouseout', onDotDeselected);
     };
 
+    var yAxisMeasure = function() {
+      return $location.search().yAxis || 'analytics.currentScore';
+    };
+
+    var partitionPlottableStudents = function(students) {
+      return _.partition(students, function(student) {
+        return _.isFinite(_.get(student, 'analytics.lastActivity.percentile')) && _.isFinite(_.get(student, yAxisMeasure() + '.percentile'));
+      });
+    };
+
     /**
      * Draw scatterplot graph.
      *
      * @param  {Student[]}      students        Members of group, cohort or whatever
+     * @param  {Object}         meanMetrics     Mean statistics for the scatterplot context
      * @param  {Function}       goToUserPage    Browser redirects to student profile page
      * @param  {Function}       callback        Standard callback
      * @return {void}
      */
-    var scatterplotRefresh = function(students, goToUserPage, callback) {
-      // Plot the cohort
-      var yAxisMeasure = $location.search().yAxis || 'analytics.currentScore';
-      var partitions = _.partition(students, function(student) {
-        return _.isFinite(_.get(student, 'analytics.lastActivity.percentile')) && _.isFinite(_.get(student, yAxisMeasure + '.percentile'));
-      });
+    var scatterplotRefresh = function(students, meanMetrics, goToUserPage, callback) {
       // Pass along a subset of students that have useful data.
-      drawScatterplot(partitions[0], yAxisMeasure, goToUserPage);
-      callback(yAxisMeasure, partitions[1]);
+      var partitions = partitionPlottableStudents(students);
+      var plottableStudents = partitions[0];
+      if (meanMetrics) {
+        plottableStudents.push({
+          analytics: meanMetrics,
+          isClassMean: true,
+          lastName: 'Class Average'
+        });
+      }
+      drawScatterplot(plottableStudents, yAxisMeasure(), goToUserPage);
+      callback(yAxisMeasure(), partitions[1]);
     };
 
     return {
+      partitionPlottableStudents: partitionPlottableStudents,
       scatterplotRefresh: scatterplotRefresh,
       showUnitsChart: showUnitsChart
     };
+
   });
 
 }(window.angular));

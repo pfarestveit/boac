@@ -27,20 +27,24 @@
 
   'use strict';
 
-  angular.module('boac').factory('userFactory', function($http) {
+  var EditSubcategoryController = function($scope) {
 
-    var getAllUserProfiles = function() {
-      return $http.get('/api/profiles/all');
+    this.$onChanges = function() {
+      $scope.filter = this.filter;
+      $scope.onOptionClick = this.onOptionClick || _.noop;
     };
 
-    var getUserProfile = function(uid) {
-      return $http.get('/api/profile/' + uid);
-    };
+  };
 
-    return {
-      getAllUserProfiles: getAllUserProfiles,
-      getUserProfile: getUserProfile
-    };
+  angular.module('boac').component('filterCriteriaEditSubcategory', {
+    // $onChange above is invoked when 'watch' (below) changes
+    bindings: {
+      filter: '=',
+      onOptionClick: '=',
+      watch: '<'
+    },
+    controller: EditSubcategoryController,
+    templateUrl: '/static/app/cohort/filtered/filterCriteriaEditSubcategory.html'
   });
 
 }(window.angular));

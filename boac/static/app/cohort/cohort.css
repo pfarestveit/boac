@@ -27,6 +27,74 @@
   padding: 0 10px 0 10px;
 }
 
+.btn-cohort-added-filter {
+  text-transform: uppercase;
+  font-size: 0.8em;
+  padding: 4px 1px 5px 5px;
+}
+
+.btn-filter {
+  background-color: #f3f3f3;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  color: #000;
+  font-size: 16px;
+  height: 42px;
+  margin-right: 8px;
+  padding: 8px 5px 8px 10px;
+  text-align: left;
+  width: 240px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.btn-filter span.fas {
+  float: right;
+  font-size: 24px;
+  margin-right: 10px;
+}
+
+.btn-filter-draft-apply {
+  height: 40px;
+  margin: 15px 8px 0 0;
+  width: 80px;
+}
+
+.btn-filter-open {
+  color: #000;
+  outline: none !important;
+}
+
+.btn-filter-draft-save {
+  background-color: #fff;
+  border: 1px solid #337ab7;
+  color: #337ab7;
+  font-weight: 500;
+  height: 40px;
+  margin-top: 15px;
+  width: 120px;
+}
+
+.btn-filter-draft-save:hover,
+.btn-filter-draft-save:focus,
+.btn-filter-draft-save:active {
+  color: #337abf;
+}
+
+.btn-filter-draft-saved {
+  background-color: #008000;
+  border: 1px solid #337ab7;
+  color: #fff;
+  font-weight: 500;
+  height: 40px;
+  margin-top: 15px;
+  width: 120px;
+}
+
+.btn-filter-subcategory {
+  width: 400px;
+}
+
 .cohort-boxplot {
   height: 18px;
   width: 75px;
@@ -93,6 +161,18 @@
   width: 100%;
 }
 
+.cohort-filter-criteria-panel .panel-body {
+  padding: 0;
+}
+
+.cohort-filter-criteria-panel .panel-heading {
+  display: none;
+}
+
+.cohort-filter-criteria-panel .panel-group {
+  margin: 0;
+}
+
 .cohort-filter-disabled {
   clear: both;
   color: #777;
@@ -112,7 +192,7 @@
 
 .cohort-filter-draft-column-01 {
   border-left: 6px solid #3b7ea5;
-  flex: 0 0 200px;
+  flex: 0 0 240px;
 }
 
 .cohort-filter-draft-column-02 {
@@ -138,96 +218,47 @@
   margin: 8px 0 0 10px;
 }
 
-.btn-filter-draft {
-  background-color: #f3f3f3;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  color: #000;
-  font-size: 16px;
-  margin-left: 8px;
-  padding: 8px 5px 8px 10px;
-  text-align: left;
-  white-space: nowrap;
-  width: 200px;
-  vertical-align: middle;
-}
-
-.btn-filter-draft span.fas {
-  float: right;
-  font-size: 24px;
-  margin-right: 10px;
-}
-
-.btn-filter-draft-apply {
-  height: 40px;
-  margin: 15px 8px 0 0;
-  width: 80px;
-}
-
-.btn-filter-draft-open {
-  color: #000;
-  outline: none !important;
-}
-
-.btn-filter-draft-save {
-  border: 1px solid #337ab7;
-  color: #337ab7;
-  height: 40px;
-  font-weight: 500;
-  margin: 15px 0 0 0;
-  width: 120px;
-}
-
-.btn-filter-draft-save:hover,
-.btn-filter-draft-save:focus,
-.btn-filter-draft-save:active {
-  color: #337abf;
-}
-
-.btn-filter-draft-subcategory {
-  width: 400px;
-}
-
 .cohort-filter-dropdown {
-  margin-left: 10px;
-  width: 200px;
+  width: 240px;
 }
 
 .cohort-filter-subcategory-dropdown {
-  margin-left: 10px;
   width: 400px;
 }
 
 .cohort-filter-row {
+  align-items: center;
   background-color: #f3f3f3;
   border-left: 6px solid #3b7ea5 !important;
   display: flex;
   flex-direction: row;
+  height: 46;
   justify-content: space-between;
   margin: 5px 0 5px 0;
-  padding: 6px 10px 2px 10px;
+  padding: 2px 10px 2px 10px;
   text-align: left;
 }
 
-.cohort-filter-item-filter {
-  -webkit-flex: 0 0 200px;
-  flex: 0 0 100px;
-  font-weight: 600;
+.cohort-added-filter-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
 }
 
-.cohort-filter-item-name {
-  -webkit-flex: 0 0 200px;
-  flex: 0 0 400px;
-}
-
-.cohort-filter-item-button {
+.cohort-added-filter-controls {
   flex: 0 0 200px;
   text-align: right;
 }
 
-.cohort-filter-item-button > button {
-  text-transform: uppercase;
-  font-size: 0.8em;
+.cohort-added-filter-name {
+  -webkit-flex: 0 0 240px;
+  flex: 0 0 240px;
+  font-weight: 600;
+}
+
+.cohort-added-subcategory-name {
+  -webkit-flex: 0 0 240px;
+  flex: 0 0 400px;
 }
 
 .cohort-grade {
@@ -252,10 +283,8 @@
 }
 
 .cohort-header-container {
-  align-items: center;
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
 }
 
 .cohort-header-container div {
@@ -275,15 +304,16 @@
   text-align: right;
 }
 
-.cohort-header-button-links {
-  flex-grow: 1;
-  margin-top: 12px;
-  text-align: right;
-}
-
 .cohort-header-buttons > button {
   float: right;
   width: 70px;
+}
+
+.cohort-header-button-links {
+  align-self: flex-start;
+  flex-grow: 1;
+  margin-top: 20px;
+  text-align: right;
 }
 
 .cohort-rename-container {
@@ -293,6 +323,23 @@
 
 .cohort-label {
   word-wrap: break-word;
+}
+
+.cohort-list-header {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  height: 56px;
+  margin: 0 5px 0 5px;
+}
+
+.cohort-list-header-column-01 {
+  flex: 0 0 52px;
+}
+
+.cohort-list-header-column-02 {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .cohort-list-view-column-00 {
@@ -305,6 +352,7 @@
   align-items: center;
   display: flex;
   flex: 0 0 30px;
+  position: relative;
 }
 
 .cohort-list-view-column-grade {
@@ -357,12 +405,11 @@
 
 .cohort-sort-column {
   display: flex;
-  margin: 20px 0 10px 0;
   white-space: nowrap;
 }
 
 .cohort-sort-label {
-  padding: 5px 10px 0 0;
+  padding: 8px 10px 0 0;
 }
 
 .cohort-student-bio-container {
@@ -386,23 +433,6 @@
   flex-basis: 70%;
 }
 
-.cohort-tabs-container {
-  align-items: center;
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-start;
-}
-
-.cohort-tabs-container-column-02 {
-  flex: 0 0 200px;
-  white-space: nowrap;
-}
-
-.cohort-tabs-container-column-03 {
-  margin-left: auto;
-  white-space: nowrap;
-}
-
 .container-manage-cohorts {
   padding: 0 20px 0 20px;
   width: 100%;
@@ -410,7 +440,7 @@
 
 .filters-section-separator {
   border-top: 2px solid #eee;
-  margin: 20px 0 0 0;
+  margin: 5px 0 0 0;
 }
 
 .cohort-all-menu {
@@ -426,7 +456,7 @@
 }
 
 .cohort-btn-group {
-  margin: 5px 20px 0 0;
+  margin-right: 20px;
 }
 
 .cohort-checkbox-item {
@@ -442,7 +472,7 @@
   border: 1px solid #aaa;
   border-radius: 4px;
   flex: 0 0 36px;
-  margin: 5px 20px 0 0;
+  margin-right: 10px;
   padding: 8px;
   text-align: center;
 }
@@ -476,4 +506,39 @@
   box-sizing: border-box;
   padding: 10px 10px 10px 10px;
   width: 100%;
+}
+
+.curated-cohort-header-column-02 {
+  margin-top: 12px;
+  padding-bottom: 10px;
+}
+
+.filter-range-container {
+  display: flex;
+  flex-direction: row;
+  padding-right: 15px;
+}
+
+.filter-range-label-start {
+  padding: 10px 8px 0 0;
+}
+
+.filter-range-label-stop {
+  padding: 10px 8px 0 10px;
+}
+
+.filter-range-input {
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #333;
+  font-size: 18px;
+  padding: 8px 15px 8px 17px;
+  text-transform: uppercase;
+  width: 50px;
+}
+
+.filter-subcategory-error {
+  font-weight: 400;
+  margin: 10px 0 0 20px;
 }

@@ -1,7 +1,7 @@
 <div class="course-container">
   <div class="loading-spinner-large" data-ng-if="isLoading && !error">
     <i class="fas fa-sync fa-spin fa-5x"></i>
-    <span class="sr-only">Loading...</span>
+    <span role="alert" aria-live="passive" class="sr-only">Loading...</span>
   </div>
 
   <div class="container-error" data-ng-if="!isLoading && error">
@@ -15,6 +15,10 @@
   <div class="course-container-inner"
        focus-on="!isLoading"
        data-ng-show="!isLoading && !error">
+    <a href="#pagination-widget"
+       id="skip-to-pagination-widget"
+       class="sr-only"
+       data-ng-if="section.totalStudentCount > pagination.itemsPerPage">Skip to pagination widget</a>
     <div>
       <div class="course-container-summary">
         <div class="course-column-description">
@@ -95,19 +99,15 @@
               <div class="add-to-cohort-checkbox">
                 <input id="student-{{student.uid}}-curated-cohort-checkbox"
                        type="checkbox"
+                       aria-label="Add {{student.firstName}} {{student.lastName}} to a curated cohort"
                        data-ng-click="student.curatedCohortToggle($event)"
                        data-ng-model="student.selectedForCuratedCohort"/>
               </div>
             </div>
-
             <!-- Column -->
             <div class="course-list-view-column-01" data-ng-if="!$first">
-              <img class="student-avatar student-avatar-large"
-                   data-ng-class="{'img-blur': demoMode.blur}"
-                   data-ng-src="/api/student/{{student.uid}}/photo"
-                   data-avatar-fallback>
+              <div data-ng-include="'/static/app/student/studentAvatar.html'"></div>
             </div>
-
             <!-- Column -->
             <div class="course-list-view-column-02" data-ng-if="!$first">
               <div>
@@ -161,7 +161,7 @@
                 <div data-ng-repeat="canvasSite in student.enrollment.canvasSites"
                      data-ng-if="student.enrollment.canvasSites.length">
                   <div data-ng-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
-                    Score: <strong data-ng-bind="canvasSite.analytics.assignmentsSubmitted.student.raw"></strong>
+                    <strong data-ng-bind="canvasSite.analytics.assignmentsSubmitted.student.raw"></strong>
                     <div class="faint-text">
                       (Max: <span data-ng-bind="canvasSite.analytics.assignmentsSubmitted.courseDeciles[10]"></span>)
                     </div>
@@ -238,16 +238,18 @@
           </div>
         </div>
         <ul uib-pagination
-          boundary-link-numbers="true"
-          force-ellipses="true"
-          max-size="9"
-          rotate="false"
-          direction-links="false"
-          items-per-page="pagination.itemsPerPage"
-          total-items="section.totalStudentCount"
-          ng-model="pagination.currentPage"
-          data-ng-click="nextPage()"
-          data-ng-if="(section.totalStudentCount > pagination.itemsPerPage)"></ul>
+            boundary-link-numbers="true"
+            data-ng-click="nextPage()"
+            data-ng-if="section.totalStudentCount > pagination.itemsPerPage"
+            direction-links="false"
+            force-ellipses="true"
+            id="pagination-widget"
+            items-per-page="pagination.itemsPerPage"
+            max-size="9"
+            ng-model="pagination.currentPage"
+            rotate="false"
+            template-url="/static/app/shared/uibPaginationTemplate.html"
+            total-items="section.totalStudentCount"></ul>
       </div>
       <div id="matrix-outer" data-ng-show="tab === 'matrix' && !isLoading && !error">
         <div data-ng-include="'/static/app/shared/matrix.html'"></div>

@@ -25,10 +25,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import add_alert_counts, is_asc_authorized, is_coe_authorized, is_current_user_asc_affiliated
+from boac.api.util import add_alert_counts, get_dept_codes, is_asc_authorized, is_unauthorized_search
 from boac.externals.cal1card_photo_api import get_cal1card_photo
 from boac.lib import util
-from boac.lib.berkeley import get_dept_codes
 from boac.lib.http import tolerant_jsonify
 from boac.merged import athletics
 from boac.merged.student import get_student_and_terms, query_students, search_for_students
@@ -63,42 +62,26 @@ def user_photo(uid):
 @login_required
 def get_students():
     params = request.get_json()
-    advisor_ldap_uids = util.get(params, 'advisorLdapUids')
-    coe_prep_statuses = util.get(params, 'coePrepStatuses')
-    ethnicities = util.get(params, 'ethnicities')
-    genders = util.get(params, 'genders')
-    gpa_ranges = util.get(params, 'gpaRanges')
-    group_codes = util.get(params, 'groupCodes')
-    levels = util.get(params, 'levels')
-    majors = util.get(params, 'majors')
-    unit_ranges = util.get(params, 'unitRanges')
-    in_intensive_cohort = util.to_bool_or_none(util.get(params, 'inIntensiveCohort'))
-    is_inactive_asc = util.get(params, 'isInactiveAsc')
-    order_by = util.get(params, 'orderBy', None)
-    offset = util.get(params, 'offset', 0)
-    limit = util.get(params, 'limit', 50)
-    # Authorization check
-    is_asc_data_request = in_intensive_cohort is not None or is_inactive_asc is not None
-    is_coe_data_request = next((f for f in [advisor_ldap_uids, coe_prep_statuses, ethnicities, genders] if f), False)
-    if (is_asc_data_request and not is_asc_authorized()) or (is_coe_data_request and not is_coe_authorized()):
+    if is_unauthorized_search(params):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
-
     results = query_students(
+        advisor_ldap_uids=util.get(params, 'advisorLdapUids'),
+        coe_prep_statuses=util.get(params, 'coePrepStatuses'),
+        ethnicities=util.get(params, 'ethnicities'),
+        genders=util.get(params, 'genders'),
+        gpa_ranges=util.get(params, 'gpaRanges'),
+        group_codes=util.get(params, 'groupCodes'),
         include_profiles=True,
-        advisor_ldap_uids=advisor_ldap_uids,
-        coe_prep_statuses=coe_prep_statuses,
-        ethnicities=ethnicities,
-        genders=genders,
-        gpa_ranges=gpa_ranges,
-        group_codes=group_codes,
-        levels=levels,
-        majors=majors,
-        unit_ranges=unit_ranges,
-        in_intensive_cohort=in_intensive_cohort,
-        is_active_asc=_convert_asc_inactive_arg(is_inactive_asc),
-        order_by=order_by,
-        offset=offset,
-        limit=limit,
+        is_active_asc=_convert_asc_inactive_arg(util.get(params, 'isInactiveAsc')),
+        in_intensive_cohort=util.to_bool_or_none(util.get(params, 'inIntensiveCohort')),
+        last_name_range=_get_name_range_boundaries(util.get(params, 'lastNameRange')),
+        levels=util.get(params, 'levels'),
+        limit=util.get(params, 'limit', 50),
+        majors=util.get(params, 'majors'),
+        offset=util.get(params, 'offset', 0),
+        order_by=util.get(params, 'orderBy', None),
+        underrepresented=util.get(params, 'underrepresented'),
+        unit_ranges=util.get(params, 'unitRanges'),
     )
     if results is None:
         raise BadRequestError('Invalid search criteria')
@@ -115,23 +98,18 @@ def get_students():
 @login_required
 def search_students():
     params = request.get_json()
+    if is_unauthorized_search(params):
+        raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
     search_phrase = util.get(params, 'searchPhrase', '').strip()
     if not len(search_phrase):
         raise BadRequestError('Invalid or empty search input')
-    is_inactive_asc = util.get(params, 'isInactiveAsc')
-    order_by = util.get(params, 'orderBy', None)
-    offset = util.get(params, 'offset', 0)
-    limit = util.get(params, 'limit', 50)
-    asc_authorized = current_user.is_admin or 'UWASC' in get_dept_codes(current_user)
-    if not asc_authorized and is_inactive_asc is not None:
-        raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
     results = search_for_students(
         include_profiles=True,
         search_phrase=search_phrase.replace(',', ' '),
-        is_active_asc=_convert_asc_inactive_arg(is_inactive_asc),
-        order_by=order_by,
-        offset=offset,
-        limit=limit,
+        is_active_asc=_convert_asc_inactive_arg(util.get(params, 'isInactiveAsc')),
+        order_by=util.get(params, 'orderBy', None),
+        offset=util.get(params, 'offset', 0),
+        limit=util.get(params, 'limit', 50),
     )
     alert_counts = Alert.current_alert_counts_for_viewer(current_user.id)
     students = results['students']
@@ -145,15 +123,22 @@ def search_students():
 @app.route('/api/team_groups/all')
 @login_required
 def get_all_team_groups():
-    # TODO: Give unauthorized user a 404 without disrupting COE advisors on the filtered-cohort view.
-    _authorized = current_user.is_admin or is_current_user_asc_affiliated()
-    data = athletics.all_team_groups() if _authorized else []
-    return tolerant_jsonify(data)
+    if not is_asc_authorized():
+        raise ResourceNotFoundError('Unknown path')
+    return tolerant_jsonify(athletics.all_team_groups())
 
 
 def _convert_asc_inactive_arg(is_inactive_asc):
-    if is_current_user_asc_affiliated():
+    if 'UWASC' in get_dept_codes(current_user):
         is_active_asc = not is_inactive_asc
     else:
         is_active_asc = None if is_inactive_asc is None else not is_inactive_asc
     return is_active_asc
+
+
+def _get_name_range_boundaries(values):
+    if isinstance(values, list) and len(values):
+        values = sorted(values, key=lambda v: v.upper())
+        return [values[0].upper(), values[-1].upper()]
+    else:
+        return None

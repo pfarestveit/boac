@@ -63,7 +63,13 @@
     var updateCourseData = function(response) {
       $rootScope.pageTitle = response.data.displayName;
       $scope.section = response.data;
-      $scope.studentCountExceedsMatrixThreshold = utilService.exceedsMatrixThreshold(_.get($scope.section, 'totalStudentCount'));
+      if (utilService.exceedsMatrixThreshold(_.get($scope.section, 'totalStudentCount'))) {
+        $scope.matrixDisabledMessage = utilService.exceedsMatrixThresholdMessage;
+      } else if (visualizationService.partitionPlottableStudents($scope.section.students)[0].length === 0) {
+        $scope.matrixDisabledMessage = 'No student data is available to display.';
+      } else {
+        $scope.matrixDisabledMessage = null;
+      }
     };
 
     var refreshListView = function() {
@@ -88,12 +94,18 @@
         };
         return courseFactory.getSection($stateParams.termId, $stateParams.sectionId).then(function(response) {
           updateCourseData(response);
-          visualizationService.scatterplotRefresh($scope.section.students, goToUserPage, function(yAxisMeasure, studentsWithoutData) {
-            $scope.yAxisMeasure = yAxisMeasure;
-            // List of students-without-data is rendered below the scatterplot.
-            $scope.studentsWithoutData = studentsWithoutData;
-          });
+          visualizationService.scatterplotRefresh(
+            $scope.section.students,
+            $scope.section.meanMetrics,
+            goToUserPage,
+            function(yAxisMeasure, studentsWithoutData) {
+              $scope.yAxisMeasure = yAxisMeasure;
+              // List of students-without-data is rendered below the scatterplot.
+              $scope.studentsWithoutData = studentsWithoutData;
+            }
+          );
           page.loading(false);
+          googleAnalyticsService.track('Course', 'matrix', $scope.section.termName + ' ' + $scope.section.displayName, $scope.section.sectionNum);
         });
       } else if (tabName === 'list') {
         if ($scope.pagination.currentPage > 1 && $scope.section && $scope.section.students.length > 50) {
@@ -115,7 +127,6 @@
       var args = _.clone($location.search());
       // Begin with matrix view if arg is present
       $scope.tab = _.includes(['list', 'matrix'], args.tab) ? args.tab : $scope.tab;
-
       if (args.p && !isNaN(args.p)) {
         $scope.pagination.currentPage = parseInt(args.p, 10);
       }
@@ -124,11 +135,7 @@
           $scope.error = validationService.parseError(err);
           page.loading(false);
         }).then(function() {
-          googleAnalyticsService.track(
-            'course',
-            'view',
-            $scope.section.termName + ' ' + $scope.section.displayName + ' ' + $scope.section.sectionNum
-          );
+          googleAnalyticsService.track('Course', 'view', $scope.section.termName + ' ' + $scope.section.displayName, $scope.section.sectionNum);
         });
     };
 

@@ -97,6 +97,7 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
 
     enrollments_for_term = data_loch.get_enrollments_for_term(term_id, sids)
     enrollments_by_sid = {row['sid']: json.loads(row['enrollment_term']) for row in enrollments_for_term}
+    all_canvas_sites = {}
     for student in students:
         # Strip SIS details to lighten the API load.
         sis_profile = student.pop('sisProfile', None)
@@ -120,11 +121,17 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
                         'grade': enrollment.get('grade', None),
                         'gradingBasis': enrollment.get('gradingBasis', None),
                     }
-                    student['analytics'] = analytics.mean_metrics_across_sites(canvas_sites)
+                    student['analytics'] = analytics.mean_metrics_across_sites(canvas_sites, 'student')
+                    # If more than one course site is associated with this section, derive mean metrics from as many sites as possible.
+                    for site in canvas_sites:
+                        if site['canvasCourseId'] not in all_canvas_sites:
+                            all_canvas_sites[site['canvasCourseId']] = site
                     continue
+    mean_metrics = analytics.mean_metrics_across_sites(all_canvas_sites.values(), 'courseMean')
     return {
         'students': students,
         'totalStudentCount': total_student_count,
+        'meanMetrics': mean_metrics,
     }
 
 
@@ -148,6 +155,8 @@ def get_summary_student_profiles(sids, term_id=None):
             profile['cumulativeUnits'] = sis_profile.get('cumulativeUnits')
             profile['level'] = sis_profile.get('level', {}).get('description')
             profile['majors'] = sorted(plan.get('description') for plan in sis_profile.get('plans', []))
+            if sis_profile.get('withdrawalCancel'):
+                profile['withdrawalCancel'] = sis_profile['withdrawalCancel']
         # Add the singleton term.
         term = enrollments_by_sid.get(profile['sid'])
         profile['hasCurrentTermEnrollments'] = False
@@ -181,7 +190,6 @@ def get_student_and_terms(uid):
 
 
 def query_students(
-        include_profiles=False,
         advisor_ldap_uids=None,
         coe_prep_statuses=None,
         ethnicities=None,
@@ -189,25 +197,32 @@ def query_students(
         gpa_ranges=None,
         group_codes=None,
         in_intensive_cohort=None,
+        include_profiles=False,
         is_active_asc=None,
+        last_name_range=None,
         levels=None,
         limit=50,
         majors=None,
         offset=0,
         order_by=None,
         sids_only=False,
+        underrepresented=None,
         unit_ranges=None,
 ):
-    scope = narrow_scope_by_criteria(
-        get_student_query_scope(),
-        advisor_ldap_uids=advisor_ldap_uids,
-        coe_prep_statuses=coe_prep_statuses,
-        ethnicities=ethnicities,
-        genders=genders,
-        group_codes=group_codes,
-        in_intensive_cohort=in_intensive_cohort,
-        is_active_asc=is_active_asc,
-    )
+    criteria = {
+        'advisor_ldap_uids': advisor_ldap_uids,
+        'coe_prep_statuses': coe_prep_statuses,
+        'ethnicities': ethnicities,
+        'genders': genders,
+        'group_codes': group_codes,
+        'in_intensive_cohort': in_intensive_cohort,
+        'is_active_asc': is_active_asc,
+        'underrepresented': underrepresented,
+    }
+    if order_by:
+        # 'order_by' value might influence query scope
+        criteria.update({order_by: True})
+    scope = narrow_scope_by_criteria(get_student_query_scope(), **criteria)
     query_tables, query_filter, query_bindings = data_loch.get_students_query(
         advisor_ldap_uids=advisor_ldap_uids,
         coe_prep_statuses=coe_prep_statuses,
@@ -217,10 +232,12 @@ def query_students(
         group_codes=group_codes,
         in_intensive_cohort=in_intensive_cohort,
         is_active_asc=is_active_asc,
+        last_name_range=last_name_range,
         levels=levels,
         majors=majors,
-        unit_ranges=unit_ranges,
         scope=scope,
+        underrepresented=underrepresented,
+        unit_ranges=unit_ranges,
     )
     if not query_tables:
         return {
@@ -337,18 +354,20 @@ def narrow_scope_by_criteria(scope, **kwargs):
             'in_intensive_cohort',
             'is_active_asc',
             'group_codes',
+            'group_name',
         ],
         'COENG': [
             'advisor_ldap_uids',
             'coe_prep_statuses',
             'ethnicities',
             'genders',
+            'underrepresented',
         ],
     }
 
     # An explicit False counts as present, but other falsey criteria don't.
-    def any_criterion_present(criteria):
-        for c in criteria:
+    def any_criterion_present(criteria_):
+        for c in criteria_:
             value = kwargs.get(c)
             if value or value is False:
                 return True

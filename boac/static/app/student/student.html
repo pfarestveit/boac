@@ -1,7 +1,7 @@
 <div class="student-container">
   <div class="loading-spinner-large" data-ng-if="isLoading && !error">
     <i class="fas fa-sync fa-spin fa-5x"></i>
-    <span class="sr-only">Loading...</span>
+    <span role="alert" aria-live="passive" class="sr-only">Loading...</span>
   </div>
 
   <div class="container-error" data-ng-if="!isLoading && error">
@@ -35,17 +35,23 @@
                    data-ng-bind="student.sisProfile.preferredName"
                    data-ng-class="{'demo-mode-blur': demoMode.blur}"
                    data-ng-if="student.sisProfile.preferredName !== student.name"></div>
+              <div class="student-profile-sid">
+                SID <span data-ng-bind="student.sid"></span>
+              </div>
               <div>
                 <i class="fas fa-envelope"></i>
                 <a id="student-mailto"
+                   aria-label="Email this student"
                    data-ng-href="mailto:{{student.sisProfile.emailAddress}}"
                    data-ng-class="{'demo-mode-blur': demoMode.blur}"
                    data-ng-bind="student.sisProfile.emailAddress"></a>
               </div>
               <div data-ng-if="student.sisProfile.phoneNumber">
                 <i class="fas fa-phone"></i>
-                <span data-ng-bind="student.sisProfile.phoneNumber"
-                      data-ng-class="{'demo-mode-blur': demoMode.blur}"></span>
+                <span aria-label="Student phone number is {{student.sisProfile.phoneNumber}}"
+                      data-ng-bind="student.sisProfile.phoneNumber"
+                      data-ng-class="{'demo-mode-blur': demoMode.blur}"
+                      tabindex="0"></span>
               </div>
             </div>
             <div>
@@ -85,6 +91,7 @@
                      data-ng-if="myCuratedCohorts.length">
                   <input id="curated-cohort-checkbox-{{$index}}"
                          class="curated-cohort-checkbox-input"
+                         aria-label="{{cohort.selected ? 'Remove from' : 'Add to'}} curated cohort {{cohort.name}}"
                          type="checkbox"
                          data-ng-model="cohort.selected"
                          data-ng-click="curatedCohortCheckboxClick(cohort)"/>
@@ -102,7 +109,7 @@
             <div class="student-bio-status-box student-bio-status-box-units">
               <div>
                 <div class="student-bio-status-number" data-ng-bind="student.sisProfile.cumulativeUnits"></div>
-                <div class="student-bio-status-legend">Cumulative Units</div>
+                <div class="student-bio-status-legend">Units Completed</div>
               </div>
               <div class="profile-units-chart-outer">
                 <div class="student-bio-status-legend student-bio-status-legend-units">Unit Totals</div>
@@ -155,41 +162,14 @@
                  data-ng-if="$first && !student.hasCurrentTermEnrollments && (currentEnrollmentTermId > parseInt(term.termId))">
               <h3 class="student-term-header" data-ng-bind="currentEnrollmentTerm"></h3>
               <div class="term-no-enrollments-description">No enrollments</div>
+              <div data-ng-include="'/static/app/student/studentSemesterNotices.html'"></div>
             </div>
 
             <h3 class="student-term-header" data-ng-bind="term.termName"></h3>
 
-            <div data-ng-if="$index === 0">
-              <div data-ng-if="alerts.shown.length">
-                <div class="alert alert-warning profile-alert"
-                     data-ng-attr-id="alert-{{alert.id}}"
-                     data-ng-repeat="alert in alerts.shown">
-                  <div class="profile-alert-item">
-                    <student-alert-message alert="alert"></student-alert-message>
-                    <button id="dismiss-alert-{{alert.id}}"
-                            class="btn btn-link close"
-                            data-ng-click="dismissAlert(alert.id)"
-                            title="Dismiss alert"
-                            aria-label="Close">&times;</button>
-                  </div>
-                </div>
-              </div>
-              <div data-ng-show="!showDismissedAlerts && alerts.dismissed.length">
-                <button class="btn btn-link profile-view-previous-semesters" data-ng-click="showDismissedAlerts=true">
-                  View dismissed status alerts
-                </button>
-              </div>
-              <div data-ng-show="showDismissedAlerts && alerts.dismissed.length">
-                <button class="btn btn-link profile-view-previous-semesters" data-ng-click="showDismissedAlerts=false">
-                  Hide dismissed status alerts
-                </button>
-                <div class="alert alert-warning profile-alert">
-                  <div data-ng-repeat="alert in alerts.dismissed" class="profile-alert-item">
-                    <student-alert-message alert="alert"></student-alert-message>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <div data-ng-include="'/static/app/student/studentSemesterNotices.html'"
+                 data-ng-if="$first && (student.hasCurrentTermEnrollments || currentEnrollmentTermId <= parseInt(term.termId))"></div>
+
             <uib-accordion close-others="false">
               <div uib-accordion-group
                    is-disabled="true"
@@ -207,6 +187,8 @@
                              aria-label="{{course.isOpen ? 'Hide course details' : 'Show course details'}}"
                              data-ng-class="{'fas fa-caret-right': !course.isOpen, 'fas fa-caret-down': course.isOpen}"
                              data-ng-click="course.isOpen = !course.isOpen"
+                             data-ng-keypress="course.isOpen = !course.isOpen"
+                             tabindex="0"
                              role="button"></i>
                         </div>
                         <div>
@@ -351,6 +333,15 @@
                   No additional information
                 </div>
               </div>
+              <div class="accordion-heading profile-class"
+                   data-ng-if="term.enrolledUnits">
+                <div class="accordion-heading-start"></div>
+                <div class="accordion-heading-end">
+                  <div class="accordion-heading-units-total">
+                    Total <span data-ng-bind="term.enrolledUnits"></span>
+                  </div>
+                </div>
+              </div>
               <div uib-accordion-group
                    class="profile-class"
                    is-open="true"
@@ -378,6 +369,11 @@
           </div>
           <div class="profile-classes" data-ng-if="!student.enrollmentTerms.length">
             No courses
+            <div data-ng-if="student.sisProfile.withdrawalCancel">
+              <span class="red-flag-small">
+                {{student.sisProfile.withdrawalCancel.description}} ({{student.sisProfile.withdrawalCancel.reason}}) {{student.sisProfile.withdrawalCancel.date | date}}
+              </span>
+            </div>
           </div>
         </div>
       </div>

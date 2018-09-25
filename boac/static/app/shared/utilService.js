@@ -40,20 +40,13 @@
       return parseInt(studentCount, 10) > disableMatrixViewThreshold;
     };
 
-    var format = function(str, tokens) {
-      var formatted = str;
-      _.each(tokens, function(value, key) {
-        formatted = formatted.replace('${' + key + '}', value);
-      });
-      return formatted;
-    };
-
     var lastActivityDays = function(analytics) {
       var timestamp = parseInt(_.get(analytics, 'lastActivity.student.raw'), 10);
       if (!timestamp || isNaN(timestamp)) {
         return 'Never';
       }
-      var daysSince = Math.floor(((Date.now() / 1000) - timestamp) / 86400);
+      // Days tick over at midnight according to the user's browser.
+      var daysSince = Math.round(((new Date()).setHours(0, 0, 0, 0) - (new Date(timestamp * 1000)).setHours(0, 0, 0, 0)) / 86400000);
       switch (daysSince) {
         case 0: return 'Today';
         case 1: return 'Yesterday';
@@ -83,7 +76,6 @@
       exceedsMatrixThreshold: exceedsMatrixThreshold,
       exceedsMatrixThresholdMessage: exceedsMatrixThresholdMessage,
       extendSortableNames: extendSortableNames,
-      format: format,
       lastActivityDays: lastActivityDays,
       lastActivityInContext: lastActivityInContext,
       toBoolOrNull: toBoolOrNull

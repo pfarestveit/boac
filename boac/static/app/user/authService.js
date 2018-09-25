@@ -66,9 +66,7 @@
         var me = $rootScope.me;
         if ($rootScope.me.isAuthenticated) {
           if ($location.search().casLogin) {
-            // Track CAS login event
-            var uid = $rootScope.me.uid;
-            googleAnalyticsService.track('user', 'login', uid, parseInt(uid, 10));
+            googleAnalyticsService.track('User', 'login');
           }
         }
         return me;
@@ -89,11 +87,12 @@
       }
     });
 
-    $rootScope.$on('filteredCohortNameChanged', function(event, data) {
+    $rootScope.$on('filteredCohortUpdated', function(event, data) {
       if (_.get($rootScope, 'me.myFilteredCohorts')) {
         _.each($rootScope.me.myFilteredCohorts, function(cohort) {
           if (data.cohort.id === cohort.id) {
             cohort.name = data.cohort.name;
+            cohort.totalStudentCount = data.cohort.totalStudentCount;
           }
         });
       }

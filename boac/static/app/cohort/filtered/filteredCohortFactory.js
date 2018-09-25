@@ -29,7 +29,7 @@
 
   var boac = angular.module('boac');
 
-  boac.factory('filteredCohortFactory', function($http, $rootScope, googleAnalyticsService, utilService) {
+  boac.factory('filteredCohortFactory', function($http, $rootScope, googleAnalyticsService) {
 
     var createCohort = function(label, filterCriteria) {
       var args = _.merge({label: label}, filterCriteria);
@@ -39,8 +39,7 @@
           cohort: cohort
         });
         $rootScope.$broadcast('myFilteredCohortsUpdated');
-        // Track the event
-        googleAnalyticsService.track('cohort', 'create', cohort.name, cohort.id);
+        googleAnalyticsService.track('Filtered Cohort', 'create', cohort.name, cohort.id);
         return cohort;
       });
     };
@@ -51,6 +50,7 @@
         $rootScope.$broadcast('filteredCohortDeleted', {
           cohort: cohort
         });
+        googleAnalyticsService.track('Filtered Cohort', 'delete', cohort.name, cohort.id);
       });
     };
 
@@ -58,18 +58,20 @@
       return $http.get('/api/filtered_cohorts/all');
     };
 
-    var getCohort = function(id, orderBy, offset, limit) {
-      var params = {
+    var getCohort = function(id, includeStudents, orderBy, offset, limit) {
+      var template = _.template('/api/filtered_cohort/${id}?includeStudents=${includeStudents}&offset=${offset}&limit=${limit}&orderBy=${orderBy}');
+      var args = {
         id: id,
+        includeStudents: includeStudents || true,
         offset: offset || 0,
         limit: limit || 50,
         orderBy: orderBy || 'first_name'
       };
-      var apiPath = utilService.format('/api/filtered_cohort/${id}?offset=${offset}&limit=${limit}&orderBy=${orderBy}', params);
-      return $http.get(apiPath);
+
+      return $http.get(template(args));
     };
 
-    var getFilterDefinitions = function() {
+    var getFilterCategories = function() {
       return $http.get('/api/filter_cohort/definitions');
     };
 
@@ -77,16 +79,22 @@
       return $http.get('/api/filtered_cohorts/my');
     };
 
-    var rename = function(id, label) {
+    var update = function(id, label, filterCriteria, studentCount, callback) {
       var args = {
         id: id,
-        label: label
+        label: label,
+        filterCriteria: filterCriteria,
+        studentCount: studentCount
       };
-      return $http.post('/api/filtered_cohort/rename', args).then(function(response) {
+      return $http.post('/api/filtered_cohort/update', args).then(function(response) {
+        var cohort = response.data;
+
         $rootScope.$broadcast('myFilteredCohortsUpdated');
-        $rootScope.$broadcast('filteredCohortNameChanged', {
-          cohort: response.data
+        $rootScope.$broadcast('filteredCohortUpdated', {
+          cohort: cohort
         });
+        googleAnalyticsService.track('Filtered Cohort', 'update', cohort.name, cohort.id);
+        callback(cohort);
       });
     };
 
@@ -95,9 +103,9 @@
       deleteCohort: deleteCohort,
       getAll: getAll,
       getCohort: getCohort,
-      getFilterDefinitions: getFilterDefinitions,
+      getFilterCategories: getFilterCategories,
       getMyFilteredCohorts: getMyFilteredCohorts,
-      rename: rename
+      update: update
     };
   });
 

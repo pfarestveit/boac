@@ -124,6 +124,13 @@ def get_sis_enrollments(uid, term_id):
     return safe_execute_redshift(sql)
 
 
+def get_sis_holds():
+    sql = f"""SELECT sid, feed
+        FROM {student_schema()}.student_holds
+        """
+    return safe_execute_redshift(sql)
+
+
 @fixture('loch_sis_section_{term_id}_{sis_section_id}.csv')
 def get_sis_section(term_id, sis_section_id):
     sql = f"""SELECT
@@ -209,13 +216,6 @@ def get_coe_profiles(sids):
     return safe_execute_redshift(sql, sids=sids)
 
 
-def get_all_student_ids():
-    sql = f"""SELECT sid, uid
-        FROM {student_schema()}.student_academic_status
-        """
-    return safe_execute_rds(sql)
-
-
 def get_student_for_uid_and_scope(uid, scope):
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
@@ -227,12 +227,15 @@ def get_student_for_uid_and_scope(uid, scope):
     return None if not rows or (len(rows) == 0) else rows[0]
 
 
-def get_student_profiles(sids):
+def get_student_profiles(sids=None):
     sql = f"""SELECT sid, profile
         FROM {student_schema()}.student_profiles
-        WHERE sid = ANY(:sids)
         """
-    return safe_execute_redshift(sql, sids=sids)
+    if sids:
+        sql += 'WHERE sid = ANY(:sids)'
+        return safe_execute_redshift(sql, sids=sids)
+    else:
+        return safe_execute_redshift(sql)
 
 
 def get_enrollments_for_sid(sid, latest_term_id=None):
@@ -278,19 +281,21 @@ def get_majors(scope=[]):
 
 
 def get_students_query(
-        search_phrase=None,
+        advisor_ldap_uids=None,
         coe_prep_statuses=None,
         ethnicities=None,
         genders=None,
-        group_codes=None,
         gpa_ranges=None,
-        levels=None,
-        majors=None,
-        unit_ranges=None,
+        group_codes=None,
         in_intensive_cohort=None,
         is_active_asc=None,
-        advisor_ldap_uids=None,
-        scope=[],
+        last_name_range=None,
+        levels=None,
+        majors=None,
+        scope=(),
+        search_phrase=None,
+        underrepresented=None,
+        unit_ranges=None,
 ):  # noqa
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
@@ -317,7 +322,7 @@ def get_students_query(
     # Generic SIS criteria
     query_filter += _numranges_to_sql('sas.gpa', gpa_ranges) if gpa_ranges else ''
     query_filter += _numranges_to_sql('sas.units', unit_ranges) if unit_ranges else ''
-
+    query_filter += _query_filter_last_name_range(last_name_range)
     if levels:
         query_filter += ' AND sas.level = ANY(:levels)'
         query_bindings.update({'levels': [level_to_code(l) for l in levels]})
@@ -348,14 +353,15 @@ def get_students_query(
     if advisor_ldap_uids:
         query_filter += ' AND s.advisor_ldap_uid = ANY(:advisor_ldap_uids)'
         query_bindings.update({'advisor_ldap_uids': advisor_ldap_uids})
-    for coe_prep_status in coe_prep_statuses or []:
-        query_filter += f' AND s.{coe_prep_status} IS TRUE'
+    if coe_prep_statuses:
+        query_filter += ' AND (' + ' OR '.join([f's.{cps} IS TRUE' for cps in coe_prep_statuses]) + ')'
     if ethnicities:
         query_filter += ' AND s.ethnicity = ANY(:ethnicities)'
         query_bindings.update({'ethnicities': ethnicities})
     if genders:
         query_filter += ' AND s.gender = ANY(:genders)'
         query_bindings.update({'genders': genders})
+    query_filter += f' AND s.minority IS {underrepresented}' if underrepresented is not None else ''
 
     return query_tables, query_filter, query_bindings
 
@@ -488,8 +494,8 @@ def _student_query_tables_for_scope(scope):
         elif join_type == 'intersection':
             # In an intersection of multiple schemas, all queryable columns should be returned.
             columns_for_codes = {
-                'UWASC': ['advisor_ldap_uid', 'gender', 'ethnicity', 'did_prep', 'prep_eligible', 'did_tprep', 'tprep_eligible'],
-                'COENG': ['active', 'intensive', 'group_code'],
+                'COENG': ['advisor_ldap_uid', 'gender', 'ethnicity', 'did_prep', 'minority', 'prep_eligible', 'did_tprep', 'tprep_eligible'],
+                'UWASC': ['active', 'intensive', 'group_code', 'group_name'],
             }
             intersection_columns = []
             for code in scope:
@@ -500,3 +506,18 @@ def _student_query_tables_for_scope(scope):
             table_sql = f"""FROM ({intersection_sql}) s
                 JOIN {student_schema()}.student_academic_status sas ON sas.sid = s.sid"""
     return table_sql
+
+
+def _query_filter_last_name_range(range_):
+    query_filter = ''
+    if isinstance(range_, list) and len(range_):
+        start = range_[0].upper()
+        stop = range_[-1].upper()
+        if start == stop:
+            query_filter += f' AND sas.last_name ILIKE \'{start}%\''
+        else:
+            query_filter += f' AND UPPER(sas.last_name) >= \'{start}\''
+            if stop < 'Z':
+                # If 'stop' were 'Z' then upper bound would not be necessary
+                query_filter += f' AND UPPER(sas.last_name) < \'{chr(ord(stop) + 1)}\''
+    return query_filter

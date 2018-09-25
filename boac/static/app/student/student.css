@@ -73,6 +73,13 @@
   white-space: nowrap;
 }
 
+.accordion-heading-units-total {
+  color: #777;
+  font-size: 16px;
+  font-weight: 500;
+  margin-top: 15px;
+}
+
 .panel {
   -webkit-box-shadow: none;
   box-shadow: 0;
@@ -88,6 +95,23 @@
   width: 60px;
 }
 
+.student-avatar-alert-count {
+  background-color: #f0ad4e;
+  border-radius: 15px;
+  border: 2px solid #fff;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  object-fit: cover;
+  padding-top: 2px;
+  position: absolute;
+  text-align: center;
+  height: 30px;
+  width: 30px;
+  top: 5%;
+  right: 5%;
+}
+
 .student-avatar-container {
   align-items: center;
   display: flex;
@@ -98,6 +122,10 @@
   border-radius: 50px;
   height: 100px;
   width: 100px;
+}
+
+.student-avatar-large-container {
+  position: relative;
 }
 
 .student-avatar-small {
@@ -315,6 +343,12 @@
   flex-direction: row;
 }
 
+.student-profile-sid {
+  font-size: 14px;
+  font-weight: bold;
+  margin: 5px 0;
+}
+
 .student-section-header {
   font-size: 24px;
   font-weight: bold;
@@ -349,10 +383,6 @@
 .student-text {
   color: #aaa;
   font-size: 13px;
-}
-
-.student-term {
-  border-bottom: 1px solid #999;
 }
 
 .student-term .panel-group {

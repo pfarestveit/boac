@@ -77,9 +77,12 @@ class CohortFilter(Base, UserMixin):
         return cohort
 
     @classmethod
-    def rename(cls, cohort_id, label):
+    def update(cls, cohort_id, label=None, filter_criteria=None, student_count=None):
         cohort = CohortFilter.query.filter_by(id=cohort_id).first()
         cohort.label = label
+        cohort.filter_criteria = filter_criteria
+        if student_count is not None:
+            cohort.student_count = student_count
         std_commit()
         return cohort
 
@@ -143,9 +146,11 @@ class CohortFilter(Base, UserMixin):
         group_codes = c.get('groupCodes')
         in_intensive_cohort = util.to_bool_or_none(c.get('inIntensiveCohort'))
         is_inactive_asc = util.to_bool_or_none(c.get('isInactiveAsc'))
+        last_name_range = c.get('lastNameRange')
         levels = c.get('levels')
         majors = c.get('majors')
         team_groups = athletics.get_team_groups(group_codes) if group_codes else []
+        underrepresented = util.to_bool_or_none(c.get('underrepresented'))
         unit_ranges = c.get('unitRanges')
         cohort_json.update({
             'filterCriteria': {
@@ -157,9 +162,11 @@ class CohortFilter(Base, UserMixin):
                 'groupCodes': group_codes,
                 'inIntensiveCohort': in_intensive_cohort,
                 'isInactiveAsc': is_inactive_asc,
+                'lastNameRange': last_name_range,
                 'levels': levels,
                 'majors': majors,
                 'unitRanges': unit_ranges,
+                'underrepresented': underrepresented,
             },
             'teamGroups': team_groups,
         })
@@ -175,8 +182,8 @@ class CohortFilter(Base, UserMixin):
             is_active_asc = not is_inactive_asc
         else:
             is_active_asc = None if is_inactive_asc is None else not is_inactive_asc
+        sids_only = not include_students
         results = query_students(
-            include_profiles=(include_students and include_profiles),
             advisor_ldap_uids=advisor_ldap_uids,
             coe_prep_statuses=coe_prep_statuses,
             ethnicities=ethnicities,
@@ -184,14 +191,17 @@ class CohortFilter(Base, UserMixin):
             gpa_ranges=gpa_ranges,
             group_codes=group_codes,
             in_intensive_cohort=in_intensive_cohort,
+            include_profiles=(include_students and include_profiles),
             is_active_asc=is_active_asc,
+            last_name_range=last_name_range,
             levels=levels,
-            majors=majors,
-            unit_ranges=unit_ranges,
-            order_by=order_by,
-            offset=offset,
             limit=limit,
-            sids_only=not include_students,
+            majors=majors,
+            offset=offset,
+            order_by=order_by,
+            sids_only=sids_only,
+            underrepresented=underrepresented,
+            unit_ranges=unit_ranges,
         )
         if results:
             # If the cohort is newly created or a cache refresh is underway, store the student count in the database
@@ -206,10 +216,8 @@ class CohortFilter(Base, UserMixin):
                     'students': results['students'],
                 })
             if include_alerts_for_uid:
-                viewer = AuthorizedUser.find_by_uid(include_alerts_for_uid)
-                if viewer:
-                    alert_counts = Alert.current_alert_counts_for_sids(viewer.id, results['sids'])
-                    cohort_json.update({
-                        'alerts': alert_counts,
-                    })
+                alert_counts = Alert.include_alert_counts_for_students(viewer_uid=include_alerts_for_uid, cohort=results)
+                cohort_json.update({
+                    'alerts': alert_counts,
+                })
         return cohort_json

@@ -147,13 +147,22 @@ class TestCohortDetail:
         cohorts = owner['cohorts']
         assert len(cohorts) == 5
 
-    def test_get_cohort(self, coe_advisor_session, client, coe_owned_cohort):
-        """Returns a well-formed response with custom cohort."""
+    def test_get_cohort(self, coe_advisor_session, client, coe_owned_cohort, create_alerts):
+        """Returns a well-formed response with filtered cohort and alert count per student."""
         response = client.get(f'/api/filtered_cohort/{coe_owned_cohort.id}')
         assert response.status_code == 200
         cohort = json.loads(response.data)
         assert cohort['id'] == coe_owned_cohort.id
         assert cohort['label'] == coe_owned_cohort.label
+        assert 'students' in cohort
+        assert cohort['students'][0].get('alertCount') == 3
+
+    def test_get_cohort_without_students(self, coe_advisor_session, client, coe_owned_cohort):
+        """Returns a well-formed response with cohort and no students."""
+        response = client.get(f'/api/filtered_cohort/{coe_owned_cohort.id}?includeStudents=false')
+        assert response.status_code == 200
+        cohort = json.loads(response.data)
+        assert 'students' not in cohort
 
     def test_unauthorized_get_cohort(self, asc_advisor_session, client, coe_owned_cohort):
         """Returns a well-formed response with custom cohort."""
@@ -267,33 +276,57 @@ class TestCohortDetail:
         response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
         assert response.status_code == 403
 
-    def test_create_cohort(self, client, coe_advisor_session):
+    def test_cohort_ordering(self, client, asc_advisor_session):
+        """Orders custom cohorts alphabetically."""
+        z_team_data = {
+            'label': 'Zebra Zealots',
+            'groupCodes': ['MTE', 'WWP'],
+        }
+        response = client.post('/api/filtered_cohort/create', data=json.dumps(z_team_data), content_type='application/json')
+        assert response.status_code == 200
+        a_team_data = {
+            'label': 'Aardvark Admirers',
+            'groupCodes': ['MWP', 'WTE'],
+        }
+        response = client.post('/api/filtered_cohort/create', data=json.dumps(a_team_data), content_type='application/json')
+        assert response.status_code == 200
+        response = client.get('/api/filtered_cohorts/my')
+        assert response.status_code == 200
+        cohorts = response.json
+        assert cohorts[0]['label'] == 'Aardvark Admirers'
+        assert cohorts[-1]['label'] == 'Zebra Zealots'
+
+
+class TestCohortCreate:
+    """Cohort Create API."""
+
+    def test_create_cohort(self, client, asc_advisor_session):
         """Creates custom cohort, owned by current user."""
-        label = 'Tennis'
-        group_codes = ['MTE', 'WTE']
-        majors = ['Bioengineering BS', 'Undeclared']
         data = {
-            'label': label,
-            'groupCodes': group_codes,
-            'majors': majors,
+            'label': 'Tennis',
+            'groupCodes': ['MTE', 'WTE'],
+            'majors': [
+                'Anthropology BA',
+                'Bioengineering BS',
+            ],
         }
         response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
         assert response.status_code == 200
 
         cohort = json.loads(response.data)
         assert 'students' in cohort
-        assert 'label' in cohort and cohort['label'] == label
+        assert 'label' in cohort and cohort['label'] == data['label']
         assert 'teamGroups' in cohort
-        assert group_codes == [g['groupCode'] for g in cohort['teamGroups']]
+        assert data['groupCodes'] == [g['groupCode'] for g in cohort['teamGroups']]
 
         cohort_id = cohort['id']
         response = client.get(f'/api/filtered_cohort/{cohort_id}')
         same_cohort = json.loads(response.data)
 
         assert 'students' in cohort
-        assert same_cohort['label'] == label
+        assert same_cohort['label'] == data['label']
         assert 'teamGroups' in cohort and len(cohort['teamGroups']) == 2
-        assert group_codes == [g['groupCode'] for g in cohort['teamGroups']]
+        assert data['groupCodes'] == [g['groupCode'] for g in cohort['teamGroups']]
         f = cohort['filterCriteria']
         assert 'majors' in f and len(f['majors']) == 2
 
@@ -315,47 +348,106 @@ class TestCohortDetail:
 
     def test_create_cohort_with_complex_filters(self, client, coe_advisor_session):
         """Creates custom cohort, with many non-empty filter_criteria."""
-        label = 'Complex'
-        gpa_ranges = [
-            'numrange(0, 2, \'[)\')',
-            'numrange(2, 2.5, \'[)\')',
-        ]
-        group_codes = []
-        levels = ['Junior']
-        majors = ['Environmental Economics & Policy', 'Gender and Women\’s Studies']
         data = {
-            'label': label,
-            'gpaRanges': gpa_ranges,
-            'groupCodes': group_codes,
-            'levels': levels,
-            'majors': majors,
-            'unitRanges': [],
+            'label': 'Complex',
+            'gpaRanges': ['numrange(0, 2, \'[)\')', 'numrange(2, 2.5, \'[)\')'],
+            'levels': ['Junior'],
+            'majors': [
+                'Environmental Economics & Policy',
+                'Gender and Women\’s Studies',
+            ],
         }
         response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
         assert 200 == response.status_code
         response = client.get('/api/filtered_cohorts/my')
         assert 200 == response.status_code
-        cohort = next((x for x in response.json if x['label'] == 'Complex'), None)
+        cohort = next((x for x in response.json if x['label'] == data['label']), None)
         assert cohort and 'filterCriteria' in cohort
         for key in cohort['filterCriteria']:
             assert data.get(key) == cohort['filterCriteria'][key]
 
-    def test_cohort_ordering(self, client, coe_advisor_session):
-        """Orders custom cohorts alphabetically."""
-        z_team_data = {
-            'label': 'Zebra Zealots',
-            'groupCodes': ['MTE', 'WWP'],
-        }
-        client.post('/api/filtered_cohort/create', data=json.dumps(z_team_data), content_type='application/json')
-        a_team_data = {
-            'label': 'Aardvark Admirers',
-            'groupCodes': ['MWP', 'WTE'],
-        }
-        client.post('/api/filtered_cohort/create', data=json.dumps(a_team_data), content_type='application/json')
+    def test_admin_creation_of_asc_cohort(self, client, admin_session):
+        """COE advisor cannot use ASC criteria."""
+        data = {'label': 'Admin superpowers', 'groupCodes': ['MTE', 'WWP']}
+        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
+        assert 200 == response.status_code
 
-        cohorts = client.get('/api/filtered_cohorts/my').json
-        assert cohorts[0]['label'] == 'Aardvark Admirers'
-        assert cohorts[-1]['label'] == 'Zebra Zealots'
+    def test_forbidden_cohort_creation(self, client, coe_advisor_session):
+        """COE advisor cannot use ASC criteria."""
+        data = {'label': 'Sorry Charlie', 'groupCodes': ['MTE', 'WWP']}
+        response = client.post('/api/filtered_cohort/create', data=json.dumps(data), content_type='application/json')
+        assert 403 == response.status_code
+
+
+class TestCohortUpdate:
+    """Cohort Update API."""
+
+    def test_unauthorized_cohort_update(self, client, coe_advisor_session):
+        cohort = CohortFilter.create(uid=asc_advisor_uid, label='Swimming, Men\'s', group_codes=['MSW', 'MSW-DV', 'MSW-SW'])
+        data = {
+            'id': cohort.id,
+            'label': 'Hack the label!',
+        }
+        response = client.post('/api/filtered_cohort/update', data=json.dumps(data), content_type='application/json')
+        assert 403 == response.status_code
+
+    def test_cohort_update_name(self, client, asc_advisor_session):
+        cohort = CohortFilter.create(uid=asc_advisor_uid, label='Swimming, Men\'s', group_codes=['MSW', 'MSW-DV', 'MSW-SW'])
+        updated_label = 'Splashing, Men\'s'
+        # First, we POST an empty label
+        response = client.post('/api/filtered_cohort/update', data=json.dumps({'id': cohort.id}), content_type='application/json')
+        assert 400 == response.status_code
+        # Now, we POST a valid label
+        data = {
+            'id': cohort.id,
+            'label': updated_label,
+        }
+        response = client.post('/api/filtered_cohort/update', data=json.dumps(data), content_type='application/json')
+        assert 200 == response.status_code
+        update = response.json
+        assert update['label'] == updated_label
+
+        def remove_empties(filter_criteria):
+            return {k: v for k, v in filter_criteria.items() if v is not None}
+        expected = remove_empties(cohort.filter_criteria)
+        actual = remove_empties(update['filterCriteria'])
+        assert expected == actual
+
+    def test_cohort_update_filter_criteria(self, client, asc_advisor_session):
+        label = 'Swimming, Men\'s'
+        original_student_count = 4
+        cohort = CohortFilter.create(
+            uid=asc_advisor_uid,
+            label=label,
+            group_codes=['MSW', 'MSW-DV', 'MSW-SW'],
+            student_count=original_student_count,
+        )
+        assert original_student_count > 0
+        updated_filter_criteria = {
+            'groupCodes': ['MSW-DV', 'MSW-SW'],
+        }
+        data = {
+            'id': cohort.id,
+            'filterCriteria': updated_filter_criteria,
+            'studentCount': original_student_count - 1,
+        }
+        response = client.post('/api/filtered_cohort/update', data=json.dumps(data), content_type='application/json')
+        assert 200 == response.status_code
+
+        updated_cohort = CohortFilter.find_by_id(int(response.json['id']))
+        assert updated_cohort.label == label
+        assert updated_cohort.student_count == original_student_count - 1
+
+        def remove_empties(filter_criteria):
+            return {k: v for k, v in filter_criteria.items() if v is not None}
+
+        expected = remove_empties(cohort.filter_criteria)
+        actual = remove_empties(updated_cohort.filter_criteria)
+        assert expected == actual
+
+
+class TestCohortDelete:
+    """Cohort Delete API."""
 
     def test_delete_cohort_not_authenticated(self, client):
         """Custom cohort deletion requires authentication."""
@@ -388,60 +480,77 @@ class TestCohortDetail:
         cohorts = CohortFilter.all_owned_by(coe_advisor_uid)
         assert not next((c for c in cohorts if c.id == cohort.id), None)
 
+
+class TestCohortFilterDefinitions:
+    """Cohort Filter Definitions API."""
+
     def test_coe_filter_definitions(self, client, coe_advisor_session):
         """Gets filters available to COE users."""
         response = client.get('/api/filter_cohort/definitions')
         assert response.status_code == 200
         definitions = response.json
-        assert len(definitions) == 8
-        assert definitions[0]['key'] == 'advisorLdapUids'
+        assert len(definitions) == 4
+        assert len(definitions[0]) == 1
+        assert len(definitions[1]) == 3
+        assert len(definitions[2]) == 3
+        assert len(definitions[3]) == 3
 
     def test_asc_filter_definitions(self, client, asc_advisor_session):
         """Gets filters available to ASC users."""
         response = client.get('/api/filter_cohort/definitions')
         assert response.status_code == 200
         definitions = response.json
-        assert len(definitions) == 7
-        assert definitions[2]['key'] == 'isInactiveAsc'
-        assert definitions[2]['defaultValue'] is False
+        assert len(definitions) == 4
+        assert definitions[2][0]['key'] == 'isInactiveAsc'
+        assert definitions[2][1]['key'] == 'inIntensiveCohort'
+        assert definitions[2][2]['key'] == 'groupCodes'
 
     def test_admin_filter_definitions(self, client, admin_session):
         """Gets filters available to Admin users."""
         response = client.get('/api/filter_cohort/definitions')
         assert response.status_code == 200
         definitions = response.json
-        assert len(definitions) == 11
-        # COE advisors
-        assert definitions[0]['key'] == 'advisorLdapUids'
-        assert len(definitions[0]['options']) == 3
-        # Ethnicity
-        assert definitions[1]['key'] == 'ethnicities'
-        assert len(definitions[0]['options']) == 3
-        # Gender
-        assert definitions[2]['key'] == 'genders'
-        assert len(definitions[2]['options']) == 2
-        # GPA
-        assert definitions[3]['key'] == 'gpaRanges'
-        assert len(definitions[3]['options']) == 5
-        # Teams
-        assert definitions[4]['key'] == 'groupCodes'
-        assert len(definitions[4]['options']) == 7
-        # ASC Inactive
-        assert definitions[5]['key'] == 'isInactiveAsc'
-        assert len(definitions[5]['options']) == 2
-        assert definitions[5]['defaultValue'] is None
-        # ASC Intensive
-        assert definitions[6]['key'] == 'inIntensiveCohort'
-        assert len(definitions[6]['options']) == 2
+        assert len(definitions) == 5
+        # General
+        assert definitions[0][0]['key'] == 'gpaRanges'
+        assert len(definitions[0][0]['options']) == 5
+
         # Levels
-        assert definitions[7]['key'] == 'levels'
-        assert len(definitions[7]['options']) == 4
-        # Majors
-        assert definitions[8]['key'] == 'majors'
-        assert len(definitions[8]['options']) == 8
-        # COE PREP
-        assert definitions[9]['key'] == 'coePrepStatuses'
-        assert len(definitions[9]['options']) == 4
+        assert definitions[1][0]['key'] == 'levels'
+        assert len(definitions[1][0]['options']) == 4
         # Units
-        assert definitions[10]['key'] == 'unitRanges'
-        assert len(definitions[10]['options']) == 5
+        assert definitions[1][1]['key'] == 'unitRanges'
+        assert len(definitions[1][1]['options']) == 5
+        # Majors
+        assert definitions[1][2]['key'] == 'majors'
+        assert len(definitions[1][2]['options']) == 8
+
+        # Ethnicity
+        assert definitions[2][0]['key'] == 'ethnicities'
+        assert len(definitions[2][0]['options']) == 3
+        # Gender
+        assert definitions[2][1]['key'] == 'genders'
+        assert len(definitions[2][1]['options']) == 2
+        # Underrepresented Minority
+        assert definitions[2][2]['key'] == 'underrepresented'
+        assert len(definitions[2][2]['options']) == 2
+
+        # ASC Inactive
+        assert definitions[3][0]['key'] == 'isInactiveAsc'
+        assert len(definitions[3][0]['options']) == 2
+        assert definitions[3][0]['defaultValue'] is None
+        # ASC Intensive
+        assert definitions[3][1]['key'] == 'inIntensiveCohort'
+        assert len(definitions[3][1]['options']) == 2
+        # Teams
+        assert definitions[3][2]['key'] == 'groupCodes'
+        assert len(definitions[3][2]['options']) == 7
+
+        # COE PREP
+        assert definitions[4][0]['key'] == 'coePrepStatuses'
+        assert len(definitions[4][0]['options']) == 4
+        # Last Name
+        assert definitions[4][1]['key'] == 'lastNameRange'
+        # COE advisors
+        assert definitions[4][2]['key'] == 'advisorLdapUids'
+        assert len(definitions[4][2]['options']) == 3

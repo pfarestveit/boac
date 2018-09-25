@@ -84,6 +84,7 @@ class TestCourseController:
         assert students[0]['level'] == 'Junior'
         assert len(students[0]['majors']) == 2
         assert len(students[0]['enrollment']['canvasSites']) == 1
+        assert isinstance(students[0].get('alertCount'), int)
 
     def test_section_student_analytics(self, coe_advisor, client):
         section_id = 90200
@@ -108,14 +109,32 @@ class TestCourseController:
         assert students[0]['analytics']['assignmentsSubmitted']['percentile'] == 64
         assert students[0]['analytics']['currentScore']['percentile'] == 42.5
 
+    def test_section_mean_course_analytics(self, coe_advisor, client):
+        """Calculates mean course analytics across all sites associated with the section."""
+        section_id = 90200
+        response = client.get(f'/api/section/{term_id}/{section_id}')
+        mean_metrics = response.json['meanMetrics']
+        assert mean_metrics['assignmentsSubmitted']['displayPercentile'] == '57th'
+        assert mean_metrics['assignmentsSubmitted']['percentile'] == 57
+        assert mean_metrics['currentScore']['displayPercentile'] == '40th'
+        assert mean_metrics['currentScore']['percentile'] == 40.5
+        assert mean_metrics['lastActivity']['displayPercentile'] == '46th'
+        assert mean_metrics['lastActivity']['percentile'] == 46
+
     def test_section_student_athletics_asc(self, asc_advisor, client):
         """Includes athletics for ASC advisors."""
         response = client.get(f'/api/section/{term_id}/{section_id}')
         students = response.json['students']
         assert len(students[0]['athleticsProfile']['athletics']) == 2
+        assert isinstance(students[0].get('alertCount'), int)
 
     def test_section_student_athletics_non_asc(self, coe_advisor, client):
         """Does not include athletics for non-ASC advisors."""
         response = client.get(f'/api/section/{term_id}/{section_id}')
         students = response.json['students']
         assert 'athletics' not in students[0]
+
+    def test_section_student_alert_count(self, create_alerts, coe_advisor, client):
+        """Includes alert count of COE student."""
+        response = client.get(f'/api/section/{term_id}/{section_id}')
+        assert response.json['students'][0].get('alertCount') == 3
