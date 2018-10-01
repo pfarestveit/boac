@@ -154,7 +154,7 @@
       function y(d) { return _.get(d, yAxisMeasure).percentile; }
       function key(d) { return d.uid; }
 
-      var classMean = students[students.length - 1];
+      var classMean = students[0];
 
       var yAxisName = 'Assignments Submitted';
       if (yAxisMeasure === 'analytics.currentScore') {
@@ -297,7 +297,7 @@
         .selectAll('.dot')
         .data(students, key)
         .enter().append('circle')
-        .attr('class', 'dot')
+        .attr('class', function(d) { return d.isClassMean ? 'dot dot-mean' : 'dot dot-student'; })
         .style('fill', function(d) { return d.isClassMean ? avatar(d) : '#8bbdda'; })
         .style('opacity', function(d) { return d.isClassMean ? 1 : 0.66; })
         .style('stroke-width', 0)
@@ -353,15 +353,19 @@
       };
 
       dot.on('click', function(d) {
-        goToUserPage(d.uid);
+        if (!d.isClassMean) {
+          goToUserPage(d.uid);
+        }
       });
 
       var onDotSelected = function(d) {
         // Clear any existing tooltips.
         container.selectAll('.matrix-tooltip').remove();
 
-        // Move dot to front.
-        this.parentNode.appendChild(this);
+        // Move dot to front if it represents a real student. Not much to see, otherwise.
+        if (!d.isClassMean) {
+          this.parentNode.appendChild(this);
+        }
         // Stroke highlight.
         var selection = d3.select(this);
         selection.attr('r', '45')
@@ -442,7 +446,8 @@
       var partitions = partitionPlottableStudents(students);
       var plottableStudents = partitions[0];
       if (meanMetrics) {
-        plottableStudents.push({
+        // The imaginary mean must be drawn first, so as not to block access to real students.
+        plottableStudents.unshift({
           analytics: meanMetrics,
           isClassMean: true,
           lastName: 'Class Average'
