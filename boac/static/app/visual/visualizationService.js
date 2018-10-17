@@ -52,8 +52,7 @@
           height: 60,
           inverted: true,
           spacingLeft: 5,
-          type: 'column',
-          width: 170
+          type: 'column'
         },
         credits: {
           enabled: false
@@ -143,7 +142,114 @@
         ]
       };
       setTimeout(function() {
+        unitsChartOptions.chart.width = angular.element(document.querySelector('#profile-units-chart-container'))[0].parentNode.clientWidth;
         Highcharts.chart('profile-units-chart-container', unitsChartOptions);
+      });
+    };
+
+    var showGpaChart = function(element, gpaTerms, width) {
+      var seriesData = [];
+      var i = 0;
+      _.eachRight(gpaTerms, function(term) {
+        seriesData.push({
+          x: i,
+          y: term.gpa
+        });
+        i++;
+      });
+
+      if (seriesData.length) {
+        var fillColor = seriesData[seriesData.length - 1].y < 2 ? '#d0021b' : '#3b7ea5';
+        seriesData[seriesData.length - 1].marker = {
+          fillColor: fillColor,
+          radius: 5
+        };
+      }
+
+      var gpaChartOptions = {
+        title: {
+          text: ''
+        },
+        credits: false,
+        chart: {
+          renderTo: element,
+          width: width,
+          height: 40,
+          type: 'area',
+          margin: [
+            2,
+            0,
+            2,
+            0
+          ],
+          style: {
+            overflow: 'visible'
+          },
+          skipClone: true
+        },
+        yAxis: {
+          endOnTick: false,
+          startOnTick: false,
+          labels: {
+            enabled: false
+          },
+          title: {
+            text: null
+          },
+          softMin: 1.9,
+          plotLines: [
+            {
+              color: '#888',
+              dashStyle: 'dot',
+              width: 1,
+              value: 2
+            }
+          ],
+          tickPositions: []
+        },
+        xAxis: {
+          labels: {
+            enabled: false
+          },
+          title: {
+            text: null
+          },
+          startOnTick: false,
+          endOnTick: false,
+          tickPositions: [],
+          visible: false
+        },
+        legend: {
+          enabled: false
+        },
+        tooltip: {
+          enabled: false
+        },
+        plotOptions: {
+          line: {
+            states: {
+              hover: {
+                enabled: false
+              }
+            }
+          },
+          series: {
+            marker: {
+              radius: 0
+            }
+          }
+        },
+        series: [
+          {
+            type: 'line',
+            data: seriesData
+          }
+        ],
+        colors: [ '#4a90e2' ]
+      };
+
+      setTimeout(function() {
+        return new Highcharts.Chart(gpaChartOptions, 0);
       });
     };
 
@@ -421,10 +527,16 @@
 
         // The tooltip starts out hidden while inserting data...
         tooltip.style('opacity', 0);
+        var headerOuter = tooltip.append('div').attr('class', 'matrix-tooltip-header-outer');
         var fullName = d.firstName ? d.firstName + ' ' + d.lastName : d.lastName;
-        tooltip.append('h4')
+        headerOuter.append('h4')
           .attr('class', config.demoMode.blur ? 'demo-mode-blur' : 'matrix-tooltip-header')
           .text(fullName);
+        _.each(d.majors, function(major) {
+          headerOuter.append('div')
+            .attr('class', 'matrix-tooltip-major')
+            .text(major);
+        });
         var table = tooltip.append('table').attr('class', 'matrix-tooltip-table');
         var daysSinceRow = table.append('tr');
         daysSinceRow.append('td').attr('class', 'matrix-tooltip-label').text('Days since bCourses course site viewed');
@@ -502,6 +614,7 @@
     return {
       partitionPlottableStudents: partitionPlottableStudents,
       scatterplotRefresh: scatterplotRefresh,
+      showGpaChart: showGpaChart,
       showUnitsChart: showUnitsChart
     };
 

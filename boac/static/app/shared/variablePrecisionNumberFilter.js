@@ -23,40 +23,25 @@
  * ENHANCEMENTS, OR MODIFICATIONS.
  */
 
+/* eslint angular/no-services: "off" */
+
 (function(angular) {
 
   'use strict';
 
-  angular.module('boac').directive('sortableAlertsTable', function(authService, config) {
-
-    return {
-      // @see https://docs.angularjs.org/guide/directive#template-expanding-directive
-      restrict: 'E',
-
-      // @see https://docs.angularjs.org/guide/directive#isolating-the-scope-of-a-directive
-      scope: {
-        includeAvatar: '=',
-        options: '=',
-        students: '='
-      },
-
-      templateUrl: '/static/app/home/sortableAlertsTable.html',
-
-      link: function(scope) {
-        scope.isAscUser = authService.isAscUser();
-        scope.demoMode = config.demoMode;
-        scope.abbreviateTermName = function(termName) {
-          return termName && termName.replace('20', ' \'').replace('Spring', 'Spr').replace('Summer', 'Sum');
-        };
-        scope.sort = function(options, sortBy) {
-          if (options.sortBy === sortBy) {
-            options.reverse = !options.reverse;
-          } else {
-            options.sortBy = sortBy;
-            options.reverse = false;
-          }
-        };
-      }
+  /**
+   * Extends Angular's number filter with minimum and maximum precision.
+   * 2 | variablePrecisionNumber:1:2     ->  2.0
+   * 2.1 | variablePrecisionNumber:1:2   ->  2.1
+   * 2.12 | variablePrecisionNumber:1:2  ->  2.12
+   * 2.123 | variablePrecisionNumber:1:2 ->  2.12
+   */
+  angular.module('boac').filter('variablePrecisionNumber', function($filter) {
+    var fixedPrecisionNumberFilter = $filter('number');
+    return function(numeric, minPrecision, maxPrecision) {
+      var maximallyPreciseDecimal = fixedPrecisionNumberFilter(numeric, maxPrecision);
+      var superfluousZeros = new RegExp('0{1,' + (maxPrecision - minPrecision) + '}$');
+      return maximallyPreciseDecimal.replace(superfluousZeros, '');
     };
   });
 

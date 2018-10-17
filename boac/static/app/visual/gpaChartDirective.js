@@ -27,35 +27,22 @@
 
   'use strict';
 
-  angular.module('boac').directive('sortableAlertsTable', function(authService, config) {
-
+  angular.module('boac').directive('gpaChart', function(visualizationService) {
     return {
-      // @see https://docs.angularjs.org/guide/directive#template-expanding-directive
       restrict: 'E',
 
-      // @see https://docs.angularjs.org/guide/directive#isolating-the-scope-of-a-directive
       scope: {
-        includeAvatar: '=',
-        options: '=',
-        students: '='
+        gpaTerms: '=',
+        width: '='
       },
 
-      templateUrl: '/static/app/home/sortableAlertsTable.html',
-
-      link: function(scope) {
-        scope.isAscUser = authService.isAscUser();
-        scope.demoMode = config.demoMode;
-        scope.abbreviateTermName = function(termName) {
-          return termName && termName.replace('20', ' \'').replace('Spring', 'Spr').replace('Summer', 'Sum');
-        };
-        scope.sort = function(options, sortBy) {
-          if (options.sortBy === sortBy) {
-            options.reverse = !options.reverse;
-          } else {
-            options.sortBy = sortBy;
-            options.reverse = false;
+      link: function(scope, elem) {
+        angular.element(function() {
+          if (scope.gpaTerms.length) {
+            var width = scope.width || (elem[0].parentNode.clientWidth - 5);
+            visualizationService.showGpaChart(elem[0], scope.gpaTerms, width);
           }
-        };
+        });
       }
     };
   });

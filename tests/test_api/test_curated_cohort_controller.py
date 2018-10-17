@@ -77,6 +77,13 @@ class TestGetCuratedCohort:
         assert student_with_alerts
         assert student_with_alerts['alertCount'] == 3
 
+    def test_curated_cohort_includes_term_gpas(self, asc_advisor, client):
+        cohorts = CuratedCohort.get_curated_cohorts_by_owner_id(AuthorizedUser.find_by_uid(asc_advisor_uid).id)
+        deborah = next(s for s in client.get(f'/api/curated_cohort/{cohorts[0].id}').json['students'] if s['firstName'] == 'Deborah')
+        assert len(deborah['termGpa']) == 4
+        assert deborah['termGpa'][0] == {'termName': 'Spring 2018', 'gpa': 2.9}
+        assert deborah['termGpa'][3] == {'termName': 'Spring 2016', 'gpa': 3.8}
+
 
 class TestMyCuratedCohorts:
     """Curated Cohort API."""
@@ -126,7 +133,9 @@ class TestMyCuratedCohorts:
         students = cohorts[0]['students']
         assert students[0]['cumulativeGPA'] == 3.8
         assert students[0]['cumulativeUnits'] == 101.3
+        assert students[0]['expectedGraduationTerm']['name'] == 'Fall 2019'
         assert students[0]['level'] == 'Junior'
+        assert students[0]['termGpa'][0]['gpa'] == 2.9
         assert len(students[0]['majors']) == 2
         assert 'analytics' not in students[0]
         assert 'enrollments' not in students[0]['term']

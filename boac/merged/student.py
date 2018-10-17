@@ -23,11 +23,13 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from itertools import groupby
 import json
+import operator
 
 from boac.externals import data_loch
 from boac.lib import analytics
-from boac.lib.berkeley import current_term_id
+from boac.lib.berkeley import current_term_id, term_name_for_sis_id
 from flask_login import current_user
 
 
@@ -147,12 +149,14 @@ def get_summary_student_profiles(sids, term_id=None):
         term_id = current_term_id()
     enrollments_for_term = data_loch.get_enrollments_for_term(term_id, sids)
     enrollments_by_sid = {row['sid']: json.loads(row['enrollment_term']) for row in enrollments_for_term}
+    term_gpas = get_term_gpas_by_sid(sids)
     for profile in profiles:
         # Strip SIS details to lighten the API load.
         sis_profile = profile.pop('sisProfile', None)
         if sis_profile:
             profile['cumulativeGPA'] = sis_profile.get('cumulativeGPA')
             profile['cumulativeUnits'] = sis_profile.get('cumulativeUnits')
+            profile['expectedGraduationTerm'] = sis_profile.get('expectedGraduationTerm')
             profile['level'] = sis_profile.get('level', {}).get('description')
             profile['majors'] = sorted(plan.get('description') for plan in sis_profile.get('plans', []))
             if sis_profile.get('withdrawalCancel'):
@@ -165,6 +169,7 @@ def get_summary_student_profiles(sids, term_id=None):
             profile['term'] = term
             if term['termId'] == current_term_id() and len(term['enrollments']) > 0:
                 profile['hasCurrentTermEnrollments'] = True
+        profile['termGpa'] = term_gpas.get(profile['sid'])
     return profiles
 
 
@@ -187,6 +192,14 @@ def get_student_and_terms(uid):
             # Omit dropped sections for past terms.
             term.pop('droppedSections', None)
     return profile
+
+
+def get_term_gpas_by_sid(sids):
+    results = data_loch.get_term_gpas(sids)
+    term_gpa_dict = {}
+    for sid, rows in groupby(results, key=operator.itemgetter('sid')):
+        term_gpa_dict[sid] = [{'termName': term_name_for_sis_id(r['term_id']), 'gpa': r['gpa']} for r in rows]
+    return term_gpa_dict
 
 
 def query_students(

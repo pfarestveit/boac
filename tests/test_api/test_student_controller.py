@@ -289,6 +289,15 @@ class TestSearch:
         assert response.status_code == 200
         assert response.json['students'][0]['alertCount'] == 3
 
+    def test_summary_profiles_in_search_results(self, client, fake_auth):
+        fake_auth.login('2040')
+        response = client.post('/api/students/search', data=json.dumps({'searchPhrase': 'davies'}), content_type='application/json')
+        assert response.json['students'][0]['cumulativeGPA'] == 3.8
+        assert response.json['students'][0]['cumulativeUnits'] == 101.3
+        assert response.json['students'][0]['expectedGraduationTerm']['name'] == 'Fall 2019'
+        assert response.json['students'][0]['level'] == 'Junior'
+        assert response.json['students'][0]['termGpa'][0]['gpa'] == 2.9
+
     def test_search_by_name_snippet(self, client, fake_auth):
         """Search by snippet of name."""
         fake_auth.login('2040')
@@ -554,7 +563,7 @@ class TestStudentAnalytics:
         assert len(authenticated_response.json['enrollmentTerms']) == 2
         assert authenticated_response.json['enrollmentTerms'][0]['termName'] == 'Fall 2017'
         assert authenticated_response.json['enrollmentTerms'][0]['enrolledUnits'] == 12.5
-        assert len(authenticated_response.json['enrollmentTerms'][0]['enrollments']) == 4
+        assert len(authenticated_response.json['enrollmentTerms'][0]['enrollments']) == 5
         assert authenticated_response.json['enrollmentTerms'][1]['termName'] == 'Spring 2017'
         assert authenticated_response.json['enrollmentTerms'][1]['enrolledUnits'] == 10
         assert len(authenticated_response.json['enrollmentTerms'][1]['enrollments']) == 3
