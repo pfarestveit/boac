@@ -25,7 +25,6 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 
 import json
-import re
 
 
 class TestDevAuth:
@@ -68,7 +67,7 @@ class TestDevAuth:
         app.config['DEVELOPER_AUTH_ENABLED'] = True
         params = {'uid': self.admin_uid, 'password': app.config['DEVELOPER_AUTH_PASSWORD']}
         response = client.post('/devauth/login', data=json.dumps(params), content_type='application/json')
-        assert response.status_code == 302
+        assert response.status_code == 200
         response = client.get('/api/status')
         assert response.status_code == 200
         assert response.json['uid'] == self.admin_uid
@@ -83,10 +82,10 @@ class TestCasAuth:
     """CAS login URL generation and redirects."""
 
     def test_cas_login_url(self, client):
-        """Fails if the chosen UID does not match an authorized user."""
+        """Returns berkeley.edu URL of CAS login page."""
         response = client.get('/cas/login_url')
         assert response.status_code == 200
-        assert re.compile('.*berkeley.edu/cas/login').match(str(response.data)) is not None
+        assert 'berkeley.edu/cas/login' in response.json.get('casLoginUrl')
 
     def test_cas_callback_with_invalid_ticket(self, client):
         """Fails if CAS can not verify the ticket."""
@@ -106,7 +105,7 @@ class TestBecomeUser:
         fake_auth.login(self.admin_uid)
         app.config['DEVELOPER_AUTH_ENABLED'] = False
         response = client.post('/api/admin/become_user', data=json.dumps({'uid': self.advisor_uid}), content_type='application/json')
-        assert response.status_code == 404
+        assert response.status_code == 403
 
     def test_unauthorized_user(self, app, client, fake_auth):
         """Blocks access unless user is admin."""
@@ -120,7 +119,7 @@ class TestBecomeUser:
         fake_auth.login(self.admin_uid)
         app.config['DEVELOPER_AUTH_ENABLED'] = True
         response = client.post('/api/admin/become_user', data=json.dumps({'uid': self.advisor_uid}), content_type='application/json')
-        assert response.status_code == 302
+        assert response.status_code == 200
         response = client.get('/api/status')
         assert response.status_code == 200
         assert response.json['uid'] == self.advisor_uid

@@ -31,7 +31,7 @@
 
     var isModalOpen = false;
 
-    $scope.openDeleteCohortModal = function(cohort) {
+    $scope.openDeleteCohortModal = function(cohort, callbacks) {
       if (isModalOpen) {
         return;
       }
@@ -47,6 +47,9 @@
         resolve: {
           cohort: function() {
             return cohort;
+          },
+          callbacks: function() {
+            return callbacks;
           }
         }
       });
@@ -61,6 +64,7 @@
   angular.module('boac').controller('DeleteCohortModal', function(
     $scope,
     $uibModalInstance,
+    callbacks,
     cohort,
     filteredCohortFactory,
     page,
@@ -70,8 +74,9 @@
     $scope.cohort = cohort;
 
     $scope.delete = function(item) {
-      filteredCohortFactory.deleteCohort(item).then(function() {
+      filteredCohortFactory.deleteCohort(item.id).then(function() {
         page.loading(true);
+        callbacks.onDelete();
         $uibModalInstance.close();
       }).catch(function(error) {
         $scope.error = validationService.parseError(error);

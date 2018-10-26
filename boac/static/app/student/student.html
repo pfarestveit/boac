@@ -40,16 +40,16 @@
               </div>
               <div>
                 <i class="fas fa-envelope"></i>
+                <span class="sr-only">Email</span>
                 <a id="student-mailto"
-                   aria-label="Email this student"
                    data-ng-href="mailto:{{student.sisProfile.emailAddress}}"
                    data-ng-class="{'demo-mode-blur': demoMode.blur}"
                    data-ng-bind="student.sisProfile.emailAddress"></a>
               </div>
               <div data-ng-if="student.sisProfile.phoneNumber">
                 <i class="fas fa-phone"></i>
-                <span aria-label="Student phone number is {{student.sisProfile.phoneNumber}}"
-                      data-ng-bind="student.sisProfile.phoneNumber"
+                <span class="sr-only">Phone number</span>
+                <span data-ng-bind="student.sisProfile.phoneNumber"
                       data-ng-class="{'demo-mode-blur': demoMode.blur}"
                       tabindex="0"></span>
               </div>
@@ -87,8 +87,8 @@
                   </h4>
                 </div>
                 <div class="curated-cohort-checkbox"
-                     data-ng-repeat="cohort in myCuratedCohorts track by $index"
-                     data-ng-if="myCuratedCohorts.length">
+                     data-ng-repeat="cohort in profile.myCuratedCohorts track by $index"
+                     data-ng-if="profile.myCuratedCohorts.length">
                   <input id="curated-cohort-checkbox-{{$index}}"
                          class="curated-cohort-checkbox-input"
                          aria-label="{{cohort.selected ? 'Remove from' : 'Add to'}} curated cohort {{cohort.name}}"
@@ -99,7 +99,7 @@
                     <a data-ng-href="/cohort/curated/{{cohort.id}}" data-ng-bind="cohort.name"></a>
                   </div>
                 </div>
-                <div class="curated-cohort-checkbox" data-ng-if="!myCuratedCohorts.length">
+                <div class="curated-cohort-checkbox" data-ng-if="!profile.myCuratedCohorts.length">
                   <span class="faint-text">You have no curated cohorts.</span>
                 </div>
               </div>
@@ -249,7 +249,7 @@
                                     data-ng-if="section.displayName">
                                 <span data-ng-if="$first">(</span><!--
                                 --><a id="term-{{term.termId}}-section-{{section.ccn}}"
-                                      data-ui-sref="course({termId: term.termId, sectionId: section.ccn})"
+                                      data-ui-sref="course({termId: term.termId, sectionId: section.ccn, u: student.uid})"
                                       data-ui-sref-opts="{reload: true}"
                                       data-ng-click="$event.stopPropagation()"
                                       data-ng-bind="section.displayName"

@@ -44,14 +44,14 @@
     var track = function(category, action, label, value) {
       if (id && ga) {
         ga('send', 'event', category, action, label, value, {
-          userId: _.get($rootScope.me, 'uid')
+          userId: _.get($rootScope.profile, 'uid')
         });
       }
     };
 
     $transitions.onSuccess({}, function() {
       if (id && ga) {
-        var uid = _.get($rootScope.me, 'uid');
+        var uid = _.get($rootScope.profile, 'uid');
         ga('create', id, 'auto');
         if (uid) {
           ga('set', 'userId', uid);

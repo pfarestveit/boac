@@ -99,7 +99,7 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
 
     enrollments_for_term = data_loch.get_enrollments_for_term(term_id, sids)
     enrollments_by_sid = {row['sid']: json.loads(row['enrollment_term']) for row in enrollments_for_term}
-    term_gpas = get_term_gpas_by_sid(sids)
+    term_gpas = get_term_gpas_by_sid(sids, as_dicts=True)
     all_canvas_sites = {}
     for student in students:
         # Strip SIS details to lighten the API load.
@@ -123,6 +123,7 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
                         'enrollmentStatus': _section.get('enrollmentStatus', None),
                         'grade': enrollment.get('grade', None),
                         'gradingBasis': enrollment.get('gradingBasis', None),
+                        'midtermGrade': enrollment.get('midtermGrade', None),
                     }
                     student['analytics'] = analytics.mean_metrics_across_sites(canvas_sites, 'student')
                     # If more than one course site is associated with this section, derive mean metrics from as many sites as possible.
@@ -200,11 +201,14 @@ def get_student_and_terms(uid):
     return profile
 
 
-def get_term_gpas_by_sid(sids):
+def get_term_gpas_by_sid(sids, as_dicts=False):
     results = data_loch.get_term_gpas(sids)
     term_gpa_dict = {}
     for sid, rows in groupby(results, key=operator.itemgetter('sid')):
-        term_gpa_dict[sid] = [{'termName': term_name_for_sis_id(r['term_id']), 'gpa': r['gpa']} for r in rows]
+        if as_dicts:
+            term_gpa_dict[sid] = {str(r['term_id']): r['gpa'] for r in rows}
+        else:
+            term_gpa_dict[sid] = [{'termName': term_name_for_sis_id(r['term_id']), 'gpa': r['gpa']} for r in rows]
     return term_gpa_dict
 
 

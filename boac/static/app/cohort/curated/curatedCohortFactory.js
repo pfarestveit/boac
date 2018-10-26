@@ -27,62 +27,74 @@
 
   'use strict';
 
-  var boac = angular.module('boac');
+  angular.module('boac').factory('curatedCohortFactory', function($http, $rootScope, googleAnalyticsService) {
 
-  boac.factory('curatedCohortFactory', function($http, $rootScope, googleAnalyticsService) {
+    var getStashedCohort = function(cohortId) {
+      return _.find($rootScope.profile.myCuratedCohorts, ['id', cohortId]);
+    };
 
-    var addStudents = function(cohort, students) {
+    var addStudents = function(cohortId, sids) {
       var args = {
-        curatedCohortId: cohort.id,
-        sids: _.map(students, 'sid')
+        curatedCohortId: cohortId,
+        sids: sids
       };
-      return $http.post('/api/curated_cohort/students/add', args).then(function() {
-        _.each(students, function(student) {
-          $rootScope.$broadcast('addStudentToCuratedCohort', {cohort: cohort, student: student});
-        });
+
+      return $http.post('/api/curated_cohort/students/add', args).then(function(response) {
+        var cohort = response.data;
+        getStashedCohort(cohortId).studentCount = cohort.studentCount;
         googleAnalyticsService.track('Curated Cohort', 'add_students', cohort.name, cohort.id);
       });
     };
 
-    var addStudent = function(cohort, student) {
-      return $http.get('/api/curated_cohort/' + cohort.id + '/add_student/' + student.sid).then(function() {
-        $rootScope.$broadcast('addStudentToCuratedCohort', {cohort: cohort, student: student});
+    var addStudent = function(cohortId, sid) {
+      return $http.get('/api/curated_cohort/' + cohortId + '/add_student/' + sid).then(function(response) {
+        var cohort = response.data;
+        getStashedCohort(cohortId).studentCount = cohort.studentCount;
+        googleAnalyticsService.track('Curated Cohort', 'add_student', cohort.name, cohort.id);
       });
     };
 
     var create = function(name) {
       return $http.post('/api/curated_cohort/create', {name: name}).then(function(response) {
         var cohort = response.data;
-        $rootScope.$broadcast('curatedCohortCreated', {cohort: cohort});
+        $rootScope.profile.myCuratedCohorts.push(cohort);
         googleAnalyticsService.track('Curated Cohort', 'create', cohort.name, cohort.id);
       });
     };
 
     var deleteCuratedCohort = function(id) {
       return $http.delete('/api/curated_cohort/delete/' + id).then(function() {
-        $rootScope.$broadcast('curatedCohortDeleted', {cohortId: id});
+        $rootScope.profile.myCuratedCohorts = _.remove($rootScope.profile.myCuratedCohorts, function(cohort) {
+          return id !== cohort.id;
+        });
         googleAnalyticsService.track('Curated Cohort', 'delete', null, id);
       });
     };
 
-    var getMyCuratedCohorts = function() {
-      return $http.get('/api/curated_cohorts/my');
+    var getStudentsWithAlertsInCohort = function(cohortId) {
+      return $http.get('/api/curated_cohort/' + cohortId + '/students_with_alerts');
     };
 
     var getCuratedCohort = function(id) {
       return $http.get('/api/curated_cohort/' + id);
     };
 
-    var removeStudent = function(cohort, student) {
-      return $http.delete('/api/curated_cohort/' + cohort.id + '/remove_student/' + student.sid).then(function() {
-        $rootScope.$broadcast('removeStudentFromCuratedCohort', {cohort: cohort, student: student});
+    var getMyCuratedCohortIdsPerStudentId = function(sid) {
+      return $http.get('/api/curated_cohorts/my/' + sid);
+    };
+
+    var removeStudent = function(cohortId, sid) {
+      return $http.delete('/api/curated_cohort/' + cohortId + '/remove_student/' + sid).then(function(response) {
+        var cohort = response.data;
+        getStashedCohort(cohortId).studentCount = cohort.studentCount;
+        googleAnalyticsService.track('Curated Cohort', 'remove_student', cohort.name, cohort.id);
       });
     };
 
     var rename = function(cohortId, name) {
       return $http.post('/api/curated_cohort/rename', {id: cohortId, name: name}).then(function(response) {
         var cohort = response.data;
-        $rootScope.$broadcast('curatedCohortRenamed', {cohort: cohort});
+        _.set(getStashedCohort(cohortId), 'name', cohort.name);
         googleAnalyticsService.track('Curated Cohort', 'rename', cohort.name, cohort.id);
       });
     };
@@ -94,7 +106,8 @@
       create: create,
       deleteCuratedCohort: deleteCuratedCohort,
       getCuratedCohort: getCuratedCohort,
-      getMyCuratedCohorts: getMyCuratedCohorts,
+      getMyCuratedCohortIdsPerStudentId: getMyCuratedCohortIdsPerStudentId,
+      getStudentsWithAlertsInCohort: getStudentsWithAlertsInCohort,
       removeStudent: removeStudent
     };
   });

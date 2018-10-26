@@ -27,36 +27,34 @@
 
   'use strict';
 
-  angular.module('boac').directive('sortableAlertsTable', function(authService, config) {
+  var HeaderController = function(
+    $rootScope,
+    $scope,
+    $state,
+    $transitions,
+    authService,
+    config,
+    googleAnalyticsService,
+    status
+  ) {
+    $scope.profile = $rootScope.profile;
+    $scope.status = status;
 
-    return {
-      // @see https://docs.angularjs.org/guide/directive#template-expanding-directive
-      restrict: 'E',
+    $rootScope.$on('userProfileLoaded', function(event, data) {
+      $scope.profile = _.get(data, 'profile');
+      $scope.devAuthEnabled = config.devAuthEnabled;
+      $scope.supportEmailAddress = config.supportEmailAddress;
+    });
 
-      // @see https://docs.angularjs.org/guide/directive#isolating-the-scope-of-a-directive
-      scope: {
-        options: '=',
-        students: '='
-      },
-
-      templateUrl: '/static/app/home/sortableAlertsTable.html',
-
-      link: function(scope) {
-        scope.isAscUser = authService.isAscUser();
-        scope.demoMode = config.demoMode;
-        scope.abbreviateTermName = function(termName) {
-          return termName && termName.replace('20', ' \'').replace('Spring', 'Spr').replace('Summer', 'Sum');
-        };
-        scope.sort = function(options, sortBy) {
-          if (options.sortBy === sortBy) {
-            options.reverse = !options.reverse;
-          } else {
-            options.sortBy = sortBy;
-            options.reverse = false;
-          }
-        };
-      }
+    $scope.logOut = function() {
+      var name = $scope.profile.firstName + ' ' + $scope.profile.lastName;
+      googleAnalyticsService.track('User', 'log_out', name, $scope.profile.uid);
+      authService.logOut();
     };
-  });
+  };
 
+  angular.module('boac').component('header', {
+    controller: HeaderController,
+    templateUrl: '/static/app/nav/header.html'
+  });
 }(window.angular));
