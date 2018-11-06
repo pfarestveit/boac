@@ -54,11 +54,13 @@
       });
     };
 
-    var create = function(name) {
+    var create = function(name, callback) {
       return $http.post('/api/curated_cohort/create', {name: name}).then(function(response) {
         var cohort = response.data;
         $rootScope.profile.myCuratedCohorts.push(cohort);
         googleAnalyticsService.track('Curated Cohort', 'create', cohort.name, cohort.id);
+        var onCohortCreate = callback || _.noop;
+        onCohortCreate(cohort);
       });
     };
 

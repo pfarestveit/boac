@@ -91,6 +91,10 @@
   margin: 5px 20px 10px 0;
 }
 
+.matrix-outer {
+  margin-left: 20px;
+}
+
 .matrix-svg {
   overflow: visible !important;
 }
@@ -155,4 +159,8 @@
 .matrix-zoom-wrapper {
   margin-bottom: 5px;
   text-align: right;
+}
+
+.missing-student-data-table {
+  width: 100%;
 }
