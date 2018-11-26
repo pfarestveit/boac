@@ -41,11 +41,13 @@ def app_config():
         'currentEnrollmentTerm': current_term_name,
         'currentEnrollmentTermId': int(current_term_id),
         'disableMatrixViewThreshold': app.config['DISABLE_MATRIX_VIEW_THRESHOLD'],
-        'demoMode': app.config['DEMO_MODE'],
         'devAuthEnabled': app.config['DEVELOPER_AUTH_ENABLED'],
         'ebEnvironment': app.config['EB_ENVIRONMENT'] if 'EB_ENVIRONMENT' in app.config else None,
         'supportEmailAddress': app.config['BOAC_SUPPORT_EMAIL'],
         'googleAnalyticsId': app.config['GOOGLE_ANALYTICS_ID'],
+        'vueEnabled': app.config['VUE_ENABLED'],
+        'vueBaseUrl': app.config['VUE_LOCALHOST_BASE_URL'],
+        'vuePaths': app.config['VUE_PATHS'],
     })
 
 

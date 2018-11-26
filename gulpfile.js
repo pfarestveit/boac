@@ -39,9 +39,12 @@ gulp.task('rev', function(done) {
   gulp.src('boac/static/lib/**/*').pipe(gulp.dest('dist/static/lib'));
   var css = filter('boac/static/app/**/*.css', {restore: true});
   // The index.html filename, unlike js/css files, is preserved
-  var index = filter(['**/*', '!**/favicon.ico', '!**/index.html'], {restore: true});
+  var index = filter(['**/*', '!**/favicon.ico', '!**/index.html'], {
+    restore: true
+  });
   // We cannot minify our js due to http://budiirawan.com/uglify-angular-error-unpr-unknown-provider-aprovider/
-  gulp.src(['boac/static/**', 'boac/templates/index.html'])
+  gulp
+    .src(['boac/static/**', 'boac/templates/index.html'])
     .pipe(css)
     .pipe(csso())
     .pipe(css.restore)
@@ -51,9 +54,9 @@ gulp.task('rev', function(done) {
     .pipe(revReplace())
     .pipe(gulp.dest('dist/static'))
     .on('end', function() {
-      // Move index.html to location consistent with source dir structure
       var indexHtml = 'dist/static/index.html';
-      gulp.src(indexHtml)
+      gulp
+        .src(indexHtml)
         .pipe(gulp.dest('dist/templates'))
         .on('end', function() {
           return del(indexHtml);

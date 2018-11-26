@@ -31,14 +31,15 @@ import os
 # Base directory for the application (one level up from this config file).
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-# When BOAC is in demo-mode all student names and SIDs are blurred in the UI
-DEMO_MODE = {
-    'blur': False,
-    'betaTesting': False,
-}
-
 # The 'dist' version of index.html will force browsers to pick up new JS, HTML, CSS files
 INDEX_HTML = 'dist/templates/index.html'
+INDEX_HTML_VUE = 'dist/static/index.html'
+# The following applies to localhost ONLY, where Vue.js front-end is served on a different port.
+VUE_LOCALHOST_BASE_URL = None
+VUE_ENABLED = False
+VUE_PATHS = [
+    '/admin',
+]
 
 # Directory to search for mock fixtures, if running in "test" or "demo" mode.
 FIXTURES_PATH = None

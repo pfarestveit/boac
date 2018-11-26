@@ -31,14 +31,14 @@
     $location,
     $scope,
     authService,
-    config,
     page,
+    status,
     studentFactory,
     utilService,
     validationService
   ) {
 
-    $scope.demoMode = config.demoMode;
+    $scope.inDemoMode = status.inDemoMode;
     $scope.search = {
       limit: 50,
       phrase: $location.search().q,
@@ -58,6 +58,7 @@
         courseSortOptions.sortBy = sortBy;
         courseSortOptions.reverse = false;
       }
+      $scope.coursesResorted = true;
     };
 
     var splitCourseName = function(name) {
@@ -114,6 +115,8 @@
           $scope.search.students = utilService.extendSortableNames(response.data.students);
           _.each($scope.search.students, function(student) {
             student.alertCount = student.alertCount || 0;
+            student.term = student.term || {};
+            student.term.enrolledUnits = student.term.enrolledUnits || 0;
           });
           $scope.search.totalCourseCount = response.data.totalCourseCount;
           $scope.search.totalStudentCount = response.data.totalStudentCount;

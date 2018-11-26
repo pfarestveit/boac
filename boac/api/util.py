@@ -60,12 +60,12 @@ def add_alert_counts(alert_counts, students):
 
 def authorized_users_api_feed(users, sort_by='lastName'):
     if not users:
-        return []
+        return ()
     profiles = []
     for user in users:
         profile = calnet.get_calnet_user_for_uid(app, user.uid)
         profile.update({
-            'is_admin': user.is_admin,
+            'isAdmin': user.is_admin,
             'departments': {},
         })
         for m in user.department_memberships:
@@ -152,6 +152,7 @@ def get_current_user_status():
         'isAdmin': current_user.is_admin if hasattr(current_user, 'is_admin') else False,
         'isAnonymous': current_user.is_anonymous,
         'isAuthenticated': current_user.is_authenticated,
+        'inDemoMode': current_user.in_demo_mode if hasattr(current_user, 'in_demo_mode') else False,
         'uid': current_user.get_id(),
     }
 

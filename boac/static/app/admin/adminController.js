@@ -28,15 +28,16 @@
   'use strict';
 
   angular.module('boac').controller('AdminController', function(
-    $location,
     $scope,
     adminFactory,
     config,
     page,
+    status,
     userFactory
   ) {
 
-    $scope.demoMode = config.demoMode.blur;
+    $scope.inDemoMode = status.inDemoMode;
+    $scope.devAuthEnabled = config.devAuthEnabled;
 
     $scope.become = function(uid) {
       adminFactory.becomeUser(uid).then(function(response) {
@@ -47,57 +48,21 @@
 
     $scope.toggleDemoMode = function() {
       $scope.isToggling = true;
-      var blur = !$scope.demoMode;
+      var inDemoMode = !$scope.inDemoMode;
 
-      adminFactory.setDemoMode(blur).then(function(response) {
-        $scope.demoMode = response.data.blur;
+      adminFactory.setDemoMode(inDemoMode).then(function(response) {
+        $scope.inDemoMode = response.data.inDemoMode;
+        status.inDemoMode = response.data.inDemoMode;
         $scope.isToggling = false;
       });
     };
 
-    var getDeptName = function(deptCode) {
-      switch (deptCode) {
-        case 'COENG': return 'College of Engineering';
-        case 'UWASC': return 'Athletic Study Center';
-        default: return null;
-      }
-    };
-
-    var groupByDept = function(advisors) {
-      var byDept = _.groupBy(advisors, function(advisor) {
-        var deptCodes = _.keys(advisor.departments);
-        return deptCodes.length ? deptCodes[0] : null;
-      });
-      var groups = _.map(byDept, function(users, deptCode) {
-        return {
-          name: getDeptName(deptCode),
-          userCount: users.length,
-          users: users
-        };
-      });
-      return _.sortBy(groups, 'name');
-    };
-
     var init = function() {
       page.loading(true);
-      if (config.devAuthEnabled) {
-        userFactory.getAllUserProfiles().then(function(response) {
-          var byIsAdmin = _.groupBy(response.data, 'is_admin');
-          var adminUsers = byIsAdmin.true;
-
-          $scope.groups = [
-            {
-              name: 'Admins',
-              userCount: adminUsers.length,
-              users: adminUsers
-            }
-          ].concat(groupByDept(byIsAdmin.false));
-
-          page.loading(false);
-        });
-      } else {
-        $location.replace().path('/404');
-      }
+      userFactory.getAuthorizedUserGroups().then(function(response) {
+        $scope.groups = response.data;
+        page.loading(false);
+      });
     };
 
     init();

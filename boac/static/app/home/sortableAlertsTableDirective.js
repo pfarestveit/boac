@@ -27,7 +27,7 @@
 
   'use strict';
 
-  angular.module('boac').directive('sortableAlertsTable', function(authService, config) {
+  angular.module('boac').directive('sortableAlertsTable', function(authService, status) {
 
     return {
       // @see https://docs.angularjs.org/guide/directive#template-expanding-directive
@@ -43,10 +43,38 @@
 
       link: function(scope) {
         scope.isAscUser = authService.isAscUser();
-        scope.demoMode = config.demoMode;
+        scope.inDemoMode = status.inDemoMode;
         scope.abbreviateTermName = function(termName) {
           return termName && termName.replace('20', ' \'').replace('Spring', 'Spr').replace('Summer', 'Sum');
         };
+
+        scope.srText = {
+          sortableName: 'student name',
+          sid: 'S I D',
+          'majors[0]': 'major',
+          'expectedGraduationTerm.id': 'expected graduation term',
+          'term.enrolledUnits': 'term units',
+          cumulativeUnits: 'units completed',
+          cumulativeGPA: 'GPA',
+          alertCount: 'issue count'
+        };
+
+        var setSortDescriptions = function() {
+          scope.sortOptions = {};
+          scope.currentSortDescription = 'Sorted by ' + scope.srText[scope.options.sortBy];
+          if (scope.options.reverse) {
+            scope.currentSortDescription += ' descending';
+          }
+          scope.sortOptions = _.mapValues(scope.srText, function(value, key) {
+            var optionText = 'Sort by ' + value;
+            if (key === scope.options.sortBy) {
+              optionText += scope.options.reverse ? ' ascending' : ' descending';
+            }
+            return optionText;
+          });
+        };
+        setSortDescriptions();
+
         scope.sort = function(options, sortBy) {
           if (options.sortBy === sortBy) {
             options.reverse = !options.reverse;
@@ -54,6 +82,8 @@
             options.sortBy = sortBy;
             options.reverse = false;
           }
+          scope.resorted = true;
+          setSortDescriptions();
         };
       }
     };

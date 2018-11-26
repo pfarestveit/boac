@@ -20,7 +20,7 @@
           <div class="student-bio-container-column-01">
             <div class="profile-avatar-container">
               <img class="profile-avatar"
-                   data-ng-class="{'img-blur': demoMode.blur}"
+                   data-ng-class="{'img-blur': inDemoMode}"
                    data-ng-src="/api/student/{{student.uid}}/photo"
                    data-avatar-fallback/>
             </div>
@@ -28,49 +28,57 @@
           <div class="student-bio-container-column-02">
             <div class="student-bio-contact">
               <h1 class="student-section-header"
-                  data-ng-class="{'demo-mode-blur': demoMode.blur}">
+                  data-ng-class="{'demo-mode-blur': inDemoMode}">
                 {{student.name}}
               </h1>
+              <h2 class="sr-only">Profile</h2>
+              <div class="sr-only" data-ng-if="student.sisProfile.preferredName !== student.name">Preferred name</div>
               <div class="student-preferred-name"
                    data-ng-bind="student.sisProfile.preferredName"
-                   data-ng-class="{'demo-mode-blur': demoMode.blur}"
+                   data-ng-class="{'demo-mode-blur': inDemoMode}"
                    data-ng-if="student.sisProfile.preferredName !== student.name"></div>
               <div class="student-profile-sid">
-                SID <span data-ng-bind="student.sid" data-ng-class="{'demo-mode-blur': demoMode.blur}"></span>
+                SID <span data-ng-bind="student.sid" data-ng-class="{'demo-mode-blur': inDemoMode}"></span>
               </div>
               <div>
                 <i class="fas fa-envelope"></i>
                 <span class="sr-only">Email</span>
                 <a id="student-mailto"
                    data-ng-href="mailto:{{student.sisProfile.emailAddress}}"
-                   data-ng-class="{'demo-mode-blur': demoMode.blur}"
+                   data-ng-class="{'demo-mode-blur': inDemoMode}"
                    data-ng-bind="student.sisProfile.emailAddress"></a>
               </div>
               <div data-ng-if="student.sisProfile.phoneNumber">
                 <i class="fas fa-phone"></i>
                 <span class="sr-only">Phone number</span>
                 <span data-ng-bind="student.sisProfile.phoneNumber"
-                      data-ng-class="{'demo-mode-blur': demoMode.blur}"
+                      data-ng-class="{'demo-mode-blur': inDemoMode}"
                       tabindex="0"></span>
               </div>
             </div>
             <div>
               <div data-ng-if="isAscUser && !student.athleticsProfile.isActiveAsc">
-                <h4 class="student-bio-header profile-sidebar-inactive">INACTIVE</h4>
+                <div class="student-bio-header profile-sidebar-inactive">INACTIVE</div>
               </div>
               <div data-ng-repeat="membership in student.athleticsProfile.athletics">
-                <h4 class="student-bio-header student-bio-header-team" data-ng-bind="membership.groupName"></h4>
+                <div class="student-bio-header student-bio-header-team" data-ng-bind="membership.groupName"></div>
               </div>
+              <h3 class="sr-only">Major</h3>
               <div data-ng-repeat="plan in student.sisProfile.plans">
-                <h4 class="student-bio-header">
+                <div class="student-bio-header">
                   <span data-ng-bind="plan.description" data-ng-if="!plan.degreeProgramUrl"></span>
-                  <a data-ng-bind="plan.description" data-ng-if="plan.degreeProgramUrl" data-ng-href="{{plan.degreeProgramUrl}}" target="_blank"></a>
-                </h4>
+                  <a data-ng-bind="plan.description"
+                     data-ng-if="plan.degreeProgramUrl"
+                     data-ng-href="{{plan.degreeProgramUrl}}"
+                     target="_blank"
+                     aria-label="Open {{plan.description}} program page in new window"></a>
+                </div>
                 <div class="profile-sidebar-details">
                   <div data-ng-bind="plan.program" data-ng-if="plan.program"></div>
                 </div>
               </div>
-              <h4 class="student-bio-header" data-ng-bind="student.sisProfile.level.description"></h4>
+              <h3 class="sr-only">Level</h3>
+              <div class="student-bio-header" data-ng-bind="student.sisProfile.level.description"></div>
               <div class="profile-sidebar-details">
                 <div data-ng-pluralize
                      count="student.sisProfile.termsInAttendance"
@@ -82,16 +90,14 @@
               </div>
               <div class="student-bio-status-box-groups curated-cohorts-checkboxes">
                 <div>
-                  <h4 class="student-bio-header">
-                    Curated Cohorts
-                  </h4>
+                  <h3 class="student-bio-header">Curated Groups</h3>
                 </div>
                 <div class="curated-cohort-checkbox"
                      data-ng-repeat="cohort in profile.myCuratedCohorts track by $index"
                      data-ng-if="profile.myCuratedCohorts.length">
                   <input id="curated-cohort-checkbox-{{$index}}"
                          class="curated-cohort-checkbox-input"
-                         aria-label="{{cohort.selected ? 'Remove from' : 'Add to'}} curated cohort {{cohort.name}}"
+                         aria-label="{{cohort.selected ? 'Remove from' : 'Add to'}} curated group {{cohort.name}}"
                          type="checkbox"
                          data-ng-model="cohort.selected"
                          data-ng-click="curatedCohortCheckboxClick(cohort)"/>
@@ -100,34 +106,47 @@
                   </div>
                 </div>
                 <div class="curated-cohort-checkbox" data-ng-if="!profile.myCuratedCohorts.length">
-                  <span class="faint-text">You have no curated cohorts.</span>
+                  <span class="faint-text">You have no curated groups.</span>
+                </div>
+                <div class="curated-cohort-create-new" data-ng-controller="CreateCuratedCohortController">
+                  <a id="curated-cohort-create-link" href data-ng-click="openCreateCuratedCohortModal()">
+                    <i class="fas fa-plus"></i> Create New Curated Group
+                  </a>
                 </div>
               </div>
             </div>
           </div>
           <div class="student-bio-container-column-03">
+            <h2 class="sr-only">Academic Status</h2>
             <div class="student-bio-status-box student-bio-status-box-units">
+              <h3 class="sr-only">Units</h3>
               <div class="student-bio-status-box-units-left">
-                <div class="student-bio-status-number" data-ng-bind="student.sisProfile.cumulativeUnits"></div>
                 <div class="student-bio-status-legend">Units Completed</div>
+                <div class="student-bio-status-number" data-ng-bind="student.sisProfile.cumulativeUnits"></div>
               </div>
               <div class="profile-units-chart-outer">
-                <div class="student-bio-status-legend student-bio-status-legend-heading">Unit Totals</div>
-                <div class="profile-units-chart-container" id="profile-units-chart-container"></div>
+                <div class="student-bio-status-legend student-bio-status-legend-heading" aria-hidden="true">Unit Totals</div>
+                <div class="profile-units-chart-container" id="profile-units-chart-container" aria-hidden="true"></div>
+                <div class="sr-only">
+                  Currently enrolled units: <span data-ng-bind="currentEnrolledUnits || '0'"></span>
+                </div>
               </div>
             </div>
             <div class="student-bio-status-box">
+              <h3 class="sr-only">GPA</h3>
               <div class="student-bio-status-box-units">
                 <div class="student-bio-status-box-units-left">
+                  <div class="student-bio-status-legend">Cumulative GPA</div>
                   <div class="student-bio-status-number"
                        data-ng-bind="student.sisProfile.cumulativeGPA ? (student.sisProfile.cumulativeGPA | number:3) : '--'"></div>
-                  <div class="student-bio-status-legend">Cumulative GPA</div>
+                  <div class="sr-only" data-ng-if="!student.sisProfile.cumulativeGPA">No data</div>
                 </div>
                 <div class="profile-units-chart-outer">
                   <div class="student-bio-status-legend student-bio-status-legend-heading">GPA Trends</div>
                   <gpa-chart class="profile-boxplot"
                              data-gpa-terms="gpaTerms"
-                             data-ng-if="gpaTerms.length > 1"></gpa-chart>
+                             data-ng-if="gpaTerms.length > 1"
+                             aria-hidden="true"></gpa-chart>
                   <div class="student-bio-status-legend student-bio-status-legend-small"
                        data-ng-if="!gpaTerms.length">
                     GPA Not Yet Available
@@ -169,7 +188,7 @@
               </table>
             </div>
             <div class="student-bio-status-box">
-              <h4 class="student-bio-progress-header">Degree Progress</h4>
+              <h3 class="student-bio-progress-header">Degree Progress</h3>
               <div class="student-bio-no-data" data-ng-if="!student.sisProfile.degreeProgress">
                 No data
               </div>
@@ -192,7 +211,10 @@
               </table>
               <div class="profile-sidebar-subdetails" data-ng-if="student.sisProfile.degreeProgress">
                 <div>Degree Progress as of <span data-ng-bind="student.sisProfile.degreeProgress.reportDate"></span>.</div>
-                <div>Advisors can refresh this data at <a data-ng-href="{{student.studentProfileLink}}">CalCentral</a>.</div>
+                <div>
+                  Advisors can refresh this data at
+                  <a data-ng-href="{{student.studentProfileLink}}" target="_blank" aria-label="Open CalCentral in new window">CalCentral</a>.
+                </div>
               </div>
             </div>
           </div>
@@ -230,17 +252,20 @@
                   <div class="accordion-heading profile-class-heading">
                     <div class="accordion-heading-start">
                       <div class="accordion-heading-start-inner">
-                        <div class="accordion-heading-caret">
-                          <i id="term-{{term.termId}}-course-{{$index}}"
-                             aria-label="{{course.isOpen ? 'Hide course details' : 'Show course details'}}"
-                             data-ng-class="{'fas fa-caret-right': !course.isOpen, 'fas fa-caret-down': course.isOpen}"
-                             data-ng-click="course.isOpen = !course.isOpen"
-                             data-ng-keypress="course.isOpen = !course.isOpen"
-                             tabindex="0"
-                             role="button"></i>
-                        </div>
-                        <div>
-                          <h4 class="student-course-title" data-ng-bind="course.displayName"></h4>
+                        <div class="accordion-heading-title-wrapper">
+                          <span class="sr-only" data-ng-bind-template="Row {{$index+1}} of {{term.enrollments.length}}"></span>
+                          <div>
+                            <h4 class="student-course-title" data-ng-bind="course.displayName"></h4>
+                          </div>
+                          <div class="accordion-heading-caret">
+                            <i id="term-{{term.termId}}-course-{{$index}}"
+                               aria-label="{{course.isOpen ? 'Hide course details' : 'Show course details'}}"
+                               data-ng-class="{'fas fa-caret-right': !course.isOpen, 'fas fa-caret-down': course.isOpen}"
+                               data-ng-click="course.isOpen = !course.isOpen"
+                               data-ng-keypress="course.isOpen = !course.isOpen"
+                               tabindex="0"
+                               role="button"></i>
+                          </div>
                         </div>
                         <div>
                           <div class="accordion-heading-sections">
@@ -262,9 +287,7 @@
                           </div>
                         </div>
                       </div>
-                      <div>
-                        <h5 class="profile-class-name" data-ng-bind="course.title"></h5>
-                      </div>
+                      <div class="profile-class-name" data-ng-bind="course.title"></div>
                     </div>
                     <div class="accordion-heading-end">
                       <div class="accordion-heading-units">
@@ -282,7 +305,7 @@
                                 data-ng-bind="course.gradingBasis"
                                 data-ng-if="!course.grade"></span>
                           <span class="profile-class-grade"
-                                data-ng-if="!course.grade && !course.gradingBasis">&mdash;</span>
+                                data-ng-if="!course.grade && !course.gradingBasis"><span class="sr-only">No data</span>&mdash;</span>
                         </div>
                         <div class="accordion-heading-grade" data-ng-if="currentEnrollmentTermId === parseInt(term.termId)">
                           Mid:
@@ -290,14 +313,14 @@
                                 data-ng-bind="course.midtermGrade"
                                 data-ng-if="course.midtermGrade"></span>
                           <span class="profile-class-grade"
-                                data-ng-if="!course.midtermGrade">&mdash;</span>
+                                data-ng-if="!course.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 </uib-accordion-heading>
                 <div data-ng-repeat="canvasSite in course.canvasSites">
-                  <div class="profile-course-site-code" data-ng-bind="canvasSite.courseCode"></div>
+                  <h5 class="profile-course-site-code" data-ng-bind="canvasSite.courseCode"></h5>
                   <table class="visualize-metrics">
                     <tr>
                       <td class="visualize-metrics-legend">
@@ -341,8 +364,17 @@
                       </td>
                       <td class="profile-boxplot-container">
                         <boxplot-draw class="profile-boxplot"
+                                      aria-hidden="true"
                                       data-dataset="canvasSite.analytics"
                                       data-ng-if="canvasSite.analytics.currentScore.boxPlottable"></boxplot-draw>
+                        <div class="sr-only" data-ng-if="canvasSite.analytics.currentScore.boxPlottable">
+                          <div>User score: <span data-ng-bind="canvasSite.analytics.currentScore.student.raw"></span></div>
+                          <div>Maximum: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[10]"></span></div>
+                          <div>70th Percentile: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[7]"></span></div>
+                          <div>50th Percentile: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[5]"></span></div>
+                          <div>30th Percentile: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[3]"></span></div>
+                          <div>Minimum: <span data-ng-bind="canvasSite.analytics.currentScore.courseDeciles[0]"></span></div>
+                        </div>
                         <div data-ng-if="!canvasSite.analytics.currentScore.boxPlottable">
                           <span class="visualize-metrics-no-data"
                                 data-ng-if="canvasSite.analytics.currentScore.courseDeciles">
@@ -366,10 +398,10 @@
                       <td colspan="2">
                         <div data-ng-if="!canvasSite.analytics.lastActivity.student.raw">
                           <span data-ng-bind="student.name"
-                                data-ng-class="{'demo-mode-blur': demoMode.blur}"></span> has never visited this course site.
+                                data-ng-class="{'demo-mode-blur': inDemoMode}"></span> has never visited this course site.
                         </div>
                         <div data-ng-if="canvasSite.analytics.lastActivity.student.raw">
-                          <span data-ng-bind="student.name" data-ng-class="{'demo-mode-blur': demoMode.blur}"></span>
+                          <span data-ng-bind="student.name" data-ng-class="{'demo-mode-blur': inDemoMode}"></span>
                           last visited the course site <span data-ng-bind="lastActivityDays(canvasSite.analytics).toLowerCase()"></span>.
                           <span data-ng-bind="lastActivityInContext(canvasSite.analytics)"></span>
                         </div>

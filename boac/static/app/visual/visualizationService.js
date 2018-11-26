@@ -27,15 +27,9 @@
 
   'use strict';
 
-  angular.module('boac').service('visualizationService', function(config, utilService) {
+  angular.module('boac').service('visualizationService', function(status, utilService) {
 
-    var showUnitsChart = function(student, currentTermId) {
-      var cumulativeUnits = _.get(student, 'sisProfile.cumulativeUnits');
-      var currentEnrolledUnits = 0;
-      var currentEnrollmentTerm = _.find(_.get(student, 'enrollmentTerms'), {termId: currentTermId});
-      if (currentEnrollmentTerm) {
-        currentEnrolledUnits = _.get(currentEnrollmentTerm, 'enrolledUnits');
-      }
+    var showUnitsChart = function(cumulativeUnits, currentEnrolledUnits) {
       var tooltipBodyFormat = '<div class="profile-tooltip-content">' +
                               '<div class="profile-tooltip-row">' +
                               '<div class="profile-tooltip-swatch" style="background-color:#aec9eb"></div>' +
@@ -474,7 +468,7 @@
         if (d.isClassMean) {
           photoUri = '/static/app/course/class-mean-avatar.svg';
         } else {
-          photoUri = config.demoMode.blur ? avatarBackgroundPath : '/api/student/' + d.uid + '/photo';
+          photoUri = status.inDemoMode ? avatarBackgroundPath : '/api/student/' + d.uid + '/photo';
         }
         var avatarImage = pattern.append('svg:image')
           .attr('xlink:href', photoUri)
@@ -604,7 +598,7 @@
         var headerOuter = tooltip.append('div').attr('class', 'matrix-tooltip-header-outer');
         var fullName = d.firstName ? d.firstName + ' ' + d.lastName : d.lastName;
         headerOuter.append('h4')
-          .attr('class', config.demoMode.blur ? 'demo-mode-blur' : 'matrix-tooltip-header')
+          .attr('class', status.inDemoMode ? 'demo-mode-blur' : 'matrix-tooltip-header')
           .text(fullName);
         _.each(d.majors, function(major) {
           headerOuter.append('div')
