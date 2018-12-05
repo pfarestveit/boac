@@ -1,37 +1,30 @@
 <template>
-  <v-menu offset-y v-if="user">
-    <v-btn slot="activator">
-      {{ user.firstName }}
-    </v-btn>
-    <v-list>
-      <v-list-tile v-if="user.isAdmin">
-        <v-list-tile-title>
-          Admin
-        </v-list-tile-title>
-      </v-list-tile>
-      <v-list-tile v-if="config">
-        <v-list-tile-title>
-          <a :href="`mailto:${config.supportEmailAddress}`" target="_blank">Feedback/Help</a>
-        </v-list-tile-title>
-      </v-list-tile>
-    </v-list>
-  </v-menu>
+  <div v-if="user">
+    <b-dropdown id="header-dropdown-under-name"
+                class="mr-3"
+                variant="link"
+                no-caret
+                right>
+      <template slot="button-content">
+        <div class="d-flex align-items-center">
+          <div class="b-link-text">{{ user.firstName }}</div><i class="ml-1 fas fa-caret-down b-link-text"></i>
+        </div>
+      </template>
+      <b-dropdown-item href="#" v-if="user.isAdmin"><router-link to="/admin" tag="span">Admin</router-link></b-dropdown-item>
+      <b-dropdown-item href="#" v-on:click="logOut">Log Out</b-dropdown-item>
+      <b-dropdown-item :href="'mailto:' + supportEmailAddress" target="_blank">Feedback/Help</b-dropdown-item>
+    </b-dropdown>
+  </div>
 </template>
 
 <script>
+import AppConfig from '@/mixins/AppConfig';
+import UserMetadata from '@/mixins/UserMetadata';
 import { getCasLogoutURL } from '@/api/user';
-import store from '@/store';
 
 export default {
   name: 'HeaderMenu',
-  computed: {
-    config() {
-      return store.getters.config;
-    },
-    user() {
-      return store.getters.user;
-    }
-  },
+  mixins: [AppConfig, UserMetadata],
   methods: {
     logOut() {
       getCasLogoutURL().then(data => {
@@ -41,3 +34,9 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.b-link-text {
+  color: #fff;
+}
+</style>

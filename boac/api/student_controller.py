@@ -26,11 +26,11 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from itertools import islice
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import add_alert_counts, get_dept_codes, is_asc_authorized, is_unauthorized_search
+from boac.api.util import add_alert_counts, is_asc_authorized, is_unauthorized_search
 from boac.externals.cal1card_photo_api import get_cal1card_photo
 from boac.externals.data_loch import get_enrolled_primary_sections
 from boac.lib import util
-from boac.lib.berkeley import current_term_id
+from boac.lib.berkeley import convert_inactive_arg, current_term_id
 from boac.lib.http import tolerant_jsonify
 from boac.merged import athletics
 from boac.merged.student import get_student_and_terms, query_students, search_for_students
@@ -70,12 +70,14 @@ def get_students():
     results = query_students(
         advisor_ldap_uids=util.get(params, 'advisorLdapUids'),
         coe_prep_statuses=util.get(params, 'coePrepStatuses'),
+        coe_probation=util.get(params, 'coeProbation'),
         ethnicities=util.get(params, 'ethnicities'),
         genders=util.get(params, 'genders'),
         gpa_ranges=util.get(params, 'gpaRanges'),
         group_codes=util.get(params, 'groupCodes'),
         include_profiles=True,
-        is_active_asc=_convert_asc_inactive_arg(util.get(params, 'isInactiveAsc')),
+        is_active_asc=convert_inactive_arg(util.get(params, 'isInactiveAsc'), 'UWASC', current_user),
+        is_active_coe=convert_inactive_arg(util.get(params, 'isInactiveCoe'), 'COENG', current_user),
         in_intensive_cohort=util.to_bool_or_none(util.get(params, 'inIntensiveCohort')),
         last_name_range=_get_name_range_boundaries(util.get(params, 'lastNameRange')),
         levels=util.get(params, 'levels'),
@@ -109,36 +111,42 @@ def search_students():
     student_results = search_for_students(
         include_profiles=True,
         search_phrase=search_phrase.replace(',', ' '),
-        is_active_asc=_convert_asc_inactive_arg(util.get(params, 'isInactiveAsc')),
+        is_active_asc=convert_inactive_arg(util.get(params, 'isInactiveAsc'), 'UWASC', current_user),
+        is_active_coe=convert_inactive_arg(util.get(params, 'isInactiveCoe'), 'COENG', current_user),
         order_by=util.get(params, 'orderBy', None),
         offset=util.get(params, 'offset', 0),
         limit=util.get(params, 'limit', 50),
     )
-    alphanumeric_search_phrase = ''.join(e for e in search_phrase if e.isalnum()).upper()
-    courses = []
-    if alphanumeric_search_phrase:
-        course_rows = get_enrolled_primary_sections(current_term_id(), alphanumeric_search_phrase)
-        for row in islice(course_rows, 50):
-            courses.append({
-                'termId': row['term_id'],
-                'sectionId': row['sis_section_id'],
-                'courseName': row['sis_course_name'],
-                'courseTitle': row['sis_course_title'],
-                'instructionFormat': row['sis_instruction_format'],
-                'sectionNum': row['sis_section_num'],
-                'instructors': row['instructors'],
-            })
-    else:
-        course_rows = []
     alert_counts = Alert.current_alert_counts_for_viewer(current_user.id)
     students = student_results['students']
     add_alert_counts(alert_counts, students)
-    return tolerant_jsonify({
-        'courses': courses,
+
+    feed = {
         'students': students,
-        'totalCourseCount': len(course_rows),
         'totalStudentCount': student_results['totalStudentCount'],
-    })
+    }
+
+    if util.get(params, 'includeCourses'):
+        alphanumeric_search_phrase = ''.join(e for e in search_phrase if e.isalnum()).upper()
+        courses = []
+        if alphanumeric_search_phrase:
+            course_rows = get_enrolled_primary_sections(current_term_id(), alphanumeric_search_phrase)
+            for row in islice(course_rows, 50):
+                courses.append({
+                    'termId': row['term_id'],
+                    'sectionId': row['sis_section_id'],
+                    'courseName': row['sis_course_name'],
+                    'courseTitle': row['sis_course_title'],
+                    'instructionFormat': row['sis_instruction_format'],
+                    'sectionNum': row['sis_section_num'],
+                    'instructors': row['instructors'],
+                })
+        else:
+            course_rows = []
+        feed['courses'] = courses
+        feed['totalCourseCount'] = len(course_rows)
+
+    return tolerant_jsonify(feed)
 
 
 @app.route('/api/team_groups/all')
@@ -147,14 +155,6 @@ def get_all_team_groups():
     if not is_asc_authorized():
         raise ResourceNotFoundError('Unknown path')
     return tolerant_jsonify(athletics.all_team_groups())
-
-
-def _convert_asc_inactive_arg(is_inactive_asc):
-    if 'UWASC' in get_dept_codes(current_user):
-        is_active_asc = not is_inactive_asc
-    else:
-        is_active_asc = None if is_inactive_asc is None else not is_inactive_asc
-    return is_active_asc
 
 
 def _get_name_range_boundaries(values):

@@ -68,7 +68,6 @@ class TestFindStudents:
         assert not _get_common_sids(asc_inactive_students, students)
 
     def test_last_name_range(self, client, admin_login):
-        """For now, only COE users can access gender data."""
         response = client.post('/api/students', data=json.dumps({'lastNameRange': ['d', 'J']}), content_type='application/json')
         assert response.status_code == 200
         students = response.json['students']
@@ -100,17 +99,23 @@ class TestCollegeOfEngineering:
         response = client.post('/api/students', data=json.dumps({'genders': ['f']}), content_type='application/json')
         assert response.status_code == 200
         students = response.json['students']
-        assert len(students) == 2
+        assert len(students) == 1
         assert students[0]['sid'] == '7890123456'
-        assert students[1]['sid'] == '9000000000'
+
+    def test_authorized_request_for_coe_inactive_gender(self, client, coe_advisor):
+        response = client.post('/api/students', data=json.dumps({'genders': ['f'], 'isInactiveCoe': True}), content_type='application/json')
+        assert response.status_code == 200
+        students = response.json['students']
+        assert len(students) == 1
+        assert students[0]['sid'] == '9000000000'
 
     def test_authorized_request_for_ethnicity(self, client, coe_advisor):
         """For now, only COE users can access ethnicity data."""
         response = client.post('/api/students', data=json.dumps({'ethnicities': ['B', 'H']}), content_type='application/json')
         assert response.status_code == 200
         students = response.json['students']
-        assert len(students) == 3
-        for index, sid in enumerate(['11667051', '7890123456', '9000000000']):
+        assert len(students) == 2
+        for index, sid in enumerate(['11667051', '7890123456']):
             assert students[index]['sid'] == sid
 
     def test_coe_search_by_admin_with_asc_order_by(self, client, admin_login):
@@ -324,7 +329,7 @@ class TestSearch:
             assert students[0]['lastName'] == 'Crossman', message_if_fail
 
     def test_search_by_name_asc_limited(self, asc_advisor, client):
-        """An ASC name search finds ASC Pauls."""
+        """An ASC name search finds active ASC Pauls."""
         response = client.post('/api/students/search', data='{"searchPhrase": "paul"}', content_type='application/json')
         students = response.json['students']
         assert len(students) == 2
@@ -332,12 +337,11 @@ class TestSearch:
         assert next(s for s in students if s['name'] == 'Paul Farestveit')
 
     def test_search_by_name_coe_limited(self, coe_advisor, client):
-        """A COE name search finds COE Pauls."""
+        """A COE name search finds active COE Pauls."""
         response = client.post('/api/students/search', data='{"searchPhrase": "paul"}', content_type='application/json')
         students = response.json['students']
-        assert len(students) == 2
+        assert len(students) == 1
         assert next(s for s in students if s['name'] == 'Paul Farestveit')
-        assert next(s for s in students if s['name'] == 'Wolfgang Pauli')
 
     def test_search_by_name_admin_unlimited(self, admin_login, client):
         """An admin name search finds all Pauls."""
@@ -348,11 +352,24 @@ class TestSearch:
         assert next(s for s in students if s['name'] == 'Paul Farestveit')
         assert next(s for s in students if s['name'] == 'Wolfgang Pauli')
 
-    def test_search_by_name_includes_courses(self, coe_advisor, client):
-        """A name search returns matching courses if any."""
-        response = client.post('/api/students/search', data='{"searchPhrase": "paul"}', content_type='application/json')
-        assert response.json['courses'] == []
+    def test_search_by_name_excludes_courses_unless_requested(self, coe_advisor, client):
         response = client.post('/api/students/search', data='{"searchPhrase": "da"}', content_type='application/json')
+        assert 'courses' not in response.json
+        assert 'totalCourseCount' not in response.json
+
+    def test_search_by_name_includes_courses_if_requested(self, coe_advisor, client):
+        """A name search returns matching courses if any."""
+        response = client.post(
+            '/api/students/search',
+            data=json.dumps({'searchPhrase': 'paul', 'includeCourses': True}),
+            content_type='application/json',
+        )
+        assert response.json['courses'] == []
+        response = client.post(
+            '/api/students/search',
+            data=json.dumps({'searchPhrase': 'da', 'includeCourses': True}),
+            content_type='application/json',
+        )
         students = response.json['students']
         assert len(students) == 1
         assert students[0]['name'] == 'Deborah Davies'
@@ -374,7 +391,7 @@ class TestSearch:
         for query in queries:
             response = client.post(
                 '/api/students/search',
-                data=json.dumps({'searchPhrase': query}),
+                data=json.dumps({'searchPhrase': query, 'includeCourses': True}),
                 content_type='application/json',
             )
             courses = response.json['courses']
@@ -446,11 +463,10 @@ class TestSearch:
         assert next(s for s in students if s['name'] == 'Siegfried Schlemiel')
 
     def test_get_students_coe_limited(self, coe_advisor, client):
-        """A COE cohort search finds COE sophomores."""
+        """A COE cohort search finds active COE sophomores."""
         response = client.post('/api/students', data='{"levels": ["Sophomore"]}', content_type='application/json')
         students = response.json['students']
-        assert len(students) == 2
-        assert next(s for s in students if s['name'] == 'Wolfgang Pauli')
+        assert len(students) == 1
         assert next(s for s in students if s['name'] == 'Nora Stanton Barney')
 
     def test_get_students_admin_unlimited(self, admin_login, client):
@@ -841,6 +857,16 @@ class TestStudentAnalytics:
             'prepEligible': True,
             'didTprep': False,
             'tprepEligible': False,
+            'probation': False,
+            'sat1read': 510,
+            'sat2read': 520,
+            'sat2math': 620,
+            'inMet': False,
+            'gradTerm': 'sp',
+            'gradYear': '2020',
+            'probation': False,
+            'status': 'C',
+            'isActiveCoe': True,
         }
 
     def test_athletics_profile_admin(self, admin_authenticated_response):

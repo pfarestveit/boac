@@ -151,6 +151,38 @@
   width: 100%;
 }
 
+.cohort-course-activity-course-name {
+  min-width: 160px;
+}
+
+.cohort-course-activity-data {
+  font-size: 14px;
+  line-height: 1.4em;
+  padding: 0 0 5px 15px;
+  vertical-align: top;
+}
+
+.cohort-course-activity-header {
+  color: #aaa;
+  font-size: 13px;
+  font-weight: normal;
+  padding: 0 0 5px 15px;
+  vertical-align: top;
+}
+
+.cohort-course-activity-table {
+  margin: auto;
+  min-width: 340px;
+  width: 85%;
+}
+
+.cohort-course-activity-wrapper {
+  flex-basis: auto;
+  flex-grow: 0.6;
+  margin-left: 0;
+  min-width: 340px;
+}
+
 .cohort-create-form-label {
   font-size: 16px;
   padding: 0 10px 10px 10px;
@@ -364,11 +396,6 @@
   position: relative;
 }
 
-.cohort-list-view-column-grade {
-  flex: 0 0 40px;
-  margin-left: 15px;
-}
-
 .cohort-manage-btn {
   height: 38px;
   margin: 0 0 0 5px;
@@ -376,30 +403,6 @@
 
 .cohort-manage-btn-link {
   padding: 1px 0 1px 0;
-}
-
-.cohort-manage-name {
-  padding-left: 10px;
-  width: 70%;
-}
-
-.cohort-manage-text-input {
-  flex: 1;
-  min-width: 200px;
-  padding-left: 10px;
-}
-
-.cohort-manage-row {
-  flex-flow: wrap;
-  padding: 10px 10px 5px 0;
-}
-
-.cohort-manage-row div:first-child {
-  margin-right: 10px;
-}
-
-.cohort-manage-row-separator {
-  margin: 10px 0 10px 0;
 }
 
 .cohort-missing-student-data {

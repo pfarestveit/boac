@@ -29,8 +29,6 @@ DATA_LOCH_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
 DATA_LOCH_RDS_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
 TESTING = True
 
-INDEX_HTML = 'boac/templates/index.html'
-
 LOGGING_LOCATION = 'STDOUT'
 
 ALERT_HOLDS_ENABLED = False
@@ -38,5 +36,11 @@ ALERT_INFREQUENT_ACTIVITY_ENABLED = False
 ALERT_WITHDRAWAL_ENABLED = False
 
 VUE_ENABLED = True
-INDEX_HTML = 'tests/static/index-legacy.html'
-INDEX_HTML_VUE = 'tests/static/index-vue.html'
+INDEX_HTML = 'tests/static/test-index-legacy.html'
+INDEX_HTML_VUE = 'tests/static/test-index-vue.html'
+VUE_PATHS = {
+    '/admin': '/admin',
+    r'/cohort/curated/([0-9]+).*': r'/curated_group_\1',
+    '/cohort/filtered/all': '/cohorts_all',
+    r'/student/([0-9]+).*': r'/student_\1',
+}

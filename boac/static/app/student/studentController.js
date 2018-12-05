@@ -32,7 +32,6 @@
     $rootScope,
     $scope,
     $stateParams,
-    authService,
     config,
     curatedCohortFactory,
     googleAnalyticsService,
@@ -52,10 +51,9 @@
     $scope.currentEnrollmentTermId = config.currentEnrollmentTermId;
     $scope.currentEnrollmentTerm = config.currentEnrollmentTerm;
     $scope.inDemoMode = status.inDemoMode;
+    $scope.displayAsInactive = utilService.displayAsInactive;
     $scope.lastActivityDays = utilService.lastActivityDays;
     $scope.lastActivityInContext = utilService.lastActivityInContext;
-    $scope.isAscUser = authService.isAscUser();
-    $scope.isCoeUser = authService.isCoeUser();
     $scope.parseInt = parseInt;
     $scope.profile = $rootScope.profile;
     $scope.showAllTerms = false;
@@ -141,7 +139,10 @@
           if (currentEnrollmentTerm) {
             $scope.currentEnrolledUnits = _.get(currentEnrollmentTerm, 'enrolledUnits');
           }
-          visualizationService.showUnitsChart($scope.cumulativeUnits, $scope.currentEnrolledUnits);
+          $scope.showUnitTotals = $scope.cumulativeUnits || $scope.currentEnrolledUnits;
+          if ($scope.showUnitTotals) {
+            visualizationService.showUnitsChart($scope.cumulativeUnits, $scope.currentEnrolledUnits);
+          }
 
           page.loading(false);
           googleAnalyticsService.track('Student', 'view', preferredName, $scope.student.sid);

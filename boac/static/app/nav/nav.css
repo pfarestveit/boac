@@ -20,16 +20,6 @@
   margin: 20px;
 }
 
-.dropdown-menu > li > vue-migrated-link > a {
-  display: block;
-  padding: 3px 20px;
-  clear: both;
-  font-weight: 400;
-  line-height: 1.42857143;
-  color: #333;
-  white-space: nowrap;
-}
-
 .header-container div {
   margin-left: 20px;
   -webkit-flex: 1 0 0;
@@ -39,6 +29,11 @@
 .header-dropdown-text {
   font-size: 16px;
   color: #fff;
+}
+
+.header-dropdown-text button {
+  float: right;
+  margin-right: 20px;
 }
 
 .header-dropdown-text button:link,
@@ -73,11 +68,6 @@
 
 .header-container div:last-child > span {
   float: right;
-}
-
-.header-container div:last-child > button {
-  float: right;
-  margin-right: 20px;
 }
 
 .header-text {
@@ -127,6 +117,11 @@
   text-align: center;
   vertical-align: middle;
   width: 20px;
+}
+
+.sidebar-row {
+  line-height: 1.4em;
+  padding: 1px 1px 1px 6px;
 }
 
 .sidebar-row-link {

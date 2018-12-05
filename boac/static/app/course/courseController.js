@@ -32,7 +32,6 @@
     $rootScope,
     $scope,
     $stateParams,
-    authService,
     config,
     courseFactory,
     googleAnalyticsService,
@@ -44,17 +43,14 @@
   ) {
 
     $scope.inDemoMode = status.inDemoMode;
-    $scope.isAscUser = authService.isAscUser();
+    $scope.displayAsInactive = utilService.displayAsInactive;
     page.loading(true);
     $scope.lastActivityDays = utilService.lastActivityDays;
     $scope.pagination = {
       currentPage: 1,
       defaultItemsPerPage: 50,
       itemsPerPage: 50,
-      selected: {
-        itemsPerPage: 50
-      },
-      options: [{label: 'Show 50', value: 50}, {label: 'Show 100', value: 100}]
+      options: [50, 100]
     };
     $scope.tab = 'list';
 
@@ -200,7 +196,6 @@
         var itemsPerPage = parseInt(args.s, 10);
         if (_.includes(_.map($scope.pagination.options, 'value'), itemsPerPage)) {
           $scope.pagination.itemsPerPage = itemsPerPage;
-          $scope.pagination.selected.itemsPerPage = itemsPerPage;
         } else {
           $location.search('s', $scope.pagination.itemsPerPage);
         }

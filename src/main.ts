@@ -1,10 +1,11 @@
-import 'vuetify/dist/vuetify.min.css';
+import 'bootstrap-vue/dist/bootstrap-vue.css';
+import 'bootstrap/dist/css/bootstrap.css';
 import App from './App.vue';
 import axios from 'axios';
+import BootstrapVue from 'bootstrap-vue';
 import router from './router';
 import store from './store';
 import Vue from 'vue';
-import Vuetify from 'vuetify';
 
 // Allow cookies in Access-Control requests
 axios.defaults.withCredentials = true;
@@ -19,8 +20,23 @@ axios.interceptors.response.use(response => response, function(error) {
 });
 
 Vue.config.productionTip = false;
-Vue.use(Vuetify);
-Vue.use(require('vue-lodash'), { name: '_' });
+Vue.use(BootstrapVue);
+Vue.use(require('vue-lodash'));
+Vue.filter('pluralize', (noun: string, count: number, substitutions = {}) => {
+  return (
+    `${substitutions[count] || count} ` + (count !== 1 ? `${noun}s` : noun)
+  );
+});
+Vue.filter('round', function(value, decimals) {
+  return Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
+});
+Vue.filter(
+  'variablePrecisionNumber',
+  (value, minPrecision, maxPrecision) =>
+    `TODO: ${value}, ${minPrecision}, ${maxPrecision}`
+);
+
+Vue.prototype.$eventHub = new Vue();
 
 new Vue({
   router,

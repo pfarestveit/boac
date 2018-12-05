@@ -1,22 +1,38 @@
-import Vue from 'vue';
-import VueRouter from 'vue-router';
+import _ from 'lodash';
+import Admin from '@/views/Admin.vue';
+import AllCohorts from '@/views/cohort/AllCohorts.vue';
+import CuratedGroup from '@/views/group/CuratedGroup.vue';
+import Home from '@/views/Home.vue';
+import Router from 'vue-router';
+import Search from '@/views/Search.vue';
 import store from '@/store';
+import Student from '@/views/Student.vue';
+import Vue from 'vue';
 import { getAppConfig } from '@/api/config';
 import { getUserProfile } from '@/api/user';
-import Login from '@/views/Login.vue';
-import Admin from '@/views/Admin.vue';
 
-Vue.use(VueRouter);
+Vue.use(Router);
 
-let beforeEach = (to: any, from: any, next: any) => {
-  let safeNext = (to: any, next: any) => {
-    if (to.matched.length) {
-      next();
-    } else {
-      next('/admin');
+const safeNext = (to: any, next: any) => {
+  if (to.matched.length) {
+    next();
+  } else {
+    next('/home');
+  }
+};
+
+const beforeEach = (to: any, from: any, next: any) => {
+  let legacyPathRedirect = _.get(to, 'meta.legacyPathRedirect');
+  if (legacyPathRedirect) {
+    for (const key in to.params) {
+      legacyPathRedirect = _.replace(
+        legacyPathRedirect,
+        ':' + key,
+        to.params[key]
+      );
     }
-  };
-  if (store.getters.user) {
+    window.location = store.state.apiBaseUrl + legacyPathRedirect;
+  } else if (store.getters.user) {
     safeNext(to, next);
   } else {
     getUserProfile().then(user => {
@@ -32,34 +48,68 @@ let beforeEach = (to: any, from: any, next: any) => {
   }
 };
 
-let requiresAuth = (to: any, from: any, next: any) => {
+const requiresAuth = (to: any, from: any, next: any) => {
   if (store.getters.user) {
     next();
   } else {
-    window.location = store.state.apiBaseUrl;
+    next('/login');
   }
 };
 
-const router = new VueRouter({
+const router = new Router({
   mode: 'history',
   routes: [
     {
       path: '/login',
-      name: 'login',
-      component: Login,
       beforeEnter: (to: any, from: any, next: any) => {
         if (store.getters.user) {
-          next('/admin');
-        } else {
-          next();
+          next('/home');
         }
       }
+    },
+    {
+      path: '/home',
+      name: 'home',
+      component: Home,
+      beforeEnter: requiresAuth
     },
     {
       path: '/admin',
       name: 'admin',
       component: Admin,
       beforeEnter: requiresAuth
+    },
+    {
+      path: '/cohorts_all',
+      component: AllCohorts,
+      beforeEnter: requiresAuth
+    },
+    {
+      path: '/cohort_:id',
+      beforeEnter: requiresAuth,
+      meta: { legacyPathRedirect: '/cohort/filtered?id=:id' }
+    },
+    {
+      path: '/cohort_create',
+      beforeEnter: requiresAuth,
+      meta: { legacyPathRedirect: '/cohort/filtered' }
+    },
+    {
+      path: '/curated_group_:id',
+      beforeEnter: requiresAuth,
+      component: CuratedGroup,
+      props: true
+    },
+    {
+      path: '/student_:uid',
+      beforeEnter: requiresAuth,
+      component: Student,
+      meta: { legacyPathRedirect: '/student/:uid' }
+    },
+    {
+      path: '/search',
+      beforeEnter: requiresAuth,
+      component: Search
     }
   ]
 });

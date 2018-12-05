@@ -152,6 +152,7 @@ def get_current_user_status():
         'isAdmin': current_user.is_admin if hasattr(current_user, 'is_admin') else False,
         'isAnonymous': current_user.is_anonymous,
         'isAuthenticated': current_user.is_authenticated,
+        # TODO: remove the following line; 'inDemoMode' is served by /api/profile/my
         'inDemoMode': current_user.in_demo_mode if hasattr(current_user, 'in_demo_mode') else False,
         'uid': current_user.get_id(),
     }
@@ -170,7 +171,7 @@ def is_unauthorized_search(params):
 
 
 def _is_coe_data_request(params):
-    keys = ['advisorLdapUids', 'coePrepStatuses', 'ethnicities', 'genders']
+    keys = ['advisorLdapUids', 'coePrepStatuses', 'coeProbation', 'ethnicities', 'genders', 'isInactiveCoe']
     return next((key for key in keys if params.get(key) is not None), False)
 
 

@@ -60,10 +60,12 @@
       return $http.get('/api/team_groups/all');
     };
 
-    var searchForStudents = function(searchPhrase, isInactiveAsc, orderBy, offset, limit) {
+    var searchForStudents = function(searchPhrase, includeCourses, isInactiveAsc, isInactiveCoe, orderBy, offset, limit) {
       var args = {
         searchPhrase: searchPhrase,
+        includeCourses: includeCourses,
         isInactiveAsc: utilService.toBoolOrNull(isInactiveAsc),
+        isInactiveCoe: utilService.toBoolOrNull(isInactiveCoe),
         orderBy: orderBy || 'first_name',
         offset: offset || 0,
         limit: limit || 50

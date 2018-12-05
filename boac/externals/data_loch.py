@@ -308,23 +308,25 @@ def get_majors(scope=[]):
     return safe_execute_rds(sql)
 
 
-def get_students_query(
-        advisor_ldap_uids=None,
-        coe_prep_statuses=None,
-        ethnicities=None,
-        genders=None,
-        gpa_ranges=None,
-        group_codes=None,
-        in_intensive_cohort=None,
-        is_active_asc=None,
-        last_name_range=None,
-        levels=None,
-        majors=None,
-        scope=(),
-        search_phrase=None,
-        underrepresented=None,
-        unit_ranges=None,
-):  # noqa
+def get_students_query(     # noqa
+    advisor_ldap_uids=None,
+    coe_prep_statuses=None,
+    coe_probation=None,
+    ethnicities=None,
+    genders=None,
+    gpa_ranges=None,
+    group_codes=None,
+    in_intensive_cohort=None,
+    is_active_asc=None,
+    is_active_coe=None,
+    last_name_range=None,
+    levels=None,
+    majors=None,
+    scope=(),
+    search_phrase=None,
+    underrepresented=None,
+    unit_ranges=None,
+):
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
         return None, None, None
@@ -389,7 +391,12 @@ def get_students_query(
     if genders:
         query_filter += ' AND s.gender = ANY(:genders)'
         query_bindings.update({'genders': genders})
+    query_filter += f' AND s.probation IS {coe_probation}' if coe_probation is not None else ''
     query_filter += f' AND s.minority IS {underrepresented}' if underrepresented is not None else ''
+    if is_active_coe is False:
+        query_filter += f" AND s.status IN ('D','P','U','W','X','Z')"
+    elif is_active_coe is True:
+        query_filter += f" AND s.status NOT IN ('D','P','U','W','X','Z')"
 
     return query_tables, query_filter, query_bindings
 
@@ -522,8 +529,24 @@ def _student_query_tables_for_scope(scope):
         elif join_type == 'intersection':
             # In an intersection of multiple schemas, all queryable columns should be returned.
             columns_for_codes = {
-                'COENG': ['advisor_ldap_uid', 'gender', 'ethnicity', 'did_prep', 'minority', 'prep_eligible', 'did_tprep', 'tprep_eligible'],
-                'UWASC': ['active', 'intensive', 'group_code', 'group_name'],
+                'COENG': [
+                    'advisor_ldap_uid',
+                    'did_prep',
+                    'did_tprep',
+                    'ethnicity',
+                    'gender',
+                    'minority',
+                    'prep_eligible',
+                    'probation',
+                    'status',
+                    'tprep_eligible',
+                ],
+                'UWASC': [
+                    'active',
+                    'group_code',
+                    'group_name',
+                    'intensive',
+                ],
             }
             intersection_columns = []
             for code in scope:

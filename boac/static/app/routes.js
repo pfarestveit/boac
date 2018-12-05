@@ -34,19 +34,14 @@
       requireBase: false
     });
 
-    var authenticatedProfile = function($http, $injector, $q, $rootScope) {
+    var authenticatedProfile = function($injector, $q, $rootScope, authService) {
       return $q(function(resolve, reject) {
         var status = $injector.get('status');
-
         if (_.get(status, 'isAuthenticated')) {
           if (_.get($rootScope, 'profile')) {
             resolve({message: 'authenticated'});
           } else {
-            $http.get('/api/profile/my').then(function(response) {
-              $rootScope.profile = response.data;
-              $rootScope.$broadcast('userProfileLoaded', {
-                profile: $rootScope.profile
-              });
+            authService.loadUserProfile().then(function() {
               resolve({message: 'authenticated'});
             });
           }
@@ -56,11 +51,15 @@
       });
     };
 
-    var authenticatedAdmin = function($injector, $q) {
+    var authenticatedAdmin = function($injector, $q, $rootScope, authService) {
       var status = $injector.get('status');
       return $q(function(resolve, reject) {
         if (_.get(status, 'isAuthenticated') && _.get(status, 'isAdmin')) {
-          resolve();
+          if (_.get($rootScope, 'profile')) {
+            resolve();
+          } else {
+            authService.loadUserProfile().then(resolve);
+          }
         } else {
           reject({message: 'unauthorized'});
         }
@@ -133,11 +132,6 @@
         views: standardLayout('CuratedCohortController', '/static/app/cohort/curated/cohort.html'),
         resolve: resolvePrivate
       })
-      .state('curatedCohortsManage', {
-        url: '/cohort/curated/manage',
-        views: standardLayout('ManageCuratedCohortsController', '/static/app/cohort/curated/manage.html'),
-        resolve: resolvePrivate
-      })
       .state('home', {
         url: '/home',
         views: standardLayout('HomeController', '/static/app/home/home.html'),
@@ -156,7 +150,7 @@
         }
       })
       .state('search', {
-        url: '/search?q',
+        url: '/search?q&includeCourses',
         views: standardLayout('SearchController', '/static/app/search/searchResults.html'),
         resolve: resolvePrivate
       })
@@ -172,7 +166,7 @@
         reloadOnSearch: false
       });
 
-  }).run(function($rootScope, $state, $transitions, authFactory, status) {
+  }).run(function($rootScope, $state, $transitions, authFactory, config, status) {
 
     $state.defaultErrorHandler(function(error) {
       var message = _.get(error, 'detail.message');
@@ -194,6 +188,18 @@
       }
     });
 
+    $transitions.onBefore({}, function($transition) {
+      if (config.vueEnabled) {
+        var url = _.toString($transition.$to().self.url);
+        for (var key in config.vuePaths) {
+          if (url.startsWith(key)) {
+            // Force page refresh. The server-side routing will redirect user to Vue-enabled index.html and proper path.
+            window.location = url;
+          }
+        }
+      }
+    });
+
     $transitions.onEnter({}, function($transition) {
       $rootScope.angularStateName = $transition.$to().name;
       if ($transition.$to().name) {
@@ -204,9 +210,6 @@
             break;
           case 'curatedCohort':
             $rootScope.pageTitle = 'Curated Group';
-            break;
-          case 'curatedCohortsManage':
-            $rootScope.pageTitle = 'Manage Curated Groups';
             break;
           default:
             name = name.replace(/([A-Z])/g, ' $1');
