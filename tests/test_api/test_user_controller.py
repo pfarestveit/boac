@@ -23,8 +23,10 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 import pytest
+import simplejson as json
 
 asc_advisor_uid = '1081940'
 
@@ -32,6 +34,25 @@ asc_advisor_uid = '1081940'
 @pytest.fixture()
 def asc_advisor_session(fake_auth):
     fake_auth.login(asc_advisor_uid)
+
+
+class TestUserStatusController:
+    """Status API."""
+
+    def test_anonymous_status(self, client):
+        """Returns a well-formed response."""
+        response = client.get('/api/user/status')
+        assert response.status_code == 200
+        assert response.json['isAuthenticated'] is False
+
+    def test_when_authenticated(self, client, fake_auth):
+        test_uid = '1133399'
+        fake_auth.login(test_uid)
+        response = client.get('/api/user/status')
+        assert response.status_code == 200
+        assert response.json['isAuthenticated'] is True
+        assert response.json['uid'] == test_uid
+        assert isinstance(response.json['inDemoMode'], bool)
 
 
 class TestUserProfile:
@@ -60,6 +81,8 @@ class TestUserProfile:
         response = client.get('/api/profile/my')
         assert response.status_code == 200
         user = response.json
+        assert 'myFilteredCohorts' in user
+        assert 'myCuratedCohorts' in user
         assert user['isAdmin'] is True
         assert user['isAsc'] is False
         assert user['isCoe'] is False
@@ -78,13 +101,15 @@ class TestUserProfile:
         assert user['departments']['COENG']['isAdvisor'] is False
         assert user['departments']['COENG']['isDirector'] is True
 
-    def test_athletic_study_center_user(self, client, fake_auth):
+    def test_asc_advisor_exclude_cohorts(self, client, fake_auth):
         """Returns Athletic Study Center advisor."""
         test_uid = '1081940'
         fake_auth.login(test_uid)
-        response = client.get('/api/profile/my')
+        response = client.get('/api/profile/my?excludeCohorts=true')
         assert response.status_code == 200
         user = response.json
+        assert 'myFilteredCohorts' not in user
+        assert 'myCuratedCohorts' not in user
         assert user['isAsc'] is True
         assert 'UWASC' in user['departments']
         assert user['departments']['UWASC']['isAdvisor'] is True
@@ -133,12 +158,12 @@ class TestMyCohorts:
         assert cohorts[0]['name'] == 'Aardvark Admirers'
         assert cohorts[-1]['name'] == 'Zebra Zealots'
 
-    def test_my_curated_cohorts(self, client, fake_auth):
-        """Returns user's student curated cohorts."""
+    def test_my_curated_groups(self, client, fake_auth):
+        """Returns user's curated groups."""
         fake_auth.login('6446')
-        response = client.get('/api/profile/my')
+        response = client.get('/api/curated_groups/my')
         assert response.status_code == 200
-        cohorts = response.json['myCuratedCohorts']
+        cohorts = response.json
         assert len(cohorts) == 2
         assert 'name' in cohorts[0]
         assert 'studentCount' in cohorts[0]
@@ -152,19 +177,19 @@ class TestAuthorizedUserGroups:
 
     def test_not_authenticated(self, client):
         """Returns 'unauthorized' response status if user is not authenticated."""
-        response = client.get('/api/profiles/authorized_user_groups')
+        response = client.get('/api/users/authorized_groups')
         assert response.status_code == 401
 
     def test_unauthorized(self, client, fake_auth):
         """Returns 'unauthorized' response status if user is not admin."""
         fake_auth.login(self.coe_advisor_uid)
-        response = client.get('/api/profiles/authorized_user_groups')
+        response = client.get('/api/users/authorized_groups')
         assert response.status_code == 401
 
     def test_authorized(self, client, fake_auth):
         """Returns a well-formed response."""
         fake_auth.login(self.admin_uid)
-        response = client.get('/api/profiles/authorized_user_groups')
+        response = client.get('/api/users/authorized_groups')
         assert response.status_code == 200
         user_groups = sorted(response.json, key=lambda g: g['code'])
         assert len(user_groups) == 3
@@ -174,3 +199,27 @@ class TestAuthorizedUserGroups:
         assert len(user_groups[1]['users']) == 3
         assert user_groups[2]['name'] == 'Athletic Study Center'
         assert len(user_groups[2]['users']) == 2
+
+
+class TestDemoMode:
+
+    def test_set_demo_mode_not_authenticated(self, client):
+        """Require authentication."""
+        assert client.post('/api/user/demo_mode').status_code == 401
+
+    def test_set_demo_mode_not_an_admin(self, client, asc_advisor_session):
+        """Return 403 for non-admin user."""
+        response = client.post('/api/user/demo_mode')
+        assert response.status_code == 401
+
+    def test_admin_set_demo_mode(self, client, fake_auth):
+        """Admin successfully toggles demo mode."""
+        test_uid = '53791'
+        fake_auth.login(test_uid)
+        # Verify toggle
+        for in_demo_mode in [True, False]:
+            response = client.post('/api/user/demo_mode', data=json.dumps({'demoMode': in_demo_mode}), content_type='application/json')
+            assert response.status_code == 200
+            assert response.json['inDemoMode'] is in_demo_mode
+            user = AuthorizedUser.find_by_uid(test_uid)
+            assert user.in_demo_mode is in_demo_mode

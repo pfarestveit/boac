@@ -10,37 +10,37 @@
           <div class="student-bio-contact">
             <h1 class="student-section-header"
                 id="student-name-header"
-                :class="{'demo-mode-blur': inDemoMode}">
+                :class="{'demo-mode-blur': user.inDemoMode}">
               {{student.name}}
             </h1>
             <h2 class="sr-only">Profile</h2>
             <div class="sr-only" v-if="student.sisProfile.preferredName !== student.name">Preferred name</div>
             <div class="student-preferred-name"
                  id="student-preferred-name"
-                 :class="{'demo-mode-blur': inDemoMode}"
+                 :class="{'demo-mode-blur': user.inDemoMode}"
                  v-if="student.sisProfile.preferredName !== student.name">
               {{student.sisProfile.preferredName}}</div>
             <div class="student-bio-sid" id="student-bio-sid">
-              SID <span :class="{'demo-mode-blur': inDemoMode}">{{student.sid}}</span>
+              SID <span :class="{'demo-mode-blur': user.inDemoMode}">{{student.sid}}</span>
             </div>
             <div>
               <i class="fas fa-envelope"></i>
               <span class="sr-only">Email</span>
               <a id="student-mailto"
                  :href="'mailto:' + student.sisProfile.emailAddress"
-                 :class="{'demo-mode-blur': inDemoMode}">
+                 :class="{'demo-mode-blur': user.inDemoMode}">
                  {{student.sisProfile.emailAddress}}</a>
             </div>
             <div v-if="student.sisProfile.phoneNumber">
               <i class="fas fa-phone"></i>
               <span class="sr-only">Phone number</span>
-              <span :class="{'demo-mode-blur': inDemoMode}"
+              <span :class="{'demo-mode-blur': user.inDemoMode}"
                     id="student-phone-number"
                     tabindex="0">
                 {{student.sisProfile.phoneNumber}}</span>
             </div>
           </div>
-          <div id="student-bio-inactive" v-if="displayAsInactive(student)">
+          <div id="student-bio-inactive" v-if="isInactive">
             <div class="student-bio-header student-bio-inactive">Inactive</div>
           </div>
           <div id="student-bio-athletics" v-if="student.athleticsProfile">
@@ -98,10 +98,10 @@
             </div>
             <div class="student-chart-outer" id="student-status-unit-totals">
               <div class="student-status-legend student-status-legend-heading" aria-hidden="true">Unit Totals</div>
-              <div class="student-chart-units-container" id="student-chart-units-container" aria-hidden="true"
-                   v-if="showUnitTotals">
-                  &quot;Pardon Our Progress&quot;
-              </div>
+              <StudentUnitsChart v-if="showUnitTotals"
+                                 :currentEnrolledUnits="currentEnrolledUnits"
+                                 :cumulativeUnits="cumulativeUnits">
+              </StudentUnitsChart>
               <div class="student-status-legend student-status-legend-small"
                    v-if="!showUnitTotals">
                   Units Not Yet Available
@@ -123,11 +123,47 @@
               </div>
               <div class="student-chart-outer" id="student-status-gpa-trends">
                 <div class="student-status-legend student-status-legend-heading">GPA Trends</div>
-                <div class="student-status-legend student-status-legend-small">
-                  &quot;Pardon Our Progress&quot;
+                <StudentGpaChart v-if="student.termGpa.length > 1"
+                                 :student="student">
+                </StudentGpaChart>
+                <div class="student-status-legend student-status-legend-small"
+                     v-if="!student.termGpa.length">
+                  GPA Not Yet Available
                 </div>
+                <div class="student-status-legend student-gpa-last-term-outer-right"
+                     v-if="student.termGpa.length">
+                  {{ student.termGpa[0].name }} GPA:
+                  <strong :class="{'student-gpa-last-term': student.termGpa[0].gpa >= 2, 'student-gpa-alert': student.termGpa[0].gpa < 2}">
+                    {{ student.termGpa[0].gpa | round(3) }}
+                  </strong>
+                </div>
+                <button class="btn btn-link toggle-btn-link" @click="showTermGpa=!showTermGpa" v-if="student.termGpa.length">
+                  <i :class="{'fas fa-caret-right': !showTermGpa, 'fas fa-caret-down': showTermGpa}"></i>
+                  <span v-if="!showTermGpa">Show Term GPA</span>
+                  <span v-if="showTermGpa">Hide Term GPA</span>
+                </button>
               </div>
             </div>
+            <table class="student-status-table" v-if="showTermGpa">
+              <tr>
+                <th>Term</th>
+                <th>GPA</th>
+              </tr>
+              <tr v-for="(term, termIndex) in student.termGpa" :key="termIndex" :class="{'student-status-table-zebra': termIndex % 2 === 0}">
+                <td>{{ term.name }}</td>
+                <td v-if="term.gpa < 2">
+                  <div class="student-gpa-term-alert-outer">
+                    <i class="fa fa-exclamation-triangle student-gpa-term-alert student-gpa-term-alert-icon"></i>
+                    <div class="student-gpa-term-alert">{{ term.gpa | round(3) }}</div>
+                  </div>
+                </td>
+                <td v-if="term.gpa >= 2">{{ term.gpa | round(3) }}</td>
+              </tr>
+              <tr v-if="!student.termGpa.length">
+                <td>No previous terms</td>
+                <td>--</td>
+              </tr>
+            </table>
           </div>
           <div class="student-status-box student-status-box-degree-progress" id="student-status-degree-progress">
             <h3 class="student-progress-header">Degree Progress</h3>
@@ -170,19 +206,13 @@
                v-if="index === 0 && !student.hasCurrentTermEnrollments && (currentEnrollmentTermId > parseInt(term.termId))">
             <h3 class="student-term-header">{{currentEnrollmentTerm}}</h3>
             <div class="term-no-enrollments-description">No enrollments</div>
-
-            <!-- TODO Implement a vuetiful student-profile alerts component.
-            <div data-ng-include="'/static/app/student/studentSemesterNotices.html'"></div> -->
-
+            <StudentAlerts :student="student"></StudentAlerts>
           </div>
 
           <h3 class="student-term-header">{{term.termName}}</h3>
-
-          <!-- See student-profile alerts TODO, supra.
-               <div data-ng-include="'/static/app/student/studentSemesterNotices.html'"
-               data-ng-if="$first && (student.hasCurrentTermEnrollments || currentEnrollmentTermId <= parseInt(term.termId))"></div>
-               -->
-
+            <StudentAlerts :student="student"
+                           v-if="index === 0 && (student.hasCurrentTermEnrollments || (currentEnrollmentTermId <= parseInt(term.termId)))">
+            </StudentAlerts>
             <div v-for="(course, courseIndex) in term.enrollments" :key="courseIndex" class="student-course">
               <div class="student-course-heading">
                 <div class="student-course-heading-start">
@@ -249,21 +279,21 @@
                 </div>
               </div>
               <b-collapse class="panel-body" :id="`course-canvas-data-${term.termId}-${courseIndex}`">
-                <div v-for="(canvasSite, index) in course.canvasSites" :key="index">
-                  <h5 class="profile-course-site-code">
+                <div v-for="(canvasSite, index) in course.canvasSites" :key="index" class="student-bcourses-wrapper">
+                  <h5 class="student-bcourses-site-code">
                     <span class="sr-only">Course Site</span>
                     {{canvasSite.courseCode}}
                   </h5>
-                  <table class="visualize-metrics">
+                  <table class="student-bcourses">
                     <tr>
-                      <th class="visualize-metrics-legend" scope="row">
+                      <th class="student-bcourses-legend" scope="row">
                         Assignments Submitted
                       </th>
-                      <td class="visualize-metrics-summary">
+                      <td class="student-bcourses-summary">
                         <span v-if="canvasSite.analytics.assignmentsSubmitted.displayPercentile">
                           <strong>{{canvasSite.analytics.assignmentsSubmitted.displayPercentile}}</strong> percentile
                         </span>
-                        <span class="visualize-metrics-no-data"
+                        <span class="student-bcourses-no-data"
                               v-if="!canvasSite.analytics.assignmentsSubmitted.displayPercentile">
                           No Assignments
                         </span>
@@ -272,25 +302,25 @@
                         <span v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
                           Score:
                           <strong>{{canvasSite.analytics.assignmentsSubmitted.student.raw}}</strong>
-                          <span class="visualize-metrics-maximum">
+                          <span class="student-bcourses-maximum">
                             (Maximum: {{canvasSite.analytics.assignmentsSubmitted.courseDeciles[10]}})
                           </span>
                         </span>
-                        <span class="visualize-metrics-no-data"
+                        <span class="student-bcourses-no-data"
                               v-if="!canvasSite.analytics.assignmentsSubmitted.courseDeciles">
                           No Data
                         </span>
                       </td>
                     </tr>
                     <tr>
-                      <th class="visualize-metrics-legend" scope="row">
+                      <th class="student-bcourses-legend" scope="row">
                         Assignment Grades
                       </th>
-                      <td class="visualize-metrics-summary">
+                      <td class="student-bcourses-summary">
                         <span v-if="canvasSite.analytics.currentScore.displayPercentile">
                           <strong>{{canvasSite.analytics.currentScore.displayPercentile}}</strong> percentile
                         </span>
-                        <span class="visualize-metrics-no-data"
+                        <span class="student-bcourses-no-data"
                               v-if="!canvasSite.analytics.currentScore.displayPercentile">
                           No Grades
                         </span>
@@ -309,15 +339,15 @@
                           <div>Minimum: {{canvasSite.analytics.currentScore.courseDeciles[0]}}</div>
                         </div>
                         <div v-if="!canvasSite.analytics.currentScore.boxPlottable">
-                          <span class="visualize-metrics-no-data"
+                          <span class="student-bcourses-no-data"
                                 v-if="canvasSite.analytics.currentScore.courseDeciles">
                             Score:
                             <strong>{{canvasSite.analytics.currentScore.student.raw}}</strong>
-                            <span class="visualize-metrics-maximum">
+                            <span class="student-bcourses-maximum">
                               (Maximum: {{canvasSite.analytics.currentScore.courseDeciles[10]}})
                             </span>
                           </span>
-                          <span class="visualize-metrics-no-data"
+                          <span class="student-bcourses-no-data"
                                 v-if="!canvasSite.analytics.currentScore.courseDeciles">
                             No Data
                           </span>
@@ -325,15 +355,15 @@
                        </td>
                     </tr>
                     <tr v-if="currentEnrollmentTermId === parseInt(term.termId)">
-                      <th class="visualize-metrics-legend" scope="row">
+                      <th class="student-bcourses-legend" scope="row">
                         Last bCourses Activity
                       </th>
                       <td colspan="2">
                         <div v-if="!canvasSite.analytics.lastActivity.student.raw">
-                          <span :class="{'demo-mode-blur': inDemoMode}">{{student.name}}</span> has never visited this course site.
+                          <span :class="{'demo-mode-blur': user.inDemoMode}">{{student.name}}</span> has never visited this course site.
                         </div>
                         <div v="canvasSite.analytics.lastActivity.student.raw">
-                          <span :class="{'demo-mode-blur': inDemoMode}">{{student.name}}</span>
+                          <span :class="{'demo-mode-blur': user.inDemoMode}">{{student.name}}</span>
                           last visited the course site {{lastActivityDays(canvasSite.analytics).toLowerCase()}}.
                           {{lastActivityInContext(canvasSite.analytics)}}
                         </div>
@@ -341,10 +371,10 @@
                     </tr>
                   </table>
                 </div>
+                <div class="student-bcourses-wrapper student-course-notation" v-if="!course.canvasSites || !course.canvasSites.length">
+                  No additional information
+                </div>
               </b-collapse>
-              <div class="student-course-notation" v-if="!course.canvasSites || !course.canvasSites.length">
-                No additional information
-              </div>
             </div>
             <div class="student-course-heading student-course" v-if="term.enrolledUnits">
               <div class="student-course-heading-start"></div>
@@ -354,22 +384,22 @@
                 </div>
               </div>
             </div>
-            <div class="student-course"
+            <div class="student-course student-course-dropped"
                  is-open="true"
                  v-if="term.droppedSections && term.droppedSections.length">
               <div v-for="(droppedSection, index) in term.droppedSections" :key="index">
-                <div class="profile-dropped-section-title">
+                <div class="student-course-dropped-title">
                   {{droppedSection.displayName}} - {{droppedSection.component}} {{droppedSection.sectionNumber}}
                 <div class="student-course-notation">
-                  <i class="fas fa-exclamation-triangle profile-dropped-section-icon"></i> Dropped
+                  <i class="fas fa-exclamation-triangle student-course-dropped-icon"></i> Dropped
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div v-if="student.enrollmentTerms.length > 1" class="profile-view-previous-semesters-wrapper">
-          <button class="btn btn-link profile-view-previous-semesters" @click="showAllTerms=!showAllTerms">
+        <div v-if="student.enrollmentTerms.length > 1" class="toggle-previous-semesters-wrapper">
+          <button class="btn btn-link toggle-btn-link" @click="showAllTerms=!showAllTerms">
             <i :class="{'fas fa-caret-right': !showAllTerms, 'fas fa-caret-up': showAllTerms}"></i>
             <span v-if="!showAllTerms">View Previous Semesters</span>
             <span v-if="showAllTerms">Hide Previous Semesters</span>
@@ -394,31 +424,40 @@ import { getStudentDetails } from '@/api/student';
 import AppConfig from '@/mixins/AppConfig';
 import Loading from '@/mixins/Loading.vue';
 import Spinner from '@/components/Spinner.vue';
+import StudentAlerts from '@/components/student/StudentAlerts';
 import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
+import StudentGpaChart from '@/components/student/StudentGpaChart';
 import StudentMetadata from '@/mixins/StudentMetadata';
-import store from '@/store';
+import StudentUnitsChart from '@/components/student/StudentUnitsChart';
+import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
   name: 'Student',
-  mixins: [AppConfig, Loading, StudentAnalytics, StudentMetadata],
+  mixins: [AppConfig, Loading, StudentAnalytics, StudentMetadata, UserMetadata],
   components: {
     Spinner,
-    StudentAvatar
+    StudentAlerts,
+    StudentAvatar,
+    StudentGpaChart,
+    StudentUnitsChart
   },
   created() {
-    this.inDemoMode = store.getters.user.inDemoMode;
-    var uid = this.$route.path.split('_').pop();
+    var uid = this.$route.path.split('/').pop();
     this.loadStudent(uid);
   },
   data: () => ({
-    gpaTerms: [],
-    showAllTerms: false
+    showAllTerms: false,
+    showTermGpa: false,
+    student: {
+      termGpa: []
+    }
   }),
   methods: {
     loadStudent(uid) {
       getStudentDetails(uid).then(data => {
-        this.student = data;
+        _.assign(this.student, data);
+        this.isInactive = this.displayAsInactive(this.student);
         this.cumulativeUnits = _.get(
           this.student,
           'sisProfile.cumulativeUnits'
@@ -450,7 +489,7 @@ export default {
         });
       });
       if (_.get(term, 'termGpa.unitsTakenForGpa')) {
-        this.gpaTerms.push({
+        this.student.termGpa.push({
           name: _.get(term, 'termName'),
           gpa: _.get(term, 'termGpa.gpa')
         });
@@ -479,6 +518,41 @@ export default {
 .collapsed > .when-course-open,
 :not(.collapsed) > .when-course-closed {
   display: none;
+}
+.student-bcourses {
+  line-height: 1.1;
+  margin-bottom: 20px;
+  width: 80%;
+}
+.student-bcourses td,
+.student-bcourses th {
+  font-size: 14px;
+  padding: 0 25px 5px 0;
+  text-align: left;
+  vertical-align: top;
+}
+.student-bcourses-legend {
+  color: #999;
+  font-weight: normal;
+  white-space: nowrap;
+  width: 15em;
+}
+.student-bcourses-maximum {
+  color: #666;
+}
+.student-bcourses-no-data {
+  color: #666;
+  font-style: italic;
+}
+.student-bcourses-site-code {
+  font-size: 15px;
+  margin-bottom: 5px;
+}
+.student-bcourses-summary {
+  width: 12em;
+}
+.student-bcourses-wrapper {
+  margin-top: 15px;
 }
 .student-bio-contact {
   margin: 20px 0;
@@ -515,7 +589,7 @@ export default {
 .student-chart-outer {
   border-left: 1px solid #999;
   flex: 1;
-  margin: 0 10px;
+  margin-left: 10px;
   padding-left: 10px;
 }
 .student-chart-units-container {
@@ -532,6 +606,16 @@ export default {
   margin-right: 15px;
   padding: 0;
   width: 10px;
+}
+.student-course-dropped {
+  margin-top: 15px;
+  padding-top: 15px;
+}
+.student-course-dropped-icon {
+  color: #f0ad4e;
+}
+.student-course-dropped-title {
+  font-weight: bold;
 }
 .student-course-grade {
   font-weight: bold;
@@ -613,6 +697,33 @@ export default {
   padding: 15px 15px 15px 14px;
   text-align: left;
 }
+.student-gpa-alert {
+  color: #d0021b;
+}
+.student-gpa-last-term {
+  color: #000;
+}
+.student-gpa-last-term-outer {
+  font-size: 12px;
+  padding-left: 5px;
+  text-align: left;
+}
+.student-gpa-last-term-outer-right {
+  font-size: 12px;
+  padding-left: 5px;
+  text-align: right;
+}
+.student-gpa-term-alert {
+  color: #d0021b;
+  position: relative;
+  right: 20px;
+}
+.student-gpa-term-alert-icon {
+  width: 20px;
+}
+.student-gpa-term-alert-outer {
+  display: flex;
+}
 .student-preferred-name {
   font-size: 20px;
   font-weight: 400;
@@ -628,7 +739,10 @@ export default {
 }
 .student-profile-status-container {
   background: #8bbdda;
-  flex: 3;
+  min-width: 330px;
+  max-width: 400px;
+  flex-basis: auto;
+  flex-grow: 0.25;
 }
 .student-progress-header {
   font-size: 16px;
@@ -690,6 +804,7 @@ export default {
   font-size: 12px;
   line-height: 1.2em;
   margin: 10px 0;
+  text-align: left;
   width: 100%;
 }
 .student-status-table-zebra {
@@ -707,7 +822,7 @@ export default {
   padding-right: 4px;
 }
 .student-term {
-  margin-bottom: 10px;
+  margin: 30px 0 10px 0;
 }
 .student-term-header {
   font-size: 20px;
@@ -717,5 +832,8 @@ export default {
 }
 .student-terms-container {
   margin: 20px;
+}
+.toggle-previous-semesters-wrapper {
+  text-align: center;
 }
 </style>

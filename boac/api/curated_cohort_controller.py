@@ -23,9 +23,8 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import sort_students_by_name
+from boac.api.util import get_my_curated_groups, sort_students_by_name
 from boac.lib.http import tolerant_jsonify
 from boac.merged.student import get_summary_student_profiles
 from boac.models.alert import Alert
@@ -33,6 +32,12 @@ from boac.models.curated_cohort import CuratedCohort
 from flask import current_app as app, request
 from flask_cors import cross_origin
 from flask_login import current_user, login_required
+
+
+@app.route('/api/curated_groups/my')
+@login_required
+def my_curated_cohorts():
+    return tolerant_jsonify(get_my_curated_groups())
 
 
 @app.route('/api/curated_cohort/create', methods=['POST'])
@@ -119,6 +124,7 @@ def curated_cohort_ids_per_sid(sid):
 
 @app.route('/api/curated_cohort/<curated_cohort_id>/remove_student/<sid>', methods=['DELETE'])
 @login_required
+@cross_origin(allow_headers=['Content-Type'])
 def remove_student_from_curated_cohort(curated_cohort_id, sid):
     curated_cohort = CuratedCohort.find_by_id(curated_cohort_id)
     if not curated_cohort:

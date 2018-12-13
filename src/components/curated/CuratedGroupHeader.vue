@@ -13,7 +13,7 @@
                  aria-label="Input cohort name, 255 characters or fewer"
                  :aria-invalid="!renameMode.input"
                  class="form-control"
-                 @change="renameMode.hideError = true"
+                 @input="renameMode.hideError = true"
                  v-model="renameMode.input"
                  focus-on="renameMode.on"
                  id="rename-cohort-input"
@@ -24,9 +24,10 @@
         </form>
       </div>
       <div class="has-error"
-           data-ng-bind="renameMode.error"
-           data-ng-if="renameMode.error && !renameMode.hideError"></div>
-      <div class="faint-text">255 character limit <span data-ng-if="renameMode.input.length">({{255 - renameMode.input.length}} left)</span></div>
+           v-if="renameMode.error && !renameMode.hideError">
+        {{ renameMode.error }}
+      </div>
+      <div class="faint-text">255 character limit <span v-if="renameMode.input.length">({{255 - renameMode.input.length}} left)</span></div>
     </div>
     <div class="curated-cohort-header-column-02">
       <div class="cohort-header-buttons no-wrap" v-if="renameMode.on">
@@ -89,18 +90,20 @@
 </template>
 
 <script>
-import _ from 'lodash';
-import { deleteCuratedGroup, renameCuratedGroup } from '@/api/cohorts';
-import store from '@/store';
+import { deleteCuratedGroup, renameCuratedGroup } from '@/api/curated';
+import Validator from '@/mixins/Validator.vue';
+import router from '@/router';
 
 export default {
   name: 'CuratedGroupHeader',
+  mixins: [Validator],
   props: ['curatedGroup'],
   data: () => ({
     isModalOpen: false,
     renameMode: {
       on: false,
       error: undefined,
+      hideError: false,
       input: undefined
     }
   }),
@@ -117,32 +120,24 @@ export default {
       deleteCuratedGroup(this.curatedGroup.id)
         .then(() => {
           this.isModalOpen = false;
-          this.$router.push('home');
+          router.push({ path: '/home' });
         })
         .catch(error => {
-          this.renameMode.error = error;
+          this.error = error;
         });
     },
     rename: function() {
-      // TODO: finish validation logic (BOAC-1496)
-      if (_.isEmpty(this.renameMode.input)) {
-        this.renameMode.error = 'Required';
-      } else if (_.size(this.renameMode.input) > 255) {
-        this.renameMode.error = 'Name must be 255 characters or fewer';
-      }
+      this.renameMode.hideError = false;
+      this.renameMode.error = this.validateCohortName({
+        name: this.renameMode.input
+      });
       if (!this.renameMode.error) {
-        renameCuratedGroup(this.curatedGroup.id, this.renameMode.input)
-          .then(() => {
+        renameCuratedGroup(this.curatedGroup.id, this.renameMode.input).then(
+          () => {
             this.curatedGroup.name = this.renameMode.input;
-            store.commit('updateCuratedGroup', {
-              id: this.curatedGroup.id,
-              name: this.curatedGroup.name
-            });
             this.exitRenameMode();
-          })
-          .catch(error => {
-            this.renameMode.error = error;
-          });
+          }
+        );
       }
     }
   }

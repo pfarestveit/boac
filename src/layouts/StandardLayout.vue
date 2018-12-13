@@ -2,7 +2,7 @@
   <div id="app" class="index-container">
     <a href="#content"
        id="skip-to-content-link"
-       class="sr-only sr-only-focusable">Skip To Content</a>
+       class="sr-only sr-only-focusable">Skip to main content</a>
     <div class="index-container-header">
       <div class="header-container">
         <div class="header-text"><router-link to="/home">Home</router-link></div>
@@ -48,3 +48,27 @@ export default {
   }
 };
 </script>
+
+<style>
+h1 {
+  font-size: 24px;
+  font-weight: bold;
+  margin: 0 0 10px 0;
+}
+.b-dd-primary-override {
+  background-color: #337ab7;
+  border-color: #2e6da4;
+  border-top-right-radius: 0.3em !important;
+  border-bottom-right-radius: 0.3em !important;
+  margin-left: 5px !important;
+}
+.b-dd-primary-override:hover,
+.b-dd-primary-override:focus,
+.b-dd-primary-override:active {
+  background-color: #286090;
+  border-color: #204d74;
+}
+.b-dd-item-override {
+  color: #212529 !important;
+}
+</style>

@@ -1,41 +1,43 @@
 import axios from 'axios';
 import store from '@/store';
 
-export function devAuthLogIn(uid: string, password: string) {
+export function getUserStatus() {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .post(`${store.state.apiBaseUrl}/devauth/login`, {
-      uid: uid,
-      password: password
-    })
-    .then(response => response.data, () => null);
-}
-
-export function getCasLoginURL() {
-  return axios
-    .get(`${store.state.apiBaseUrl}/cas/login_url`)
+    .get(`${apiBaseUrl}/api/user/status`)
     .then(response => response.data, () => null);
 }
 
 export function getUserProfile() {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .get(`${store.state.apiBaseUrl}/api/profile/my`)
+    .get(`${apiBaseUrl}/api/profile/my?excludeCohorts=true`)
     .then(response => response.data, () => null);
 }
 
-export function getAuthorizedUserGroups() {
+export function getAuthorizedUserGroups(sortUsersBy: string) {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
+  let query = sortUsersBy ? `sortUsersBy=${sortUsersBy}` : '';
   return axios
-    .get(`${store.state.apiBaseUrl}/api/profiles/authorized_user_groups`)
+    .get(`${apiBaseUrl}/api/users/authorized_groups?${query}`)
     .then(response => response.data, () => null);
 }
 
 export function becomeUser(uid: string) {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .post(`${store.state.apiBaseUrl}/api/admin/become_user`, { uid: uid })
+    .post(`${apiBaseUrl}/api/auth/become_user`, { uid: uid })
     .then(response => response.data, () => null);
 }
 
-export function getCasLogoutURL() {
+export function setDemoMode(demoMode: boolean) {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .get(`${store.state.apiBaseUrl}/logout`)
-    .then(response => response.data, () => null);
+    .post(`${apiBaseUrl}/api/user/demo_mode`, {
+      demoMode: demoMode
+    })
+    .then(response => response.data, () => null)
+    .then(() => {
+      store.getters.user.inDemoMode = demoMode;
+    });
 }

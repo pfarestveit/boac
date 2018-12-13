@@ -1,14 +1,12 @@
 <script>
 import _ from 'lodash';
 import store from '@/store';
-import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
   name: 'Validator',
-  mixins: [UserMetadata],
   methods: {
     validateCohortName: cohort => {
-      const user = store.getters.user;
+      const user = store.getters['user/user'];
       const name = _.trim(cohort.name);
       const isReservedName = name =>
         user.isAsc &&
@@ -25,8 +23,8 @@ export default {
         msg = `Sorry, '${name}' is a reserved name. Please choose a different name.`;
       } else {
         let all = {
-          'curated group': _.get(user, 'myCuratedCohorts'),
-          cohort: _.get(user, 'myFilteredCohorts')
+          'curated group': store.getters['curated/myCuratedGroups'],
+          cohort: store.getters['cohort/myCohorts']
         };
         _.each(all, (cohorts, cohortType) => {
           _.each(cohorts, existing => {

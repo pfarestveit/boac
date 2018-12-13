@@ -1,24 +1,25 @@
 <template>
-  <div v-if="user">
+  <div>
     <SearchStudents/>
-    <Cohorts/>
-    <hr class="section-divider"/>
-    <CuratedGroups/>
-
-    <div class="sidebar-row-link">
-      <span class="sidebar-row-link-label">
-        <router-link id="sidebar-filtered-cohorts-all"
-                     to="/cohorts_all">Everyone's Cohorts</router-link>
-      </span>
+    <div v-if="myCohorts">
+      <Cohorts/>
+      <hr class="section-divider"/>
+      <CuratedGroups/>
+      <div class="sidebar-row-link">
+        <span class="sidebar-row-link-label">
+          <router-link id="sidebar-filtered-cohorts-all"
+                       to="/cohorts/all">Everyone's Cohorts</router-link>
+        </span>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import store from '@/store';
 import Cohorts from '@/components/sidebar/Cohorts.vue';
 import CuratedGroups from '@/components/sidebar/CuratedGroups.vue';
 import SearchStudents from '@/components/sidebar/SearchStudents.vue';
+import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
   name: 'Sidebar',
@@ -27,11 +28,7 @@ export default {
     CuratedGroups,
     SearchStudents
   },
-  computed: {
-    user() {
-      return store.getters.user;
-    }
-  }
+  mixins: [UserMetadata]
 };
 </script>
 

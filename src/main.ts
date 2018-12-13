@@ -1,11 +1,15 @@
+import filters from './filters';
 import 'bootstrap-vue/dist/bootstrap-vue.css';
 import 'bootstrap/dist/css/bootstrap.css';
+import _ from 'lodash';
 import App from './App.vue';
 import axios from 'axios';
 import BootstrapVue from 'bootstrap-vue';
 import router from './router';
 import store from './store';
 import Vue from 'vue';
+import VueAnalytics from 'vue-analytics';
+import VueHighcharts from 'vue-highcharts';
 
 // Allow cookies in Access-Control requests
 axios.defaults.withCredentials = true;
@@ -22,20 +26,18 @@ axios.interceptors.response.use(response => response, function(error) {
 Vue.config.productionTip = false;
 Vue.use(BootstrapVue);
 Vue.use(require('vue-lodash'));
-Vue.filter('pluralize', (noun: string, count: number, substitutions = {}) => {
-  return (
-    `${substitutions[count] || count} ` + (count !== 1 ? `${noun}s` : noun)
-  );
+Vue.use(VueHighcharts);
+Vue.use(VueAnalytics, {
+  id: store.dispatch('context/loadConfig').then(response => {
+    return _.get(response, 'googleAnalyticsId');
+  }),
+  checkDuplicatedScript: true
 });
-Vue.filter('round', function(value, decimals) {
-  return Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
-});
-Vue.filter(
-  'variablePrecisionNumber',
-  (value, minPrecision, maxPrecision) =>
-    `TODO: ${value}, ${minPrecision}, ${maxPrecision}`
-);
 
+// Filters
+_.each(filters, (filter, name) => Vue.filter(name, filter));
+
+// Emit, and listen for, events via hub
 Vue.prototype.$eventHub = new Vue();
 
 new Vue({

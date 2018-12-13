@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="myCohorts">
     <div class="sidebar-row-link sidebar-section-header">
       <div class="sidebar-header sidebar-row-link-label">
         <span class="sidebar-row-link-label-text">Cohorts</span>
@@ -9,18 +9,18 @@
           <router-link id="sidebar-filtered-cohort-create"
                        class="sidebar-create-link"
                        aria-label="Create cohort"
-                       to="/cohort_create"><i class="fas fa-plus"></i></router-link>
+                       to="/cohort/create"><i class="fas fa-plus"></i></router-link>
         </span>
       </div>
     </div>
     <div class="sidebar-row-link"
-         v-for="(cohort, index) in cohorts"
+         v-for="(cohort, index) in myCohorts"
          v-bind:key="cohort.id">
       <div class="sidebar-row-link-label">
         <router-link :id="'sidebar-filtered-cohort-' + index"
                      :aria-label="'Cohort ' + cohort.name + ' has ' + cohort.totalStudentCount + ' students'"
                      class="sidebar-row-link-label-text"
-                     :to="'/cohort_' + cohort.id">{{ cohort.name }}</router-link>
+                     :to="'/cohort/' + cohort.id">{{ cohort.name }}</router-link>
       </div>
       <div>
         <span :id="'sidebar-filtered-cohort-' + index + '-count'"
@@ -32,14 +32,11 @@
 </template>
 
 <script>
-import _ from 'lodash';
-import store from '@/store';
+import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
   name: 'Cohorts',
-  computed: {
-    cohorts: () => _.get(store.getters.user, 'myFilteredCohorts')
-  }
+  mixins: [UserMetadata]
 };
 </script>
 

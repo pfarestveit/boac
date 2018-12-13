@@ -1,8 +1,8 @@
 <template>
-  <div class="p3">
+  <div class="m-3">
     <Spinner/>
     <div v-if="!loading">
-      <h1 class="page-section-header">Everyone's Cohorts</h1>
+      <h1>Everyone's Cohorts</h1>
 
       <div v-if="!usersWithCohorts.length">
         <div>There are no saved cohorts</div>
@@ -11,7 +11,7 @@
         <h2 class="page-section-header-sub">{{owner.firstName}} {{owner.lastName}}</h2>
         <ul>
           <li v-for="cohort in owner.cohorts" v-bind:key="cohort.id">
-            <router-link :to="'/cohort_' + cohort.id">{{ cohort.name }}</router-link> ({{ cohort.totalStudentCount }})
+            <router-link :to="'/cohort/' + cohort.id">{{ cohort.name }}</router-link> ({{ cohort.totalStudentCount }})
           </li>
         </ul>
       </div>
@@ -20,7 +20,7 @@
 </template>
 
 <script>
-import { getUsersWithCohorts } from '@/api/cohorts';
+import { getUsersWithCohorts } from '@/api/cohort';
 import Spinner from '@/components/Spinner.vue';
 import Loading from '@/mixins/Loading.vue';
 
