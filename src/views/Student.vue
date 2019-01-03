@@ -4,12 +4,14 @@
     <div v-if="!loading">
       <div class="flex-row full-width" id="student-profile-container">
         <div class="student-profile-photo-container" id="student-profile-photo-container">
-          <StudentAvatar :student="student" size="large"/>
+          <StudentAvatar :student="student" size="large-padded"/>
         </div>
         <div class="student-profile-bio-container" id="student-profile-bio-container">
           <div class="student-bio-contact">
             <h1 class="student-section-header"
                 id="student-name-header"
+                ref="pageHeader"
+                tabindex="0"
                 :class="{'demo-mode-blur': user.inDemoMode}">
               {{student.name}}
             </h1>
@@ -66,7 +68,7 @@
           </div>
           <div id="student-bio-level">
             <h3 class="sr-only">Level</h3>
-            <div class="student-bio-header">{{student.sisProfile.level.description}}</div>
+            <div class="student-bio-header">{{get(student, 'sisProfile.level.description')}}</div>
           </div>
           <div class="student-bio-details-outer">
             <div class="student-bio-details" id="student-bio-terms-in-attendance" v-if="student.sisProfile.termsInAttendance">
@@ -82,9 +84,40 @@
             <div>
               <h3 class="student-bio-header">Curated Groups</h3>
             </div>
-            <div class="curated-cohort-checkbox">
-              <span class="faint-text">&quot;Pardon Our Progress&quot;</span>
+            <div class="student-curated-group-checkbox"
+                 v-for="(curatedGroup, curatedGroupIndex) in myCuratedGroups"
+                 :key="curatedGroupIndex"
+                 v-if="!isEmpty(myCuratedGroups)">
+              <input :id="'curated-group-checkbox-' + curatedGroupIndex"
+                     type="checkbox"
+                     class="student-curated-group-checkbox-input"
+                     v-model="curatedGroupMemberships"
+                     :value="curatedGroup.id"
+                     @change="updateCuratedGroupMembership(curatedGroup)"
+                     :aria-label="(curatedGroup.selected ? 'Remove from' : 'Add to') + ' curated group ' + curatedGroup.name"/>
+              <div class="student-curated-group-checkbox-label">
+                <a :href="'/cohort/curated/' + curatedGroup.id">{{curatedGroup.name}}</a>
+              </div>
             </div>
+            <div class="student-curated-group-checkbox" v-if="isEmpty(myCuratedGroups)">
+              <span class="faint-text">You have no curated groups.</span>
+            </div>
+            <div class="student-curated-group-create-new">
+              <button id="curated-group-create-btn"
+                      class="btn btn-link student-curated-group-create-new-btn"
+                      v-b-modal="'create-curated-group-modal'">
+                <i class="fas fa-plus"></i> Create New Curated Group
+              </button>
+            </div>
+            <b-modal id="create-curated-group-modal"
+                     v-model="showCreateCuratedGroupModal"
+                     hide-footer
+                     hide-header-close
+                     title="Name Your Curated Group">
+              <CreateCuratedGroupModal :sids="[]"
+                                       :create="modalCreateCuratedGroup"
+                                       :cancel="modalCreateCuratedGroupCancel"/>
+            </b-modal>
           </div>
         </div>
         <div class="student-profile-status-container" id="student-profile-status-container">
@@ -123,21 +156,21 @@
               </div>
               <div class="student-chart-outer" id="student-status-gpa-trends">
                 <div class="student-status-legend student-status-legend-heading">GPA Trends</div>
-                <StudentGpaChart v-if="student.termGpa.length > 1"
+                <StudentGpaChart v-if="get(student, 'termGpa.length') > 1"
                                  :student="student">
                 </StudentGpaChart>
                 <div class="student-status-legend student-status-legend-small"
-                     v-if="!student.termGpa.length">
+                     v-if="isEmpty(student.termGpa)">
                   GPA Not Yet Available
                 </div>
-                <div class="student-status-legend student-gpa-last-term-outer-right"
-                     v-if="student.termGpa.length">
+                <div class="student-status-legend student-status-legend-gpa"
+                     v-if="!isEmpty(student.termGpa)">
                   {{ student.termGpa[0].name }} GPA:
                   <strong :class="{'student-gpa-last-term': student.termGpa[0].gpa >= 2, 'student-gpa-alert': student.termGpa[0].gpa < 2}">
                     {{ student.termGpa[0].gpa | round(3) }}
                   </strong>
                 </div>
-                <button class="btn btn-link toggle-btn-link" @click="showTermGpa=!showTermGpa" v-if="student.termGpa.length">
+                <button class="btn btn-link toggle-btn-link" @click="showTermGpa=!showTermGpa" v-if="!isEmpty(student.termGpa)">
                   <i :class="{'fas fa-caret-right': !showTermGpa, 'fas fa-caret-down': showTermGpa}"></i>
                   <span v-if="!showTermGpa">Show Term GPA</span>
                   <span v-if="showTermGpa">Hide Term GPA</span>
@@ -159,7 +192,7 @@
                 </td>
                 <td v-if="term.gpa >= 2">{{ term.gpa | round(3) }}</td>
               </tr>
-              <tr v-if="!student.termGpa.length">
+              <tr v-if="isEmpty(student.termGpa)">
                 <td>No previous terms</td>
                 <td>--</td>
               </tr>
@@ -239,9 +272,7 @@
                               v-if="section.displayName">
                           <span v-if="sectionIndex === 0">(</span><!--
                           --><a :id="`term-${term.termId}-section-${section.ccn}`"
-                             data-ui-sref="course({termId: term.termId, sectionId: section.ccn, u: student.uid})"
-                             data-ui-sref-opts="{reload: true}"
-                             @click="$event.stopPropagation()"
+                             :href="`/course/${term.termId}/${section.ccn}?u=${student.uid}`"
                              v-if="section.isViewableOnCoursePage">{{section.displayName}}</a><!--
                           --><span v-if="!section.isViewableOnCoursePage">
                                {{section.displayName}}</span><!--
@@ -255,10 +286,10 @@
                   <div class="student-course-name">{{course.title}}</div>
                 </div>
                 <div class="student-course-heading-end">
-                  <div class="student-course-heading-units">
+                  <div class="student-course-heading-units" v-if="'units' in course">
                     {{ 'Unit' | pluralize(course.units) }}
                   </div>
-                  <div class="student-course-heading-grades">
+                  <div class="student-course-heading-grades" v-if="'grade' in course || 'gradingBasis' in course">
                     <div class="student-course-heading-grade">
                       Final:
                       <span class="student-course-grade"
@@ -326,10 +357,9 @@
                         </span>
                       </td>
                       <td class="profile-boxplot-container">
-                        <div aria-hidden="true"
-                             v-if="canvasSite.analytics.currentScore.boxPlottable">
-                          &quot;Pardon Our Progress&quot;
-                        </div>
+                        <StudentBoxplot :dataset="canvasSite.analytics"
+                                        :numericId="canvasSite.canvasCourseId.toString()"
+                                        v-if="canvasSite.analytics.currentScore.boxPlottable"></StudentBoxplot>
                         <div class="sr-only" v-if="canvasSite.analytics.currentScore.boxPlottable">
                           <div>User score: {{canvasSite.analytics.currentScore.student.raw}}</div>
                           <div>Maximum: {{canvasSite.analytics.currentScore.courseDeciles[10]}}</div>
@@ -371,7 +401,7 @@
                     </tr>
                   </table>
                 </div>
-                <div class="student-bcourses-wrapper student-course-notation" v-if="!course.canvasSites || !course.canvasSites.length">
+                <div class="student-bcourses-wrapper student-course-notation" v-if="isEmpty(course.canvasSites)">
                   No additional information
                 </div>
               </b-collapse>
@@ -386,7 +416,7 @@
             </div>
             <div class="student-course student-course-dropped"
                  is-open="true"
-                 v-if="term.droppedSections && term.droppedSections.length">
+                 v-if="!isEmpty(term.droppedSections)">
               <div v-for="(droppedSection, index) in term.droppedSections" :key="index">
                 <div class="student-course-dropped-title">
                   {{droppedSection.displayName}} - {{droppedSection.component}} {{droppedSection.sectionNumber}}
@@ -398,14 +428,14 @@
           </div>
         </div>
 
-        <div v-if="student.enrollmentTerms.length > 1" class="toggle-previous-semesters-wrapper">
+        <div v-if="get(student, 'enrollmentTerms.length') > 1" class="toggle-previous-semesters-wrapper">
           <button class="btn btn-link toggle-btn-link" @click="showAllTerms=!showAllTerms">
             <i :class="{'fas fa-caret-right': !showAllTerms, 'fas fa-caret-up': showAllTerms}"></i>
             <span v-if="!showAllTerms">View Previous Semesters</span>
             <span v-if="showAllTerms">Hide Previous Semesters</span>
           </button>
         </div>
-        <div v-if="!student.enrollmentTerms.length">
+        <div v-if="isEmpty(student.enrollmentTerms)">
           No courses
           <div v-if="student.sisProfile.withdrawalCancel">
             <span class="red-flag-small">
@@ -420,25 +450,43 @@
 
 <script>
 import _ from 'lodash';
-import { getStudentDetails } from '@/api/student';
-import AppConfig from '@/mixins/AppConfig';
+import Context from '@/mixins/Context';
+import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal.vue';
 import Loading from '@/mixins/Loading.vue';
 import Spinner from '@/components/Spinner.vue';
 import StudentAlerts from '@/components/student/StudentAlerts';
 import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
+import StudentBoxplot from '@/components/student/StudentBoxplot';
 import StudentGpaChart from '@/components/student/StudentGpaChart';
 import StudentMetadata from '@/mixins/StudentMetadata';
 import StudentUnitsChart from '@/components/student/StudentUnitsChart';
 import UserMetadata from '@/mixins/UserMetadata';
+import Util from '@/mixins/Util';
+import {
+  addStudents,
+  createCuratedGroup,
+  getMyCuratedGroupIdsPerStudentId,
+  removeFromCuratedGroup
+} from '@/api/curated';
+import { getStudentDetails } from '@/api/student';
 
 export default {
   name: 'Student',
-  mixins: [AppConfig, Loading, StudentAnalytics, StudentMetadata, UserMetadata],
+  mixins: [
+    Context,
+    Loading,
+    StudentAnalytics,
+    StudentMetadata,
+    UserMetadata,
+    Util
+  ],
   components: {
+    CreateCuratedGroupModal,
     Spinner,
     StudentAlerts,
     StudentAvatar,
+    StudentBoxplot,
     StudentGpaChart,
     StudentUnitsChart
   },
@@ -447,7 +495,9 @@ export default {
     this.loadStudent(uid);
   },
   data: () => ({
+    curatedGroupMemberships: [],
     showAllTerms: false,
+    showCreateCuratedGroupModal: false,
     showTermGpa: false,
     student: {
       termGpa: []
@@ -464,8 +514,20 @@ export default {
         );
         this.setCurrentEnrollmentTerm();
         _.each(this.student.enrollmentTerms, this.parseEnrollmentTerm);
+
+        getMyCuratedGroupIdsPerStudentId(this.student.sid).then(data => {
+          this.curatedGroupMemberships = data;
+        });
+
         this.loaded();
       });
+    },
+    modalCreateCuratedGroup(name) {
+      this.showCreateCuratedGroupModal = false;
+      createCuratedGroup(name, []);
+    },
+    modalCreateCuratedGroupCancel() {
+      this.showCreateCuratedGroupModal = false;
     },
     parseEnrollmentTerm(term) {
       // Merge in unmatched canvas sites
@@ -509,6 +571,13 @@ export default {
         );
       }
       this.showUnitTotals = this.cumulativeUnits || this.currentEnrolledUnits;
+    },
+    updateCuratedGroupMembership(group) {
+      if (_.includes(this.curatedGroupMemberships, group.id)) {
+        addStudents(group, [this.student.sid]);
+      } else {
+        removeFromCuratedGroup(group.id, this.student.sid);
+      }
     }
   }
 };
@@ -589,7 +658,7 @@ export default {
 .student-chart-outer {
   border-left: 1px solid #999;
   flex: 1;
-  margin-left: 10px;
+  margin: 0 10px;
   padding-left: 10px;
 }
 .student-chart-units-container {
@@ -687,6 +756,32 @@ export default {
   font-weight: 400;
   white-space: nowrap;
 }
+.student-curated-group-checkbox {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  padding: 1px;
+}
+.student-curated-group-checkbox-input {
+  flex: 0 0 12px;
+}
+.student-curated-group-checkbox-label {
+  margin-left: 5px;
+}
+.student-curated-group-checkbox-primary-label {
+  font-weight: bold;
+}
+.student-curated-group-create-new {
+  border-top: solid 1px #ccc;
+  font-size: 11px;
+  margin-top: 5px;
+  padding: 3px 1px 1px 1px;
+}
+.student-curated-group-create-new-btn {
+  border: 0;
+  font-size: 11px;
+  padding: 0;
+}
 .student-curated-groups-box {
   background: #fff;
   border: solid 1px #999;
@@ -702,16 +797,12 @@ export default {
 }
 .student-gpa-last-term {
   color: #000;
+  font-weight: 700;
 }
 .student-gpa-last-term-outer {
   font-size: 12px;
   padding-left: 5px;
   text-align: left;
-}
-.student-gpa-last-term-outer-right {
-  font-size: 12px;
-  padding-left: 5px;
-  text-align: right;
 }
 .student-gpa-term-alert {
   color: #d0021b;
@@ -739,10 +830,8 @@ export default {
 }
 .student-profile-status-container {
   background: #8bbdda;
-  min-width: 330px;
-  max-width: 400px;
-  flex-basis: auto;
-  flex-grow: 0.25;
+  min-width: 340px;
+  flex: 3;
 }
 .student-progress-header {
   font-size: 16px;
@@ -778,6 +867,11 @@ export default {
   font-size: 13px;
   font-weight: 300;
   text-transform: uppercase;
+}
+.student-status-legend-gpa {
+  font-size: 12px;
+  padding-left: 5px;
+  text-align: right;
 }
 .student-status-legend-heading {
   color: #000;

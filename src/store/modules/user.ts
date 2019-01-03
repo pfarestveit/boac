@@ -29,6 +29,9 @@ const mutations = {
       state.user = user;
     }
   },
+  setDemoMode: (state: any, demoMode: boolean) => {
+    state.user.demoMode = demoMode;
+  },
   userAuthenticated: (state: any) => {
     state.isUserAuthenticated = true;
   }
@@ -38,18 +41,24 @@ const actions = {
   logout: ({ commit }) => {
     commit('logout');
   },
+  setDemoMode: ({ commit }, demoMode) => {
+    commit('setDemoMode', demoMode);
+  },
   userAuthenticated: ({ commit }) => {
     commit('userAuthenticated');
   },
   loadUserStatus: ({ commit, state }) => {
     return new Promise(resolve => {
       if (_.isNil(state.isUserAuthenticated)) {
-        getUserStatus().then(data => {
-          if (data.isAuthenticated) {
-            commit('userAuthenticated');
-          }
-          resolve(data.isUserAuthenticated);
-        });
+        getUserStatus()
+          .then(data => {
+            if (data.isAuthenticated) {
+              commit('userAuthenticated');
+            }
+          })
+          .then(() => {
+            resolve(state.isUserAuthenticated);
+          });
       } else {
         resolve(state.isUserAuthenticated);
       }

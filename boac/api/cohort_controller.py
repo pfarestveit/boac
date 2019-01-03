@@ -23,12 +23,14 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from copy import deepcopy
+
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
 from boac.api.util import get_my_cohorts, is_unauthorized_search, strip_analytics
-from boac.lib import util
 from boac.lib.berkeley import can_view_cohort
 from boac.lib.cohort_filter_definition import get_cohort_filter_definitions
 from boac.lib.http import tolerant_jsonify
+from boac.lib.util import get as get_param, to_bool_or_none as to_bool
 from boac.merged import calnet
 from boac.merged.student import get_student_query_scope, get_summary_student_profiles
 from boac.models.cohort_filter import CohortFilter
@@ -42,7 +44,7 @@ def my_cohorts():
     return tolerant_jsonify(get_my_cohorts())
 
 
-@app.route('/api/filter_cohort/definitions')
+@app.route('/api/cohort/filter_definitions')
 @login_required
 def get_filter_definitions():
     categories = get_cohort_filter_definitions(get_student_query_scope())
@@ -54,7 +56,7 @@ def get_filter_definitions():
     return tolerant_jsonify(categories)
 
 
-@app.route('/api/filtered_cohorts/all')
+@app.route('/api/cohorts/all')
 @login_required
 def all_cohorts():
     cohorts_per_uid = {}
@@ -76,7 +78,7 @@ def all_cohorts():
     return tolerant_jsonify(owners)
 
 
-@app.route('/api/filtered_cohort/<cohort_id>/students_with_alerts')
+@app.route('/api/cohort/<cohort_id>/students_with_alerts')
 @login_required
 def students_with_alerts(cohort_id):
     cohort = CohortFilter.find_by_id(cohort_id)
@@ -94,16 +96,16 @@ def students_with_alerts(cohort_id):
     return tolerant_jsonify(students)
 
 
-@app.route('/api/filtered_cohort/<cohort_id>')
+@app.route('/api/cohort/<cohort_id>')
 @login_required
 def get_cohort(cohort_id):
     if is_unauthorized_search(request.args):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
-    include_students = util.to_bool_or_none(util.get(request.args, 'includeStudents'))
+    include_students = to_bool(get_param(request.args, 'includeStudents'))
     include_students = True if include_students is None else include_students
-    order_by = util.get(request.args, 'orderBy', None)
-    offset = util.get(request.args, 'offset', 0)
-    limit = util.get(request.args, 'limit', 50)
+    order_by = get_param(request.args, 'orderBy', None)
+    offset = get_param(request.args, 'offset', 0)
+    limit = get_param(request.args, 'limit', 50)
     cohort = CohortFilter.find_by_id(int(cohort_id))
     if cohort and can_view_cohort(current_user, cohort):
         cohort = decorate_cohort(
@@ -120,38 +122,38 @@ def get_cohort(cohort_id):
         raise ResourceNotFoundError(f'No cohort found with identifier: {cohort_id}')
 
 
-@app.route('/api/filtered_cohort/create', methods=['POST'])
+@app.route('/api/cohort/create', methods=['POST'])
 @login_required
 def create_cohort():
     params = request.get_json()
     if is_unauthorized_search(params):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
-    name = util.get(params, 'name', None)
+    name = get_param(params, 'name', None)
     if not name:
         raise BadRequestError('Cohort creation requires \'name\'')
     cohort = CohortFilter.create(
-        advisor_ldap_uids=util.get(params, 'advisorLdapUids'),
-        coe_prep_statuses=util.get(params, 'coePrepStatuses'),
-        coe_probation=util.get(params, 'coeProbation'),
-        ethnicities=util.get(params, 'ethnicities'),
-        genders=util.get(params, 'genders'),
-        gpa_ranges=util.get(params, 'gpaRanges'),
-        group_codes=util.get(params, 'groupCodes'),
-        in_intensive_cohort=util.to_bool_or_none(params.get('inIntensiveCohort')),
-        is_inactive_asc=util.to_bool_or_none(params.get('isInactiveAsc')),
-        is_inactive_coe=util.to_bool_or_none(params.get('isInactiveCoe')),
+        advisor_ldap_uids=get_param(params, 'advisorLdapUids'),
+        coe_prep_statuses=get_param(params, 'coePrepStatuses'),
+        coe_probation=get_param(params, 'coeProbation'),
+        ethnicities=get_param(params, 'ethnicities'),
+        genders=get_param(params, 'genders'),
+        gpa_ranges=get_param(params, 'gpaRanges'),
+        group_codes=get_param(params, 'groupCodes'),
+        in_intensive_cohort=to_bool(params.get('inIntensiveCohort')),
+        is_inactive_asc=to_bool(params.get('isInactiveAsc')),
+        is_inactive_coe=to_bool(params.get('isInactiveCoe')),
         name=name,
-        last_name_range=util.get(params, 'lastNameRange'),
-        levels=util.get(params, 'levels'),
-        majors=util.get(params, 'majors'),
+        last_name_range=get_param(params, 'lastNameRange'),
+        levels=get_param(params, 'levels'),
+        majors=get_param(params, 'majors'),
         uid=current_user.get_id(),
-        underrepresented=util.get(params, 'underrepresented'),
-        unit_ranges=util.get(params, 'unitRanges'),
+        underrepresented=get_param(params, 'underrepresented'),
+        unit_ranges=get_param(params, 'unitRanges'),
     )
     return tolerant_jsonify(decorate_cohort(cohort))
 
 
-@app.route('/api/filtered_cohort/update', methods=['POST'])
+@app.route('/api/cohort/update', methods=['POST'])
 @login_required
 def update_cohort():
     params = request.get_json()
@@ -176,7 +178,7 @@ def update_cohort():
     return tolerant_jsonify(decorate_cohort(updated, include_students=False))
 
 
-@app.route('/api/filtered_cohort/delete/<cohort_id>', methods=['DELETE'])
+@app.route('/api/cohort/delete/<cohort_id>', methods=['DELETE'])
 @login_required
 def delete_cohort(cohort_id):
     if cohort_id.isdigit():
@@ -192,8 +194,45 @@ def delete_cohort(cohort_id):
         raise ForbiddenRequestError(f'Programmatic deletion of canned cohorts is not allowed (id={cohort_id})')
 
 
+@app.route('/api/cohort/translate_filter_criteria', methods=['POST'])
+@login_required
+def translate_filter_criteria():
+    rows = []
+    criteria = get_param(request.get_json(), 'filterCriteria')
+    if criteria:
+        for definitions in get_cohort_filter_definitions(get_student_query_scope()):
+            for definition in definitions:
+                selected = criteria.get(definition['key'])
+                if selected is not None:
+                    if definition['type'] == 'array':
+                        for selection in selected:
+                            rows.append(_translate_filter_row(definition, selection))
+                    else:
+                        rows.append(_translate_filter_row(definition, selected))
+    return tolerant_jsonify(rows)
+
+
 def decorate_cohort(cohort, **kwargs):
     cohort_json = cohort.to_api_json(**kwargs)
     uid = current_user.get_id()
     cohort_json.update({'isOwnedByCurrentUser': (uid in [o.uid for o in cohort.owners])})
     return cohort_json
+
+
+def _translate_filter_row(definition, selection=None):
+    clone = deepcopy(definition)
+    row = {k: clone.get(k) for k in ['key', 'name', 'options', 'subcategoryHeader', 'type']}
+    if definition['type'] == 'array':
+        option = next((o for o in row.get('options', []) if o['value'] == selection), None)
+        if option:
+            row['subcategoryHeader'] = selection
+            option['selected'] = True
+    else:
+        row['value'] = selection
+        if definition['type'] == 'range':
+            h = row['subcategoryHeader']
+            v = row['value']
+            row['subcategoryHeader'] = h[0] + ' ' + v[0] + ' ' + h[1] + ' ' + v[1]
+        else:
+            del row['subcategoryHeader']
+    return row

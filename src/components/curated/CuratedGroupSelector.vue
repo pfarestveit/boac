@@ -16,6 +16,7 @@
     </div>
     <div>
       <b-dropdown id="curated-group-dropdown-select"
+                  class="curated-group-dropdown-select"
                   variant="primary"
                   toggle-class="b-dd-primary-override"
                   size="sm"
@@ -78,6 +79,8 @@
 
 <script>
 import _ from 'lodash';
+
+import store from '@/store';
 import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal.vue';
 import UserMetadata from '@/mixins/UserMetadata';
 import { addStudents, createCuratedGroup } from '@/api/curated';
@@ -93,6 +96,7 @@ export default {
   },
   data: () => ({
     sids: [],
+    curatedGroups: store.getters['curated/myCuratedGroups'],
     isSelectAllChecked: false,
     indeterminate: false,
     isSaving: false,
@@ -164,6 +168,9 @@ export default {
 
 
 <style scoped>
+.curated-group-dropdown-select {
+  margin: 0 10px;
+}
 label {
   font-size: 14px;
   margin-bottom: 0;

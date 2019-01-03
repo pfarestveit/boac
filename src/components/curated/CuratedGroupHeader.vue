@@ -1,30 +1,30 @@
 <template>
   <div class="cohort-header-container">
     <div v-if="!renameMode.on">
-      <h1 class="page-section-header">
+      <h1 tabindex="0" ref="pageHeader" class="page-section-header">
         <span>{{ curatedGroup.name || 'Curated Group' }}</span>
         <span class="faint-text"> (<span>{{ 'student' | pluralize(curatedGroup.studentCount, {1: 'One'})}}</span>)</span>
       </h1>
     </div>
     <div class="cohort-rename-container" v-if="renameMode.on">
       <div>
-        <form name="renameCohortForm" v-on:submit="rename">
+        <form name="renameCohortForm" @submit="rename">
           <input aria-required="true"
-                 aria-label="Input cohort name, 255 characters or fewer"
-                 :aria-invalid="!renameMode.input"
-                 class="form-control"
-                 @input="renameMode.hideError = true"
-                 v-model="renameMode.input"
-                 focus-on="renameMode.on"
-                 id="rename-cohort-input"
-                 maxlength="255"
-                 name="name"
-                 required
-                 type="text"/>
+                aria-label="Input cohort name, 255 characters or fewer"
+                :aria-invalid="!renameMode.input"
+                class="form-control"
+                @input="renameMode.hideError = true"
+                v-model="renameMode.input"
+                ref="input"
+                id="rename-cohort-input"
+                maxlength="255"
+                name="name"
+                required
+                type="text"/>
         </form>
       </div>
       <div class="has-error"
-           v-if="renameMode.error && !renameMode.hideError">
+          v-if="renameMode.error && !renameMode.hideError">
         {{ renameMode.error }}
       </div>
       <div class="faint-text">255 character limit <span v-if="renameMode.input.length">({{255 - renameMode.input.length}} left)</span></div>
@@ -91,12 +91,13 @@
 
 <script>
 import { deleteCuratedGroup, renameCuratedGroup } from '@/api/curated';
+import Loading from '@/mixins/Loading.vue';
 import Validator from '@/mixins/Validator.vue';
 import router from '@/router';
 
 export default {
   name: 'CuratedGroupHeader',
-  mixins: [Validator],
+  mixins: [Loading, Validator],
   props: ['curatedGroup'],
   data: () => ({
     isModalOpen: false,
@@ -107,6 +108,18 @@ export default {
       input: undefined
     }
   }),
+  watch: {
+    'renameMode.on': function() {
+      if (this.renameMode.on) {
+        this.$nextTick(() => {
+          this.$refs.input.focus();
+        });
+      }
+    }
+  },
+  mounted() {
+    this.loaded();
+  },
   methods: {
     enterRenameMode: function() {
       this.renameMode.input = this.curatedGroup.name;

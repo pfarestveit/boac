@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { getAppConfig } from '@/api/config';
+import { getConfig } from '@/api/config';
 
 const state = {
   legacyRedirectsEnabled:
@@ -30,6 +30,9 @@ const getters = {
   },
   supportEmailAddress: (state: any): string => {
     return _.get(state.config, 'supportEmailAddress');
+  },
+  vuePaths: (state: any): string[] => {
+    return _.get(state.config, 'vuePaths');
   }
 };
 
@@ -70,12 +73,15 @@ const actions = {
       if (state.config) {
         resolve(state.config);
       } else {
-        getAppConfig().then(config => {
+        getConfig().then(config => {
           commit('storeConfig', config);
           resolve(config);
         });
       }
     });
+  },
+  reportError: ({ commit }, error) => {
+    commit('reportError', error);
   }
 };
 

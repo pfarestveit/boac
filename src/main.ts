@@ -5,6 +5,8 @@ import _ from 'lodash';
 import App from './App.vue';
 import axios from 'axios';
 import BootstrapVue from 'bootstrap-vue';
+import Highcharts from 'highcharts';
+import HighchartsMore from 'highcharts/highcharts-more';
 import router from './router';
 import store from './store';
 import Vue from 'vue';
@@ -14,7 +16,7 @@ import VueHighcharts from 'vue-highcharts';
 // Allow cookies in Access-Control requests
 axios.defaults.withCredentials = true;
 axios.interceptors.response.use(response => response, function(error) {
-  store.commit('reportError', {
+  store.dispatch('context/reportError', {
     message: error.message,
     text: error.response.text,
     status: error.response.status,
@@ -26,12 +28,18 @@ axios.interceptors.response.use(response => response, function(error) {
 Vue.config.productionTip = false;
 Vue.use(BootstrapVue);
 Vue.use(require('vue-lodash'));
-Vue.use(VueHighcharts);
-Vue.use(VueAnalytics, {
-  id: store.dispatch('context/loadConfig').then(response => {
-    return _.get(response, 'googleAnalyticsId');
-  }),
-  checkDuplicatedScript: true
+
+HighchartsMore(Highcharts);
+Vue.use(VueHighcharts, { Highcharts });
+
+store.dispatch('context/loadConfig').then(response => {
+  let googleAnalyticsId = _.get(response, 'googleAnalyticsId');
+  if (googleAnalyticsId) {
+    Vue.use(VueAnalytics, {
+      id: googleAnalyticsId,
+      checkDuplicatedScript: true
+    });
+  }
 });
 
 // Filters

@@ -1,7 +1,11 @@
 <template>
-  <div :class="{'student-avatar-large-container': size === 'large'}">
+  <div :class="{'student-avatar-large-container': size === 'large-padded'}">
     <img class="avatar"
-         :class="{'student-avatar-large': size === 'large', 'student-avatar-small': size === 'small', 'img-blur': user.inDemoMode}"
+         :class="{
+           'student-avatar-large': ['large', 'large-padded'].includes(size),
+           'student-avatar-small': size === 'small',
+           'img-blur': user.inDemoMode
+         }"
          :aria-label="'Photo of ' + student.firstName + ' ' + student.lastName"
          tabindex="0"
          :src="apiBaseUrl + '/api/student/' + student.uid + '/photo'"
@@ -17,12 +21,12 @@
 </template>
 
 <script>
-import AppConfig from '@/mixins/AppConfig';
+import Context from '@/mixins/Context';
 import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
   name: 'StudentAvatar',
-  mixins: [AppConfig, UserMetadata],
+  mixins: [Context, UserMetadata],
   props: {
     size: String,
     student: Object,
