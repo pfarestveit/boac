@@ -46,6 +46,7 @@ def register_routes(app):
     import boac.api.config_controller
     import boac.api.course_controller
     import boac.api.curated_group_controller
+    import boac.api.menu_controller
     import boac.api.student_controller
     import boac.api.status_controller
     import boac.api.user_controller
@@ -79,7 +80,7 @@ def register_routes(app):
             response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
             response.headers['Access-Control-Allow-Origin'] = app.config['VUE_LOCALHOST_BASE_URL']
             response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Methods'] = ['POST', 'GET', 'OPTIONS', 'DELETE']
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
         if request.full_path.startswith('/api'):
             log_message = ' '.join([
                 request.remote_addr,

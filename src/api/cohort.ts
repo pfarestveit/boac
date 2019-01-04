@@ -22,11 +22,30 @@ export function getUsersWithCohorts() {
     .then(response => response.data, () => null);
 }
 
-export function translateFilterCriteria(filterCriteria: any) {
+export function deleteCohort(id) {
   let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .post(`${apiBaseUrl}/api/cohort/translate_filter_criteria`, {
-      filterCriteria: filterCriteria
+    .delete(`${apiBaseUrl}/api/cohort/delete/${id}`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    .then(() => store.commit('cohort/deleteCohort', id), () => null);
+}
+
+export function saveCohort(
+  id: number,
+  name: string,
+  filterCriteria?: any,
+  studentCount?: number
+) {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
+  return axios
+    .post(`${apiBaseUrl}/api/cohort/update`, {
+      id,
+      name,
+      filterCriteria,
+      studentCount
     })
     .then(response => response.data, () => null);
 }
