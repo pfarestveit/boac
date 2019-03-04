@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -34,6 +34,15 @@ import pytest
 
 @pytest.mark.usefixtures('db_session')
 class TestDataLoch:
+
+    def test_get_student_profiles(self, app):
+        import json
+        student_profiles = data_loch.get_student_profiles(['11667051'])
+
+        assert len(student_profiles) == 1
+
+        student_profile = json.loads(student_profiles[0]['profile'])
+        assert student_profile['sisProfile']['academicCareer'] == 'UGRD'
 
     def test_sis_enrollments(self, app):
         enrollments = data_loch.get_sis_enrollments(61889, 2178)

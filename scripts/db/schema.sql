@@ -1,5 +1,5 @@
 /**
- * Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+ * Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
  *
  * Permission to use, copy, modify, and distribute this software and its documentation
  * for educational, research, and not-for-profit purposes, without fee and without a
@@ -142,6 +142,47 @@ ALTER TABLE ONLY cohort_filters
 
 --
 
+CREATE TABLE notes_read (
+    note_id character varying(255) NOT NULL,
+    viewer_id integer NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+ALTER TABLE notes_read OWNER TO boac;
+ALTER TABLE ONLY notes_read
+    ADD CONSTRAINT notes_read_pkey PRIMARY KEY (viewer_id, note_id);
+CREATE INDEX notes_read_note_id_idx ON notes_read USING btree (note_id);
+CREATE INDEX notes_read_viewer_id_idx ON notes_read USING btree (viewer_id);
+
+--
+
+CREATE TABLE notes (
+    id INTEGER NOT NULL,
+    author_uid VARCHAR(255) NOT NULL,
+    author_name VARCHAR(255) NOT NULL,
+    author_role VARCHAR(255) NOT NULL,
+    author_dept_codes VARCHAR[] NOT NULL,
+    sid VARCHAR(80) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    body text NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+ALTER TABLE notes OWNER TO boac;
+CREATE SEQUENCE notes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE notes_id_seq OWNER TO boac;
+ALTER SEQUENCE notes_id_seq OWNED BY notes.id;
+ALTER TABLE ONLY notes ALTER COLUMN id SET DEFAULT nextval('notes_id_seq'::regclass);
+ALTER TABLE ONLY notes ADD CONSTRAINT notes_pkey PRIMARY KEY (id);
+CREATE INDEX notes_author_uid_idx ON notes USING btree (author_uid);
+CREATE INDEX notes_sid_idx ON notes USING btree (sid);
+
+--
+
 CREATE TABLE student_groups (
   id INTEGER NOT NULL,
   owner_id INTEGER NOT NULL,
@@ -269,3 +310,9 @@ ALTER TABLE ONLY cohort_filter_owners
     ADD CONSTRAINT cohort_filter_owners_cohort_filter_id_fkey FOREIGN KEY (cohort_filter_id) REFERENCES cohort_filters(id) ON DELETE CASCADE;
 ALTER TABLE ONLY cohort_filter_owners
     ADD CONSTRAINT cohort_filter_owners_user_id_fkey FOREIGN KEY (user_id) REFERENCES authorized_users(id) ON DELETE CASCADE;
+
+--
+
+
+ALTER TABLE ONLY notes_read
+    ADD CONSTRAINT notes_read_viewer_id_fkey FOREIGN KEY (viewer_id) REFERENCES authorized_users(id) ON DELETE CASCADE;

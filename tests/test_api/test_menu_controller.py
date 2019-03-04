@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -44,86 +44,6 @@ def asc_advisor_session(fake_auth):
 @pytest.fixture()
 def coe_advisor_session(fake_auth):
     fake_auth.login(coe_advisor_uid)
-
-
-class TestDeprecatedMenu:
-    """Menu API."""
-
-    def test_coe_filter_definitions(self, client, coe_advisor_session):
-        """Gets filters available to COE users."""
-        response = client.get('/api/menu/cohort/deprecated_filter_definitions')
-        assert response.status_code == 200
-        definitions = response.json
-        assert len(definitions) == 4
-        assert len(definitions[0]) == 1
-        assert len(definitions[1]) == 3
-        assert len(definitions[2]) == 3
-        assert len(definitions[3]) == 5
-
-    def test_asc_filter_definitions(self, client, asc_advisor_session):
-        """Gets filters available to ASC users."""
-        response = client.get('/api/menu/cohort/deprecated_filter_definitions')
-        assert response.status_code == 200
-        definitions = response.json
-        assert len(definitions) == 4
-        assert definitions[2][0]['key'] == 'isInactiveAsc'
-        assert definitions[2][1]['key'] == 'inIntensiveCohort'
-        assert definitions[2][2]['key'] == 'groupCodes'
-
-    def test_admin_filter_definitions(self, client, admin_session):
-        """Gets filters available to Admin users."""
-        response = client.get('/api/menu/cohort/deprecated_filter_definitions')
-        assert response.status_code == 200
-        definitions = response.json
-        assert len(definitions) == 5
-        # General
-        assert definitions[0][0]['key'] == 'gpaRanges'
-        assert len(definitions[0][0]['options']) == 5
-
-        # Levels
-        assert definitions[1][0]['key'] == 'levels'
-        assert len(definitions[1][0]['options']) == 4
-        # Units
-        assert definitions[1][1]['key'] == 'unitRanges'
-        assert len(definitions[1][1]['options']) == 5
-        # Majors
-        assert definitions[1][2]['key'] == 'majors'
-        assert len(definitions[1][2]['options']) == 8
-
-        # Ethnicity
-        assert definitions[2][0]['key'] == 'ethnicities'
-        assert len(definitions[2][0]['options']) == 3
-        # Gender
-        assert definitions[2][1]['key'] == 'genders'
-        assert len(definitions[2][1]['options']) == 2
-        # Underrepresented Minority
-        assert definitions[2][2]['key'] == 'underrepresented'
-        assert len(definitions[2][2]['options']) == 2
-
-        # ASC Inactive
-        assert definitions[3][0]['key'] == 'isInactiveAsc'
-        assert len(definitions[3][0]['options']) == 2
-        assert definitions[3][0]['defaultValue'] is None
-        # ASC Intensive
-        assert definitions[3][1]['key'] == 'inIntensiveCohort'
-        assert len(definitions[3][1]['options']) == 2
-        # Teams
-        assert definitions[3][2]['key'] == 'groupCodes'
-        assert len(definitions[3][2]['options']) == 7
-
-        # COE inactive
-        assert definitions[4][0]['key'] == 'isInactiveCoe'
-        # COE PREP
-        assert definitions[4][1]['key'] == 'coePrepStatuses'
-        assert len(definitions[4][1]['options']) == 4
-        # COE-provided probation status
-        assert definitions[4][2]['key'] == 'coeProbation'
-        assert definitions[4][2]['defaultValue'] is None
-        # Last Name
-        assert definitions[4][3]['key'] == 'lastNameRange'
-        # COE advisors
-        assert definitions[4][4]['key'] == 'advisorLdapUids'
-        assert len(definitions[4][4]['options']) == 3
 
 
 class TestAllCohortFilterOptions:
@@ -197,7 +117,13 @@ class TestAllCohortFilterOptions:
                 'existingFilters':
                     [
                         self._level_option('Freshman'),
-                        self._level_option('Senior'),
+                        self._level_option('Sophomore'),
+                        self._level_option('Junior'),
+                        {
+                            'key': 'advisorLdapUids',
+                            'type': 'array',
+                            'value': '1022796',
+                        },
                     ],
             },
         )
@@ -207,18 +133,19 @@ class TestAllCohortFilterOptions:
         assertion_count = 0
         for category in filter_categories:
             for menu in category:
+                # All top-level category menus are enabled
                 assert 'disabled' not in menu
                 if menu['key'] == 'levels':
                     for option in menu['options']:
                         disabled = option.get('disabled')
-                        if option['value'] in ['Freshman', 'Senior']:
+                        if option['value'] in ['Freshman', 'Sophomore', 'Junior']:
                             assert disabled is True
                             assertion_count += 1
                         else:
                             assert disabled is None
                 else:
                     assert 'disabled' not in menu
-        assert assertion_count == 2
+        assert assertion_count == 3
 
     def test_all_options_in_category_disabled(self, client, coe_advisor_session):
         """Disable the category if all its options are in existing-filters."""
@@ -243,6 +170,30 @@ class TestAllCohortFilterOptions:
                         assert option.get('disabled') is True
                 else:
                     assert 'disabled' not in menu
+
+    def test_disable_last_name_range(self, client, coe_advisor_session):
+        """Disable the category if all its options are in existing-filters."""
+        response = self._post(
+            client,
+            {
+                'existingFilters':
+                    [
+                        {
+                            'key': 'lastNameRange',
+                            'type': 'range',
+                            'value': ['A', 'B'],
+                        },
+                    ],
+            },
+        )
+        assert response.status_code == 200
+        for category in response.json:
+            for menu in category:
+                is_disabled = menu.get('disabled')
+                if menu['key'] == 'lastNameRange':
+                    assert is_disabled is True
+                else:
+                    assert is_disabled is None
 
 
 class TestCohortFilterTranslate:

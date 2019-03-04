@@ -1,0 +1,98 @@
+<template>
+  <div class="d-flex flex-wrap h-100 p-2">
+    <div
+      id="cumulative-units"
+      class="cumulative-units text-center mt-4">
+      <div v-if="cumulativeUnits" class="data-number">{{ cumulativeUnits }}</div>
+      <div v-if="!cumulativeUnits" class="data-number">--<span class="sr-only">No data</span></div>
+      <div class="cumulative-units-label text-uppercase">Units Completed</div>
+    </div>
+    <div id="units-chart" class="units-chart border-left">
+      <div class="ml-3 mt-3">
+        <div class="unit-totals-label font-weight-bold">Unit Totals</div>
+        <div class="mt-2">
+          <StudentUnitsChart
+            v-if="cumulativeUnits || currentEnrolledUnits"
+            class="student-units-chart"
+            :current-enrolled-units="currentEnrolledUnits"
+            :cumulative-units="cumulativeUnits" />
+          <div
+            v-if="!cumulativeUnits && !currentEnrolledUnits"
+            class="section-label">
+            Units Not Yet Available
+          </div>
+        </div>
+        <div
+          v-if="cumulativeUnits || currentEnrolledUnits"
+          id="currently-enrolled-units"
+          class="sr-only">
+          Currently enrolled units: {{ currentEnrolledUnits || '0' }}
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import Context from '@/mixins/Context';
+import StudentUnitsChart from '@/components/student/StudentUnitsChart';
+import Util from '@/mixins/Util';
+
+export default {
+  name: 'StudentProfileUnits',
+  components: {
+    StudentUnitsChart
+  },
+  mixins: [Context, Util],
+  props: {
+    student: Object
+  },
+  data: () => ({
+    cumulativeUnits: undefined,
+    currentEnrolledUnits: undefined
+  }),
+  created() {
+    this.cumulativeUnits = this.get(this.student, 'sisProfile.cumulativeUnits');
+    const currentEnrollmentTerm = this.find(
+      this.get(this.student, 'enrollmentTerms'),
+      {
+        termId: this.currentEnrollmentTermId.toString()
+      }
+    );
+    if (currentEnrollmentTerm) {
+      this.currentEnrolledUnits = this.get(
+        currentEnrollmentTerm,
+        'enrolledUnits'
+      );
+    }
+  }
+};
+</script>
+
+<style scoped>
+.cumulative-units {
+  font-weight: 700;
+  margin-left: 20px;
+  white-space: nowrap;
+  width: 40%;
+}
+.cumulative-units-label {
+  color: #999;
+  font-size: 12px;
+}
+.data-number {
+  font-size: 42px;
+  line-height: 1.2em;
+}
+.units-chart {
+  height: 100%;
+}
+.unit-totals-label {
+  color: #555;
+  font-size: 16px;
+  text-transform: uppercase;
+}
+.student-units-chart {
+  min-width: 200px;
+}
+</style>

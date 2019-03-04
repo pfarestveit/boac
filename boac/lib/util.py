@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -60,6 +60,10 @@ def get(_dict, key, default_value=None):
 
 def localize_datetime(dt):
     return dt.astimezone(pytz.timezone(app.config['TIMEZONE']))
+
+
+def remove_none_values(_dict):
+    return {k: v for k, v in _dict.items() if v is not None}
 
 
 def tolerant_remove(_list, item):

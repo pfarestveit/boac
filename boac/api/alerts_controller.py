@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,18 +23,10 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from boac.lib.http import tolerant_jsonify
 from boac.models.alert import Alert
 from flask import current_app as app
 from flask_login import current_user, login_required
-
-
-@app.route('/api/alerts/current/<sid>')
-@login_required
-def get_current_alerts_for_sid(sid):
-    alerts = Alert.current_alerts_for_sid(viewer_id=current_user.id, sid=sid)
-    return tolerant_jsonify(alerts)
 
 
 @app.route('/api/alerts/<alert_id>/dismiss')

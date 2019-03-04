@@ -1,14 +1,15 @@
 <template>
   <div>
-    <SearchStudents/>
+    <SearchForm :domain="['students', 'courses', 'notes']" context="sidebar" />
     <div v-if="myCohorts">
-      <Cohorts/>
-      <hr class="section-divider"/>
-      <CuratedGroups/>
+      <Cohorts />
+      <hr class="section-divider" />
+      <CuratedGroups />
       <div class="sidebar-row-link">
         <span class="sidebar-row-link-label">
-          <router-link id="sidebar-filtered-cohorts-all"
-                       to="/cohorts/all">Everyone's Cohorts</router-link>
+          <router-link
+            id="cohorts-all"
+            to="/cohorts/all">Everyone's Cohorts</router-link>
         </span>
       </div>
     </div>
@@ -18,7 +19,7 @@
 <script>
 import Cohorts from '@/components/sidebar/Cohorts.vue';
 import CuratedGroups from '@/components/sidebar/CuratedGroups.vue';
-import SearchStudents from '@/components/sidebar/SearchStudents.vue';
+import SearchForm from '@/components/sidebar/SearchForm.vue';
 import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
@@ -26,13 +27,20 @@ export default {
   components: {
     Cohorts,
     CuratedGroups,
-    SearchStudents
+    SearchForm
   },
   mixins: [UserMetadata]
 };
 </script>
 
 <style>
+.section-divider {
+  background-color: #4a90e2;
+  border: none;
+  color: #4a90e2;
+  height: 1px;
+  margin: 10px 5px 10px 10px;
+}
 .sidebar-header {
   color: #fff;
   font-size: 16px;
@@ -40,10 +48,27 @@ export default {
   margin: 1px 0 1px 0;
   white-space: nowrap;
 }
+.sidebar-pill {
+  background-color: #8bbdda;
+  border-radius: 10px;
+  color: #125704;
+  display: inline-block;
+  float: right;
+  font-size: 16px;
+  font-weight: 800;
+  height: 20px;
+  line-height: 20px;
+  margin-right: 5px;
+  padding: 0 4px 0 4px;
+  text-align: center;
+}
 .sidebar-row-link {
   border-left: 6px solid #125074;
   color: #8bbdda;
+  display: flex;
+  flex-direction: row;
   font-size: 16px;
+  justify-content: space-between;
   line-height: 1.4em;
   padding: 1px 1px 1px 0;
 }
@@ -74,6 +99,7 @@ export default {
   padding-left: 5px;
 }
 .sidebar-row-link-label-text {
+  display: inline-block;
   overflow: hidden;
   padding-right: 5px;
   text-overflow: ellipsis;
@@ -83,25 +109,5 @@ export default {
 }
 .sidebar-section-header {
   margin: 10px 0 5px 0;
-}
-.section-divider {
-  background-color: #4a90e2;
-  border: none;
-  color: #4a90e2;
-  height: 1px;
-  margin: 10px 5px 10px 10px;
-}
-.sidebar-pill {
-  background-color: #8bbdda;
-  border-radius: 10px;
-  color: #125704;
-  display: inline-block;
-  float: right;
-  font-size: 16px;
-  font-weight: 800;
-  height: 20px;
-  line-height: 20px;
-  padding: 0 4px 0 4px;
-  text-align: center;
 }
 </style>

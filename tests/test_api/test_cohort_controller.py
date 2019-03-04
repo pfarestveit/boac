@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -22,7 +22,6 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 "AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
 ENHANCEMENTS, OR MODIFICATIONS.
 """
-
 
 from boac.models.cohort_filter import CohortFilter
 import pytest
@@ -80,8 +79,8 @@ class TestCohortDetail:
 
     def test_students_with_alert_counts(self, asc_advisor_session, client, create_alerts, db_session):
         # Pre-load students into cache for consistent alert data.
-        client.get('/api/student/61889/analytics')
-        client.get('/api/student/98765/analytics')
+        client.get('/api/student/61889')
+        client.get('/api/student/98765')
         from boac.models.alert import Alert
         Alert.update_all_for_term(2178)
         cohorts = CohortFilter.all_owned_by(asc_advisor_uid)
@@ -111,9 +110,14 @@ class TestCohortDetail:
         assert dave_doolittle['lastName']
         assert dave_doolittle['alertCount'] == 1
 
-        alert_to_dismiss = client.get('/api/alerts/current/11667051').json['shown'][0]['id']
+        def _get_alerts(uid):
+            response = client.get(f'/api/student/{uid}')
+            assert response.status_code == 200
+            return response.json['notifications']['alert']
+
+        alert_to_dismiss = _get_alerts(61889)[0]['id']
         client.get('/api/alerts/' + str(alert_to_dismiss) + '/dismiss')
-        alert_to_dismiss = client.get('/api/alerts/current/2345678901').json['shown'][0]['id']
+        alert_to_dismiss = _get_alerts(98765)[0]['id']
         client.get('/api/alerts/' + str(alert_to_dismiss) + '/dismiss')
 
         students_with_alerts = client.get(f'/api/cohort/{cohort_id}/students_with_alerts').json
@@ -272,24 +276,25 @@ class TestCohortDetail:
 class TestCohortCreate:
     """Cohort Create API."""
 
-    def test_create_cohort(self, client, asc_advisor_session):
-        """Creates custom cohort, owned by current user."""
-        data = {
-            'name': 'Tennis',
-            'groupCodes': ['MTE', 'WTE'],
-            'majors': [
-                'Anthropology BA',
-                'Bioengineering BS',
-            ],
-        }
-        response = client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
+    @classmethod
+    def _post_cohort_create(cls, client, json_data=()):
+        return client.post(
+            '/api/cohort/create',
+            data=json.dumps(json_data),
+            content_type='application/json',
+        )
+
+    @classmethod
+    def _assert_create_tennis_cohort(cls, client, data):
+        response = cls._post_cohort_create(client, data)
         assert response.status_code == 200
 
         cohort = json.loads(response.data)
         assert 'students' in cohort
+        assert cohort['alertCount'] is not None
         assert 'name' in cohort and cohort['name'] == data['name']
         assert 'teamGroups' in cohort
-        assert data['groupCodes'] == [g['groupCode'] for g in cohort['teamGroups']]
+        assert ['MTE', 'WTE'] == [g['groupCode'] for g in cohort['teamGroups']]
 
         cohort_id = cohort['id']
         response = client.get(f'/api/cohort/{cohort_id}')
@@ -298,27 +303,103 @@ class TestCohortCreate:
         assert 'students' in cohort
         assert same_cohort['name'] == data['name']
         assert 'teamGroups' in cohort and len(cohort['teamGroups']) == 2
-        assert data['groupCodes'] == [g['groupCode'] for g in cohort['teamGroups']]
+        assert ['MTE', 'WTE'] == [g['groupCode'] for g in cohort['teamGroups']]
         f = cohort['filterCriteria']
         assert 'majors' in f and len(f['majors']) == 2
 
-    def test_forbidden_create_of_coe_uid_cohort(self, asc_advisor_session, client, fake_auth):
+    @classmethod
+    def _assert_create_complex_cohort(cls, client, data):
+        response = cls._post_cohort_create(client, data)
+        assert 200 == response.status_code
+        cohort_id = response.json['id']
+        response = client.get(f'/api/cohort/{cohort_id}')
+        assert 200 == response.status_code
+        cohort = response.json
+        assert cohort and 'filterCriteria' in cohort
+        assert cohort['alertCount'] is not None
+        return cohort
+
+    def test_create_tennis_cohort(self, client, asc_advisor_session):
+        """Creates custom cohort, owned by current user."""
+        self._assert_create_tennis_cohort(
+            client,
+            {
+                'name': 'Tennis',
+                'filters': [
+                    {'key': 'groupCodes', 'type': 'array', 'value': 'WTE'},
+                    {'key': 'majors', 'type': 'array', 'value': 'Anthropology BA'},
+                    {'key': 'groupCodes', 'type': 'array', 'value': 'MTE'},
+                    {'key': 'majors', 'type': 'array', 'value': 'Bioengineering BS'},
+                ],
+            },
+        )
+
+    def test_deprecated_create_tennis_cohort(self, client, asc_advisor_session):
+        """Creates custom cohort, owned by current user."""
+        self._assert_create_tennis_cohort(
+            client,
+            {
+                'name': 'Tennis',
+                'groupCodes': ['MTE', 'WTE'],
+                'majors': [
+                    'Anthropology BA',
+                    'Bioengineering BS',
+                ],
+            },
+        )
+
+    def test_deprecated_asc_advisor_is_forbidden(self, asc_advisor_session, client, fake_auth):
         data = {
             'name': 'ASC advisor wants to see students of COE advisor',
             'advisorLdapUids': '1133399',
         }
-        response = client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
-        assert response.status_code == 403
+        assert self._post_cohort_create(client, data).status_code == 403
+
+    def test_asc_advisor_is_forbidden(self, asc_advisor_session, client, fake_auth):
+        data = {
+            'name': 'ASC advisor wants to see students of COE advisor',
+            'filters': [
+                {'key': 'advisorLdapUids', 'type': 'array', 'value': '1133399'},
+            ],
+        }
+        assert self._post_cohort_create(client, data).status_code == 403
 
     def test_admin_create_of_coe_uid_cohort(self, admin_session, client, fake_auth):
         data = {
             'name': 'Admin wants to see students of COE advisor',
             'advisorLdapUids': '1133399',
         }
-        response = client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
+        response = self._post_cohort_create(client, data)
         assert response.status_code == 200
+        assert len(response.json['students']) == 2
 
-    def test_create_cohort_with_complex_filters(self, client, coe_advisor_session):
+    def test_create_complex_cohort(self, client, coe_advisor_session):
+        """Creates custom cohort, with many non-empty filter_criteria."""
+        data = {
+            'name': 'Complex',
+            'filters': [
+                {'key': 'majors', 'type': 'array', 'value': 'Gender and Women''s Studies'},
+                {'key': 'gpaRanges', 'type': 'array', 'value': 'numrange(2, 2.5, \'[)\')'},
+                {'key': 'levels', 'type': 'array', 'value': 'Junior'},
+                {'key': 'gpaRanges', 'type': 'array', 'value': 'numrange(0, 2, \'[)\')'},
+                {'key': 'majors', 'type': 'array', 'value': 'Environmental Economics & Policy'},
+            ],
+        }
+        cohort = self._assert_create_complex_cohort(client, data)
+        for key in cohort['filterCriteria']:
+            value = cohort['filterCriteria'][key]
+            if key == 'majors':
+                assert len(value) == 2
+                assert 'Gender and Women''s Studies' in value
+            elif key == 'levels':
+                assert value == ['Junior']
+            elif key == 'gpaRanges':
+                assert len(value) == 2
+                assert 'numrange(0, 2, \'[)\')' in value
+            else:
+                assert value is None
+
+    def test_deprecated_create_complex_cohort(self, client, coe_advisor_session):
         """Creates custom cohort, with many non-empty filter_criteria."""
         data = {
             'name': 'Complex',
@@ -326,64 +407,81 @@ class TestCohortCreate:
             'levels': ['Junior'],
             'majors': [
                 'Environmental Economics & Policy',
-                'Gender and Women\’s Studies',
+                'Gender and Women''s Studies',
             ],
         }
-        response = client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 200 == response.status_code
-        cohort_id = response.json['id']
-        response = client.get(f'/api/cohort/{cohort_id}')
-        assert 200 == response.status_code
-        cohort = response.json
-        assert cohort and 'filterCriteria' in cohort
+        cohort = self._assert_create_complex_cohort(client, data)
         for key in cohort['filterCriteria']:
             assert data.get(key) == cohort['filterCriteria'][key]
 
     def test_admin_creation_of_asc_cohort(self, client, admin_session):
         """COE advisor cannot use ASC criteria."""
         data = {'name': 'Admin superpowers', 'groupCodes': ['MTE', 'WWP']}
-        response = client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 200 == response.status_code
+        assert 200 == self._post_cohort_create(client, data).status_code
 
     def test_forbidden_cohort_creation(self, client, coe_advisor_session):
         """COE advisor cannot use ASC criteria."""
         data = {'name': 'Sorry Charlie', 'groupCodes': ['MTE', 'WWP']}
-        response = client.post('/api/cohort/create', data=json.dumps(data), content_type='application/json')
-        assert 403 == response.status_code
+        assert 403 == self._post_cohort_create(client, data).status_code
 
 
 class TestCohortUpdate:
     """Cohort Update API."""
 
+    @classmethod
+    def _post_cohort_update(cls, client, json_data=()):
+        return client.post(
+            '/api/cohort/update',
+            data=json.dumps(json_data),
+            content_type='application/json',
+        )
+
     def test_unauthorized_cohort_update(self, client, coe_advisor_session):
-        cohort = CohortFilter.create(uid=asc_advisor_uid, name='Swimming, Men\'s', group_codes=['MSW', 'MSW-DV', 'MSW-SW'])
+        cohort = CohortFilter.create(
+            uid=asc_advisor_uid,
+            name='Swimming, Men\'s',
+            filter_criteria={
+                'groupCodes': ['MSW', 'MSW-DV', 'MSW-SW'],
+            },
+        )
         data = {
             'id': cohort.id,
             'name': 'Hack the name!',
         }
-        response = client.post('/api/cohort/update', data=json.dumps(data), content_type='application/json')
+        response = self._post_cohort_update(client, data)
         assert 403 == response.status_code
 
-    def test_cohort_update_name(self, client, asc_advisor_session):
-        cohort = CohortFilter.create(uid=asc_advisor_uid, name='Swimming, Men\'s', group_codes=['MSW', 'MSW-DV', 'MSW-SW'])
-        updated_name = 'Splashing, Men\'s'
+    def test_update_filters(self, client, asc_advisor_session):
+        cohort = CohortFilter.create(
+            uid=asc_advisor_uid,
+            name='Swimming, Men\'s',
+            filter_criteria={
+                'groupCodes': ['MSW', 'MSW-DV', 'MSW-SW'],
+            },
+        )
         # First, we POST an empty name
-        response = client.post('/api/cohort/update', data=json.dumps({'id': cohort.id}), content_type='application/json')
+        response = self._post_cohort_update(client, {'id': cohort.id})
         assert 400 == response.status_code
         # Now, we POST a valid name
         data = {
             'id': cohort.id,
-            'name': updated_name,
+            'filters': [
+                {'key': 'majors', 'type': 'array', 'value': 'Gender and Women''s Studies'},
+                {'key': 'gpaRanges', 'type': 'array', 'value': 'numrange(2, 2.5, \'[)\')'},
+            ],
         }
-        response = client.post('/api/cohort/update', data=json.dumps(data), content_type='application/json')
+        response = self._post_cohort_update(client, data)
         assert 200 == response.status_code
-        update = response.json
-        assert update['name'] == updated_name
+        updated_cohort = response.json
+        assert updated_cohort['alertCount'] is not None
+        assert updated_cohort['filterCriteria']['majors'] == ['Gender and Women''s Studies']
+        assert updated_cohort['filterCriteria']['gpaRanges'] == ['numrange(2, 2.5, \'[)\')']
+        assert updated_cohort['filterCriteria']['groupCodes'] is None
 
-        def remove_empties(filter_criteria):
-            return {k: v for k, v in filter_criteria.items() if v is not None}
+        def remove_empties(criteria):
+            return {k: v for k, v in criteria.items() if v is not None}
         expected = remove_empties(cohort.filter_criteria)
-        actual = remove_empties(update['filterCriteria'])
+        actual = remove_empties(updated_cohort['filterCriteria'])
         assert expected == actual
 
     def test_cohort_update_filter_criteria(self, client, asc_advisor_session):
@@ -391,7 +489,9 @@ class TestCohortUpdate:
         cohort = CohortFilter.create(
             uid=asc_advisor_uid,
             name=name,
-            group_codes=['MBB'],
+            filter_criteria={
+                'groupCodes': ['MBB'],
+            },
         )
         response = client.get(f'/api/cohort/{cohort.id}')
         cohort = json.loads(response.data)
@@ -405,7 +505,7 @@ class TestCohortUpdate:
             },
             'studentCount': 3,
         }
-        response = client.post('/api/cohort/update', data=json.dumps(updates), content_type='application/json')
+        response = self._post_cohort_update(client, updates)
         assert response.status_code == 200
         # Verify the value of 'student_count' in db
         updated_cohort = CohortFilter.find_by_id(cohort_id)
@@ -423,7 +523,13 @@ class TestCohortDelete:
 
     def test_delete_cohort_wrong_user(self, client, fake_auth):
         """Custom cohort deletion is only available to owners."""
-        cohort = CohortFilter.create(uid=coe_advisor_uid, name='Badminton teams', group_codes=['WWP', 'MWP'])
+        cohort = CohortFilter.create(
+            uid=coe_advisor_uid,
+            name='Badminton teams',
+            filter_criteria={
+                'groupCodes': ['WWP', 'MWP'],
+            },
+        )
         assert cohort
 
         # This user does not own the custom cohort above
@@ -440,9 +546,165 @@ class TestCohortDelete:
     def test_delete_cohort(self, client, coe_advisor_session):
         """Deletes existing custom cohort while enforcing rules of ownership."""
         name = 'Water polo teams'
-        cohort = CohortFilter.create(uid=coe_advisor_uid, name=name, group_codes=['WWP', 'MWP'])
+        cohort = CohortFilter.create(
+            uid=coe_advisor_uid,
+            name=name,
+            filter_criteria={
+                'groupCodes': ['WWP', 'MWP'],
+            },
+        )
         # Verify deletion
         response = client.delete(f'/api/cohort/delete/{cohort.id}')
         assert response.status_code == 200
         cohorts = CohortFilter.all_owned_by(asc_advisor_uid)
         assert not next((c for c in cohorts if c.id == cohort.id), None)
+
+
+class TestCohortPerFilters:
+    """Cohort API."""
+
+    @classmethod
+    def _post(cls, client, json_data=()):
+        return client.post(
+            '/api/cohort/get_students_per_filters',
+            data=json.dumps(json_data),
+            content_type='application/json',
+        )
+
+    def test_students_per_filters_not_authenticated(self, client):
+        """API requires authentication."""
+        assert self._post(client).status_code == 401
+
+    def test_students_per_filters_with_empty(self, client, coe_advisor_session):
+        """API requires non-empty input."""
+        assert self._post(client, {'filters': []}).status_code == 400
+
+    def test_students_per_filters_unauthorized(self, client, asc_advisor_session):
+        """ASC advisor is not allowed to query with COE attributes."""
+        response = self._post(
+            client,
+            {
+                'filters':
+                    [
+                        {
+                            'key': 'coeProbation',
+                            'type': 'boolean',
+                            'value': 'true',
+                        },
+                    ],
+            },
+        )
+        assert response.status_code == 403
+
+    def test_students_per_filters_coe_advisor(self, client, coe_advisor_session):
+        """API translates 'coeProbation' filter to proper filter_criteria query."""
+        gpa_range_1 = 'numrange(0, 2, \'[)\')'
+        gpa_range_2 = 'numrange(2, 2.5, \'[)\')'
+        response = self._post(
+            client,
+            {
+                'filters':
+                    [
+                        {
+                            'key': 'coeProbation',
+                            'type': 'boolean',
+                            'value': 'true',
+                        },
+                        {
+                            'key': 'gpaRanges',
+                            'type': 'array',
+                            'value': gpa_range_1,
+                        },
+                        {
+                            'key': 'gpaRanges',
+                            'type': 'array',
+                            'value': gpa_range_2,
+                        },
+                        {
+                            'key': 'lastNameRange',
+                            'type': 'range',
+                            'value': ['A', 'Z'],
+                        },
+                    ],
+            },
+        )
+        assert response.status_code == 200
+        cohort = response.json
+        assert 'totalStudentCount' in cohort
+        assert 'students' in cohort
+        criteria = cohort['filterCriteria']
+        assert criteria['coeProbation'] is not None
+        assert criteria['lastNameRange'] is not None
+        gpa_ranges = criteria['gpaRanges']
+        assert len(gpa_ranges) == 2
+        assert gpa_range_1 in gpa_ranges
+        assert gpa_range_2 in gpa_ranges
+        for key in [
+            'advisorLdapUids',
+            'ethnicities',
+            'genders',
+            'groupCodes',
+            'inIntensiveCohort',
+            'isInactiveAsc',
+            'levels',
+            'majors',
+            'underrepresented',
+            'unitRanges',
+        ]:
+            assert criteria[key] is None
+
+    def _get_defensive_line(self, client, inactive_asc, order_by):
+        response = self._post(
+            client,
+            {
+                'filters':
+                    [
+                        {
+                            'key': 'groupCodes',
+                            'type': 'array',
+                            'value': 'MFB-DL',
+                        },
+                        {
+                            'key': 'isInactiveAsc',
+                            'type': 'boolean',
+                            'value': inactive_asc,
+                        },
+                    ],
+                'orderBy': order_by,
+            },
+        )
+        assert response.status_code == 200
+        return response.json['students']
+
+    def test_students_per_filters_order_by(self, client, asc_advisor_session):
+        def _get_first_student(order_by):
+            students = self._get_defensive_line(client, False, order_by)
+            assert len(students) == 3
+            return students[0]
+        assert _get_first_student('first_name')['firstName'] == 'Dave'
+        assert _get_first_student('last_name')['lastName'] == 'Doolittle'
+        assert _get_first_student('gpa')['cumulativeGPA'] == 3.005
+        assert _get_first_student('level')['level'] == 'Junior'
+        assert _get_first_student('major')['majors'][0] == 'Chemistry BS'
+        assert _get_first_student('units')['cumulativeUnits'] == 34
+        student = _get_first_student('group_name')
+        assert student['athleticsProfile']['athletics'][0]['groupName'] == 'Football, Defensive Backs'
+
+    def test_student_athletes_inactive_asc(self, client, asc_advisor_session):
+        """An ASC advisor query defaults to active athletes only."""
+        students = self._get_defensive_line(client, False, 'gpa')
+        assert len(students) == 3
+        for student in students:
+            assert student['athleticsProfile']['isActiveAsc'] is True
+
+    def test_student_athletes_inactive_admin(self, client, admin_session):
+        """An admin query defaults to active and inactive athletes."""
+        students = self._get_defensive_line(client, None, 'gpa')
+        assert len(students) == 4
+
+        def is_active_asc(student):
+            return student['athleticsProfile']['isActiveAsc']
+        assert is_active_asc(students[0]) is False
+        assert is_active_asc(students[1]) is True
+        assert is_active_asc(students[2]) is True
+        assert is_active_asc(students[3]) is True

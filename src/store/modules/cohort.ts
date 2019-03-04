@@ -1,4 +1,4 @@
-import { getMyCohorts } from '@/api/cohort';
+import { getMyCohorts, getStudentsWithAlerts } from '@/api/cohort';
 
 const state = {
   myCohorts: null
@@ -11,13 +11,14 @@ const getters = {
 };
 
 const mutations = {
+  addCohort: (state: any, cohort: any) => {
+    state.myCohorts.push(cohort);
+  },
   deleteCohort: (state: any, id: any) => {
-    let indexOf = state.myCohorts.findIndex(
-      curatedGroup => curatedGroup.id === id
-    );
+    let indexOf = state.myCohorts.findIndex(cohort => cohort.id === id);
     state.myCohorts.splice(indexOf, 1);
   },
-  saveMyCohorts: (state: any, cohorts: any) => {
+  saveMyCohorts: (state: any, cohorts: any[]) => {
     state.myCohorts = cohorts;
   },
   updateCohort: (state: any, updatedCohort: any) => {
@@ -29,15 +30,33 @@ const mutations = {
 };
 
 const actions = {
+  addCohort: ({ commit }, cohort) => {
+    commit('addCohort', cohort);
+  },
   deleteCohort: ({ commit }, cohort) => {
     commit('deleteCohort', cohort);
   },
-  async loadMyCohorts({ commit, state }) {
-    if (state.myCohorts === null) {
-      getMyCohorts().then(cohorts => {
-        commit('saveMyCohorts', cohorts);
-      });
-    }
+  async loadStudentsWithAlerts({ commit, state }, cohortId) {
+    return new Promise(resolve => {
+      let cohort = state.myCohorts.find(cohort => cohort.id === +cohortId);
+      if (!cohort.studentsWithAlerts) {
+        getStudentsWithAlerts(cohortId)
+          .then(studentsWithAlerts => {
+            cohort.studentsWithAlerts = studentsWithAlerts;
+            commit('updateCohort', cohort);
+          })
+          .then(() => {
+            resolve(cohort);
+          });
+      } else {
+        resolve(cohort);
+      }
+    });
+  },
+  async loadMyCohorts({ commit }) {
+    getMyCohorts().then(cohorts => {
+      commit('saveMyCohorts', cohorts);
+    });
   },
   updateCohort: ({ commit }, cohort) => {
     commit('updateCohort', cohort);

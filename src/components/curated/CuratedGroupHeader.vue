@@ -1,133 +1,149 @@
 <template>
-  <div class="cohort-header-container">
-    <div v-if="!renameMode.on">
-      <h1 tabindex="0" ref="pageHeader" class="page-section-header">
+  <div class="d-flex justify-content-between mb-2">
+    <div v-if="!renameMode">
+      <h1
+        id="curated-group-name"
+        ref="pageHeader"
+        class="page-section-header mt-0"
+        tabindex="0">
         <span>{{ curatedGroup.name || 'Curated Group' }}</span>
-        <span class="faint-text"> (<span>{{ 'student' | pluralize(curatedGroup.studentCount, {1: 'One'})}}</span>)</span>
+        <span class="faint-text"> (<span>{{ 'student' | pluralize(curatedGroup.studentCount, {1: 'One'}) }}</span>)</span>
       </h1>
     </div>
-    <div class="cohort-rename-container" v-if="renameMode.on">
+    <div v-if="renameMode" class="w-100 mr-3">
       <div>
-        <form name="renameCohortForm" @submit="rename">
-          <input aria-required="true"
-                aria-label="Input cohort name, 255 characters or fewer"
-                :aria-invalid="!renameMode.input"
-                class="form-control"
-                @input="renameMode.hideError = true"
-                v-model="renameMode.input"
-                ref="input"
-                id="rename-cohort-input"
-                maxlength="255"
-                name="name"
-                required
-                type="text"/>
+        <form @submit.prevent="rename">
+          <input
+            id="rename-input"
+            v-model="renameInput"
+            class="form-control"
+            :aria-invalid="!renameInput"
+            aria-label="Curated group name, 255 characters or fewer"
+            aria-required="true"
+            maxlength="255"
+            required
+            type="text"
+            @keyup.esc="exitRenameMode()" />
         </form>
       </div>
-      <div class="has-error"
-          v-if="renameMode.error && !renameMode.hideError">
-        {{ renameMode.error }}
-      </div>
-      <div class="faint-text">255 character limit <span v-if="renameMode.input.length">({{255 - renameMode.input.length}} left)</span></div>
-    </div>
-    <div class="curated-cohort-header-column-02">
-      <div class="cohort-header-buttons no-wrap" v-if="renameMode.on">
-        <button type="button"
-                id="curated-cohort-rename"
-                :aria-disabled="!renameMode.input"
-                aria-label="Save changes to cohort name"
-                class="btn btn-sm btn-primary cohort-manage-btn"
-                @click.stop="rename"
-                :disabled="!renameMode.input">
-          Rename
-        </button>
-        <button type="button"
-                aria-label="Cancel rename cohort"
-                id="curated-cohort-rename-cancel"
-                class="btn btn-sm btn-default cohort-manage-btn"
-                @click="exitRenameMode">
-          Cancel
-        </button>
-      </div>
-      <div class="cohort-header-button-links no-wrap" v-if="!renameMode.on">
-        <button type="button"
-                id="rename-cohort-button"
-                aria-label="Rename this cohort"
-                class="btn-link cohort-manage-btn-link"
-                @click="enterRenameMode">
-          Rename
-        </button>
-        <span>
-          <span class="faint-text">|</span>
-          <b-btn v-b-modal="'myModal'"
-                 id="delete-cohort-button"
-                 aria-label="Delete this cohort"
-                 class="btn-link cohort-manage-btn-link">
-            Delete
-          </b-btn>
-        </span>
+      <div v-if="renameError" class="has-error mb-2">{{ renameError }}</div>
+      <div class="faint-text mb-3">255 character limit <span v-if="size(renameInput)">({{ 255 - size(renameInput) }} left)</span></div>
+      <div class="sr-only" aria-live="polite">{{ renameError }}</div>
+      <div
+        v-if="size(renameInput) === 255"
+        class="sr-only"
+        aria-live="polite">
+        Name cannot exceed 255 characters.
       </div>
     </div>
-    <b-modal id="myModal"
-             v-model="isModalOpen">
-      <div class="modal-header" slot="modal-header">
-        <h3 id="confirm-delete-header">Delete Curated Group</h3>
+    <div v-if="renameMode" class="d-flex align-self-baseline mr-4">
+      <b-btn
+        id="rename-confirm"
+        class="btn-primary-color-override"
+        variant="primary"
+        size="sm"
+        aria-label="Save changes to curated group name"
+        :disabled="!size(renameInput)"
+        @click.stop="rename">
+        Rename
+      </b-btn>
+      <b-btn
+        id="rename-cancel"
+        class="cohort-manage-btn"
+        variant="link"
+        aria-label="Cancel rename curated group"
+        size="sm"
+        @click="exitRenameMode">
+        Cancel
+      </b-btn>
+    </div>
+    <div v-if="!renameMode" class="d-flex align-items-center mr-4">
+      <div>
+        <b-btn
+          id="rename-button"
+          variant="link"
+          aria-label="Rename this curated group"
+          @click="enterRenameMode">
+          Rename
+        </b-btn>
       </div>
-      <div class="modal-body curated-cohort-label" id="confirm-delete-body">
-        Are you sure you want to delete "<strong>{{ curatedGroup.name }}</strong>"?
-      </div>
-      <div class="modal-footer" slot="modal-footer">
-        <b-btn variant="primary"
-               @click="deleteGroup">
+      <div class="faint-text">|</div>
+      <div>
+        <b-btn
+          id="delete-button"
+          v-b-modal="'myModal'"
+          variant="link"
+          aria-label="Delete this curated group">
           Delete
         </b-btn>
-        <b-btn variant="secondary"
-               @click="isModalOpen=false">
-          Cancel
-        </b-btn>
+        <b-modal
+          id="myModal"
+          v-model="isModalOpen">
+          <div slot="modal-header">
+            <h3>Delete Curated Group</h3>
+          </div>
+          <div id="confirm-delete-body" class="modal-body curated-cohort-label">
+            Are you sure you want to delete "<strong>{{ curatedGroup.name }}</strong>"?
+          </div>
+          <div slot="modal-footer">
+            <b-btn
+              id="delete-confirm"
+              class="btn-primary-color-override"
+              variant="primary"
+              @click="deleteGroup">
+              Delete
+            </b-btn>
+            <b-btn
+              id="delete-cancel"
+              variant="link"
+              @click="isModalOpen=false">
+              Cancel
+            </b-btn>
+          </div>
+        </b-modal>
       </div>
-    </b-modal>
+    </div>
   </div>
 </template>
 
 <script>
-import { deleteCuratedGroup, renameCuratedGroup } from '@/api/curated';
 import Loading from '@/mixins/Loading.vue';
-import Validator from '@/mixins/Validator.vue';
 import router from '@/router';
+import Util from '@/mixins/Util';
+import Validator from '@/mixins/Validator.vue';
+import { deleteCuratedGroup, renameCuratedGroup } from '@/api/curated';
 
 export default {
   name: 'CuratedGroupHeader',
-  mixins: [Loading, Validator],
-  props: ['curatedGroup'],
+  mixins: [Loading, Util, Validator],
+  props: {
+    'curatedGroup': Object
+  },
   data: () => ({
     isModalOpen: false,
-    renameMode: {
-      on: false,
-      error: undefined,
-      hideError: false,
-      input: undefined
-    }
+    renameError: undefined,
+    renameInput: undefined,
+    renameMode: false
   }),
   watch: {
-    'renameMode.on': function() {
-      if (this.renameMode.on) {
-        this.$nextTick(() => {
-          this.$refs.input.focus();
-        });
-      }
+    renameInput: function() {
+      this.renameError = undefined;
     }
   },
   mounted() {
     this.loaded();
+    this.putFocusNextTick('curated-group-name');
   },
   methods: {
     enterRenameMode: function() {
-      this.renameMode.input = this.curatedGroup.name;
-      this.renameMode.on = true;
+      this.renameInput = this.curatedGroup.name;
+      this.renameMode = true;
+      this.putFocusNextTick('rename-input');
     },
     exitRenameMode: function() {
-      this.renameMode.input = null;
-      this.renameMode.on = false;
+      this.renameInput = undefined;
+      this.renameMode = false;
+      this.putFocusNextTick('curated-group-name');
     },
     deleteGroup: function() {
       deleteCuratedGroup(this.curatedGroup.id)
@@ -140,17 +156,18 @@ export default {
         });
     },
     rename: function() {
-      this.renameMode.hideError = false;
-      this.renameMode.error = this.validateCohortName({
-        name: this.renameMode.input
+      this.renameError = this.validateCohortName({
+        name: this.renameInput
       });
-      if (!this.renameMode.error) {
-        renameCuratedGroup(this.curatedGroup.id, this.renameMode.input).then(
-          () => {
-            this.curatedGroup.name = this.renameMode.input;
-            this.exitRenameMode();
-          }
-        );
+      if (this.renameError) {
+        this.putFocusNextTick('rename-input');
+      } else {
+        renameCuratedGroup(this.curatedGroup.id, this.renameInput).then(() => {
+          this.curatedGroup.name = this.renameInput;
+          this.setPageTitle(this.curatedGroup.name);
+          this.exitRenameMode();
+          this.putFocusNextTick('curated-group-name');
+        });
       }
     }
   }

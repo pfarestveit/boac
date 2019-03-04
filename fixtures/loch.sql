@@ -1,11 +1,13 @@
 DROP SCHEMA IF EXISTS boac_advising_asc cascade;
 DROP SCHEMA IF EXISTS boac_advising_coe cascade;
+DROP SCHEMA IF EXISTS boac_advising_notes cascade;
 DROP SCHEMA IF EXISTS boac_analytics cascade;
 DROP SCHEMA IF EXISTS sis_data cascade;
 DROP SCHEMA IF EXISTS student cascade;
 
 CREATE SCHEMA boac_advising_asc;
 CREATE SCHEMA boac_advising_coe;
+CREATE SCHEMA boac_advising_notes;
 CREATE SCHEMA boac_analytics;
 CREATE SCHEMA sis_data;
 CREATE SCHEMA student;
@@ -53,6 +55,40 @@ CREATE TABLE boac_advising_coe.student_profiles
 (
     sid VARCHAR NOT NULL,
     profile TEXT NOT NULL
+);
+
+CREATE TABLE boac_advising_notes.advising_notes
+(
+    id VARCHAR NOT NULL,
+    sid VARCHAR NOT NULL,
+    student_note_nr VARCHAR NOT NULL,
+    advisor_sid VARCHAR,
+    appointment_id VARCHAR,
+    note_category VARCHAR NOT NULL,
+    note_subcategory VARCHAR,
+    note_body VARCHAR NOT NULL,
+    created_by VARCHAR,
+    updated_by VARCHAR,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE boac_advising_notes.advising_note_topics
+(
+    advising_note_id VARCHAR NOT NULL,
+    sid VARCHAR NOT NULL,
+    note_topic VARCHAR NOT NULL
+);
+
+CREATE TABLE boac_advising_notes.advising_note_attachments
+(
+    advising_note_id VARCHAR NOT NULL,
+    sid VARCHAR NOT NULL,
+    attachment_seq_nr INT,
+    attachment_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    sis_file_name VARCHAR NOT NULL
 );
 
 CREATE TABLE boac_analytics.section_mean_gpas
@@ -180,6 +216,33 @@ VALUES
 ('7890123456', :coe_profile_7890123456),
 ('9000000000', :coe_profile_9000000000),
 ('9100000000', :coe_profile_9100000000);
+
+INSERT INTO boac_advising_notes.advising_notes
+(id, sid, student_note_nr, advisor_sid, appointment_id, note_category, note_subcategory, note_body, created_by, updated_by, created_at, updated_at)
+VALUES
+('11667051-00001', '11667051', '00001', '800700600', NULL, 'Quick Question', 'Hangouts', 'Brigitte is making athletic and moral progress', NULL, NULL, '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00'),
+('11667051-00002', '11667051', '00002', '700600500', NULL, 'Evaluation', '', 'Brigitte demonstrates a cavalier attitude toward university requirements', NULL, NULL, '2017-11-01T12:00:00+00', '2017-11-01T12:00:00+00'),
+('11667051-00003', '11667051', '00003', '600500400', NULL, 'Appointment', '', 'But the iniquity of oblivion blindely scattereth her poppy, and deals with the memory of men without distinction to merit of perpetuity. Who can but pity the founder of the Pyramids? Herostratus lives that burnt the Temple of Diana, he is almost lost that built it; Time hath spared the Epitaph of Adrians horse, confounded that of himself. In vain we compute our felicities by the advantage of our good names, since bad have equall durations; and Thersites is like to live as long as Agamenon, without the favour of the everlasting Register: Who knows whether the best of men be known? or whether there be not more remarkable persons forgot, then any that stand remembred in the known account of time? the first man had been as unknown as the last, and Methuselahs long life had been his only Chronicle.', NULL, NULL, '2017-11-05T12:00:00+00', '2017-11-06T12:00:00+00'),
+('9000000000-00001', '9000000000', '00001', '600500400', NULL, 'Appointment', '', 'Is this student even on campus?', NULL, NULL, '2017-11-02T12:00:00+00', '2017-11-02T13:00:00+00'),
+('9000000000-00002', '9000000000', '00002', '700600500', NULL, 'Evaluation', '', 'I am confounded by this confounding student', 'UCBCONVERSION', NULL, '2017-11-02T12:00:00+00', '2017-11-02T12:00:00+00');
+
+CREATE MATERIALIZED VIEW boac_advising_notes.advising_notes_search_index AS (
+  SELECT id, to_tsvector('english', note_body) AS fts_index
+  FROM boac_advising_notes.advising_notes
+);
+
+INSERT INTO boac_advising_notes.advising_note_topics
+(advising_note_id, sid, note_topic)
+VALUES
+('11667051-00001', '11667051', 'Good show'),
+('11667051-00002', '11667051', 'Bad show'),
+('9000000000-00001', '9000000000', 'No show');
+
+INSERT INTO boac_advising_notes.advising_note_attachments
+(advising_note_id, sid, attachment_seq_nr, attachment_date, created_at, updated_at, sis_file_name)
+VALUES
+('11667051-00001', '11667051', 1, '2017-10-31', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', 'form.pdf'),
+('11667051-00002', '11667051', 2, '2017-10-31', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', 'photo.jpeg');
 
 INSERT INTO boac_analytics.section_mean_gpas
 (sis_term_id, sis_section_id, gpa_term_id, avg_gpa)

@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -30,7 +30,6 @@ from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 import pytest
 
-
 asc_advisor_uid = '2040'
 coe_advisor_uid = '1133399'
 
@@ -58,12 +57,14 @@ class TestCohortFilter:
         cohort = CohortFilter.create(
             uid='1022796',
             name='All criteria, all the time',
-            gpa_ranges=gpa_ranges,
-            group_codes=group_codes,
-            in_intensive_cohort=None,
-            levels=levels,
-            majors=majors,
-            unit_ranges=unit_ranges,
+            filter_criteria={
+                'gpaRanges': gpa_ranges,
+                'groupCodes': group_codes,
+                'inIntensiveCohort': None,
+                'levels': levels,
+                'majors': majors,
+                'unitRanges': unit_ranges,
+            },
         )
         cohort = CohortFilter.find_by_id(cohort.id)
         expected = {
@@ -84,8 +85,10 @@ class TestCohortFilter:
             CohortFilter.create(
                 uid=asc_advisor_uid,
                 name='Cohort with undefined filter criteria',
-                genders=[],
-                in_intensive_cohort=None,
+                filter_criteria={
+                    'genders': [],
+                    'inIntensiveCohort': None,
+                },
             )
 
     def test_create_and_delete_cohort(self):
@@ -98,7 +101,13 @@ class TestCohortFilter:
 
         # Create and share cohort
         group_codes = ['MFB-DB', 'MFB-DL', 'MFB-MLB', 'MFB-OLB']
-        cohort = CohortFilter.create(uid=owner, name='Football, Defense', group_codes=group_codes)
+        cohort = CohortFilter.create(
+            uid=owner,
+            name='Football, Defense',
+            filter_criteria={
+                'groupCodes': group_codes,
+            },
+        )
         cohort = CohortFilter.share(cohort.id, shared_with)
         assert len(cohort.owners) == 2
         assert owner, shared_with in [user.uid for user in cohort.owners]
@@ -114,8 +123,7 @@ class TestCohortFilter:
         """Can be JSONified."""
         cohorts = AuthorizedUser.find_by_uid(coe_advisor_uid).cohort_filters
         assert len(cohorts) == 2
-        jsonified_cohort = cohorts[0].to_api_json()
-        assert jsonified_cohort['name'] == 'Sandeep\'s Students'
+        assert cohorts[0].to_api_json()['name'] == 'Roberta\'s Students'
 
 
 def cohort_count(user_uid):

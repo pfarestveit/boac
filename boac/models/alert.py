@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -39,6 +39,11 @@ from boac.models.base import Base
 from boac.models.db_relationships import AlertView
 from flask import current_app as app
 from sqlalchemy import text
+
+
+def _get_current_session_start():
+    session = data_loch.get_regular_undergraduate_session(current_term_id())[0]
+    return session['session_begins']
 
 
 class Alert(Base):
@@ -175,18 +180,21 @@ class Alert(Base):
             ORDER BY alerts.created_at
         """)
         results = db.session.execute(query, {'viewer_id': viewer_id, 'key': current_term_id() + '_%', 'sid': sid})
+        feed = []
 
         def result_to_dict(result):
             return {camelize(key): result[key] for key in ['id', 'alert_type', 'key', 'message']}
-        feed = {
-            'dismissed': [],
-            'shown': [],
-        }
         for result in results:
-            if result['dismissed_at']:
-                feed['dismissed'].append(result_to_dict(result))
-            else:
-                feed['shown'].append(result_to_dict(result))
+            dismissed_at = result['dismissed_at']
+            alert = {
+                **result_to_dict(result),
+                **{
+                    'dismissed': dismissed_at and dismissed_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'createdAt': result['created_at'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'updatedAt': result['updated_at'].strftime('%Y-%m-%d %H:%M:%S'),
+                },
+            }
+            feed.append(alert)
         return feed
 
     def activate(self):
@@ -220,15 +228,16 @@ class Alert(Base):
 
     @classmethod
     def infrequent_activity_alerts_enabled(cls):
+        days_into_session = (datetime.date(datetime.today()) - _get_current_session_start()).days
         return (
             app.config['ALERT_INFREQUENT_ACTIVITY_ENABLED']
             and not app.config['CANVAS_CURRENT_ENROLLMENT_TERM'].startswith('Summer')
+            and days_into_session >= app.config['ALERT_INFREQUENT_ACTIVITY_DAYS']
         )
 
     @classmethod
     def no_activity_alerts_enabled(cls):
-        session = data_loch.get_regular_undergraduate_session(current_term_id())[0]
-        days_into_session = (datetime.date(datetime.today()) - session['session_begins']).days
+        days_into_session = (datetime.date(datetime.today()) - _get_current_session_start()).days
         return (
             app.config['ALERT_NO_ACTIVITY_ENABLED']
             and not app.config['CANVAS_CURRENT_ENROLLMENT_TERM'].startswith('Summer')
@@ -255,11 +264,6 @@ class Alert(Base):
             enrollments = json.loads(row['enrollment_term']).get('enrollments', [])
             for enrollment in enrollments:
                 cls.update_alerts_for_enrollment(row['sid'], term_id, enrollment, no_activity_alerts_enabled, infrequent_activity_alerts_enabled)
-        if app.config['ALERT_HOLDS_ENABLED'] and str(term_id) == current_term_id():
-            holds = data_loch.get_sis_holds()
-            for row in holds:
-                hold_feed = json.loads(row['feed'])
-                cls.update_hold_alerts(row['sid'], term_id, hold_feed.get('type'), hold_feed.get('reason'))
         if app.config['ALERT_WITHDRAWAL_ENABLED'] and str(term_id) == current_term_id():
             profiles = data_loch.get_student_profiles()
             for row in profiles:
@@ -272,6 +276,9 @@ class Alert(Base):
     def update_alerts_for_enrollment(cls, sid, term_id, enrollment, no_activity_alerts_enabled, infrequent_activity_alerts_enabled):
         for section in enrollment['sections']:
             if section_is_eligible_for_alerts(enrollment=enrollment, section=section):
+                # If the grade is in, what's done is done.
+                if section.get('grade'):
+                    continue
                 if section.get('midtermGrade'):
                     cls.update_midterm_grade_alerts(sid, term_id, section['ccn'], enrollment['displayName'], section['midtermGrade'])
                 last_activity = None
@@ -292,7 +299,10 @@ class Alert(Base):
                         and activity_percentile <= app.config['ALERT_NO_ACTIVITY_PERCENTILE_CUTOFF']
                 ):
                     cls.update_no_activity_alerts(sid, term_id, enrollment['displayName'])
-                elif infrequent_activity_alerts_enabled:
+                elif (
+                    infrequent_activity_alerts_enabled
+                    and last_activity > 0
+                ):
                     localized_last_activity = unix_timestamp_to_localtime(last_activity).date()
                     localized_today = unix_timestamp_to_localtime(time.time()).date()
                     days_since = (localized_today - localized_last_activity).days
@@ -338,12 +348,6 @@ class Alert(Base):
             if match and match[1] and int(match[1]) < days_since:
                 return
         cls.create_or_activate(sid=sid, alert_type='infrequent_activity', key=key, message=message)
-
-    @classmethod
-    def update_hold_alerts(cls, sid, term_id, hold_type, hold_reason):
-        key = f"{term_id}_{hold_type.get('code')}_{hold_reason.get('code')}"
-        message = f"Hold: {hold_reason.get('description')}! {hold_reason.get('formalDescription')}."
-        cls.create_or_activate(sid=sid, alert_type='hold', key=key, message=message)
 
     @classmethod
     def update_withdrawal_cancel_alerts(cls, sid, term_id):

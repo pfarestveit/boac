@@ -1,77 +1,133 @@
 <template>
   <div>
+    <span :id="`row-index-of-${student.sid}`" hidden aria-hidden="true">{{ rowIndex }}</span>
+    <span :id="`student-sid-of-row-${rowIndex}`" hidden aria-hidden="true">{{ student.sid }}</span>
     <div class="cohort-list-view-column-01">
-      <button :id="`student-${student.uid}-curated-cohort-remove`"
-              class="btn btn-link"
-              @click="removeFromCuratedCohort">
+      <button
+        v-if="listType === 'curatedGroup'"
+        :id="`row-${rowIndex}-remove-student-from-curated-group`"
+        class="btn btn-link"
+        @click="removeFromCuratedGroup">
         <i class="fas fa-times-circle"></i>
       </button>
+      <div v-if="listType !== 'curatedGroup'">
+        <CuratedStudentCheckbox :sid="student.sid" />
+      </div>
     </div>
     <div class="cohort-list-view-column-01">
-      <StudentAvatar :size="'large'"
-                     :student="student"
-                     :alertCount="student.alertCount"/>
+      <StudentAvatar
+        size="medium"
+        :student="student"
+        :alert-count="student.alertCount" />
     </div>
     <div class="cohort-student-bio-container">
       <div class="cohort-student-name-container">
         <div>
-          <router-link :id="student.uid" :to="`/student/${student.uid}`">
-            <h3 class="student-name"
-                :class="{'demo-mode-blur' : user.inDemoMode}"
-                v-if="sort.selected !== 'first_name'">
+          <router-link :id="`row-${rowIndex}-student-href`" :to="`/student/${student.uid}`">
+            <h3
+              v-if="sortedBy !== 'first_name'"
+              :id="`row-${rowIndex}-student-name`"
+              class="student-name"
+              :class="{'demo-mode-blur' : user.inDemoMode}">
               {{ student.lastName }}, {{ student.firstName }}
             </h3>
-            <h3 class="student-name"
-                :class="{'demo-mode-blur' : user.inDemoMode}"
-                v-if="sort.selected === 'first_name'">
+            <h3
+              v-if="sortedBy === 'first_name'"
+              :id="`row-${rowIndex}-student-name`"
+              class="student-name"
+              :class="{'demo-mode-blur' : user.inDemoMode}">
               {{ student.firstName }} {{ student.lastName }}
             </h3>
           </router-link>
         </div>
       </div>
-      <div class="student-sid" :class="{'demo-mode-blur' : user.inDemoMode}">
-        {{ student.sid }}
-        <span class="red-flag-status" v-if="displayAsInactive(student)">INACTIVE</span>
+      <div class="d-flex student-sid" :class="{'demo-mode-blur' : user.inDemoMode}">
+        <div :id="`row-${rowIndex}-student-sid`">{{ student.sid }}</div>
+        <div v-if="displayAsInactive(student)" class="red-flag-status ml-1">INACTIVE</div>
       </div>
       <div v-if="student.withdrawalCancel">
         <span class="red-flag-small">
           {{ student.withdrawalCancel.description }} {{ student.withdrawalCancel.date | date }}
         </span>
       </div>
-      <div class="student-text">{{ student.level }}</div>
-      <div class="student-text"
-           v-for="(major, index) in student.majors"
-           :key="index">
-        {{ major }}
+      <div
+        :id="`row-${rowIndex}-student-level`"
+        class="student-text">
+        {{ student.level }}
       </div>
-      <div class="student-teams-container" v-if="student.athleticsProfile">
-        <div class="student-teams"
-             v-for="(team, index) in student.athleticsProfile.athletics"
-             :key="index">
-          {{ team.groupName }}
+      <div
+        v-if="student.expectedGraduationTerm"
+        :id="`row-${rowIndex}-student-grad-term`"
+        class="student-text"
+        aria-label="Expected graduation term">
+        Grad:&nbsp;{{ student.expectedGraduationTerm.name }}
+      </div>
+      <div
+        v-for="(major, index) in student.majors"
+        :key="index"
+        class="student-text">
+        <span :id="`row-${rowIndex}-student-major-${index}`">{{ major }}</span>
+      </div>
+      <div v-if="student.athleticsProfile" class="student-teams-container">
+        <div
+          v-for="(team, index) in student.athleticsProfile.athletics"
+          :key="index"
+          class="student-teams">
+          <span :id="`row-${rowIndex}-student-team-${index}`">{{ team.groupName }}</span>
         </div>
       </div>
     </div>
     <div class="student-column student-column-gpa">
       <div>
-        <span class="student-gpa" v-if="!student.cumulativeGPA">--<span class="sr-only">No data</span></span>
-        <span class="student-gpa" v-if="student.cumulativeGPA">{{ student.cumulativeGPA | round(3) }}</span>
-        <span class="student-text">GPA (Cumulative)</span>
+        <span
+          v-if="isNil(student.cumulativeGPA)"
+          :id="`row-${rowIndex}-student-cumulative-gpa`"
+          class="student-gpa">--<span class="sr-only">No data</span></span>
+        <span
+          v-if="!isNil(student.cumulativeGPA)"
+          :id="`row-${rowIndex}-student-cumulative-gpa`"
+          class="student-gpa">{{ student.cumulativeGPA | round(3) }}</span>
+        <span class="student-text"> GPA (Cumulative)</span>
       </div>
-      <StudentGpaChart v-if="size(student.termGpa) > 1" :student="student" :width="'130'"/>
-      <div class="student-bio-status-legend profile-last-term-gpa-outer"
-           v-if="size(student.termGpa)">
-        <i class="fa fa-exclamation-triangle boac-exclamation"
-            v-if="student.termGpa[0].gpa < 2"></i>
-        <span>{{ student.termGpa[0].termName }}</span> GPA:
-        <strong :class="student.termGpa[0].gpa >= 2 ? 'profile-last-term-gpa' : 'profile-gpa-alert'">{{ student.termGpa[0].gpa | round(3) }}</strong>
+      <StudentGpaChart
+        v-if="size(student.termGpa) > 1"
+        :student="student"
+        :width="'130'" />
+      <div
+        v-if="size(student.termGpa)"
+        class="student-bio-status-legend profile-last-term-gpa-outer">
+        <i
+          v-if="student.termGpa[0].gpa < 2"
+          class="fa fa-exclamation-triangle boac-exclamation"></i>
+        <span :id="`row-${rowIndex}-student-gpa-term-name`">{{ student.termGpa[0].termName }}</span> GPA:
+        <strong
+          :id="`row-${rowIndex}-student-term-gpa`"
+          :class="student.termGpa[0].gpa >= 2 ? 'profile-last-term-gpa' : 'profile-gpa-alert'">{{ student.termGpa[0].gpa | round(3) }}</strong>
       </div>
     </div>
     <div class="student-column">
-      <div class="student-gpa">{{ get(student.term, 'enrolledUnits', 0) }}</div>
+      <div :id="`row-${rowIndex}-student-enrolled-units`" class="student-gpa">{{ get(student.term, 'enrolledUnits', 0) }}</div>
       <div class="student-text">Units in Progress</div>
-      <div class="student-gpa" v-if="!student.cumulativeUnits">{{ student.cumulativeUnits }}</div>
-      <div class="student-gpa" v-if="student.cumulativeUnits">--<span class="sr-only">No data</span></div>
+      <div v-if="get(student, 'currentTerm.unitsMinOverride')">
+        <div :id="`row-${rowIndex}-student-min-units`" class="student-gpa">{{ student.currentTerm.unitsMinOverride }}</div>
+        <div class="student-text">Min&nbsp;Approved</div>
+      </div>
+      <div v-if="get(student, 'currentTerm.unitsMaxOverride')">
+        <div :id="`row-${rowIndex}-student-max-units`" class="student-gpa">{{ student.currentTerm.unitsMaxOverride }}</div>
+        <div class="student-text">Max&nbsp;Approved</div>
+      </div>
+      <div
+        v-if="student.cumulativeUnits"
+        :id="`row-${rowIndex}-student-cumulative-units`"
+        class="student-gpa">
+        {{ student.cumulativeUnits }}
+      </div>
+      <div
+        v-if="!student.cumulativeUnits"
+        :id="`row-${rowIndex}-student-cumulative-units`"
+        class="student-gpa">
+        --<span class="sr-only">No data</span>
+      </div>
       <div class="student-text">Units Completed</div>
     </div>
     <div class="cohort-course-activity-wrapper">
@@ -84,37 +140,46 @@
         </tr>
         <tr v-for="(enrollment, index) in get(student.term, 'enrollments', [])" :key="index">
           <td class="cohort-course-activity-data cohort-course-activity-course-name">
-            <div>{{ enrollment.displayName }}</div>
+            <div :id="`row-${rowIndex}-student-enrollment-name-${index}`">{{ enrollment.displayName }}</div>
           </td>
           <td class="cohort-course-activity-data">
-            <div class="cohort-boxplot-container"
-                  v-for="(canvasSite, index) in enrollment.canvasSites"
-                  :key="index">
-              <span class="sr-only"
-                    v-if="enrollment.canvasSites.length > 1">
-                {{ `Course site ${index + 1} of ${enrollment.canvasSites.length}` }}
+            <div
+              v-for="(canvasSite, cIndex) in enrollment.canvasSites"
+              :id="`row-${rowIndex}-student-canvas-site-${cIndex}`"
+              :key="cIndex"
+              class="cohort-boxplot-container">
+              <span
+                v-if="enrollment.canvasSites.length > 1"
+                class="sr-only">
+                {{ `Course site ${cIndex + 1} of ${enrollment.canvasSites.length}` }}
               </span>
               <span>{{ lastActivityDays(canvasSite.analytics) }}</span>
             </div>
-            <div v-if="!get(enrollment, 'canvasSites').length"><span class="sr-only">No data</span>&mdash;</div>
+            <div
+              v-if="!get(enrollment, 'canvasSites').length"
+              :id="`row-${rowIndex}-student-canvas-sites-no-data`">
+              <span class="sr-only">No data</span>&mdash;
+            </div>
           </td>
           <td class="cohort-course-activity-data">
-            <span class="cohort-grade" v-if="enrollment.midtermGrade">{{ enrollment.midtermGrade }}</span>
-            <i class="fas fa-exclamation-triangle boac-exclamation" v-if="isAlertGrade(enrollment.midtermGrade)"></i>
+            <span v-if="enrollment.midtermGrade" class="cohort-grade">{{ enrollment.midtermGrade }}</span>
+            <i v-if="isAlertGrade(enrollment.midtermGrade)" class="fas fa-exclamation-triangle boac-exclamation"></i>
             <span v-if="!enrollment.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
           </td>
           <td class="cohort-course-activity-data">
-            <span class="cohort-grade"
-                  v-if="enrollment.grade">{{ enrollment.grade }}</span>
-            <i class="fas fa-exclamation-triangle boac-exclamation" v-if="isAlertGrade(enrollment.grade)"></i>
-            <span class="cohort-grading-basis"
-                  v-if="!enrollment.grade">{{ enrollment.gradingBasis }}</span>
+            <span
+              v-if="enrollment.grade"
+              class="cohort-grade">{{ enrollment.grade }}</span>
+            <i v-if="isAlertGrade(enrollment.grade)" class="fas fa-exclamation-triangle boac-exclamation"></i>
+            <span
+              v-if="!enrollment.grade"
+              class="cohort-grading-basis">{{ enrollment.gradingBasis }}</span>
             <span v-if="!enrollment.grade && !enrollment.gradingBasis"><span class="sr-only">No data</span>&mdash;</span>
           </td>
         </tr>
         <tr v-if="!get(student.term, 'enrollments', []).length">
           <td class="cohort-course-activity-data cohort-course-activity-course-name faint-text">
-            No {{currentEnrollmentTermId}} enrollments
+            No {{ termNameForSisId(currentEnrollmentTermId) }} enrollments
           </td>
           <td class="cohort-course-activity-data">
             <span class="sr-only">No data</span>&mdash;
@@ -132,7 +197,9 @@
 </template>
 
 <script>
+import Berkeley from '@/mixins/Berkeley';
 import Context from '@/mixins/Context';
+import CuratedStudentCheckbox from '@/components/curated/CuratedStudentCheckbox';
 import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
 import StudentGpaChart from '@/components/student/StudentGpaChart';
@@ -142,19 +209,124 @@ import Util from '@/mixins/Util';
 
 export default {
   name: 'StudentRow',
-  mixins: [Context, StudentAnalytics, StudentMetadata, UserMetadata, Util],
   components: {
+    CuratedStudentCheckbox,
     StudentAvatar,
     StudentGpaChart
   },
+  mixins: [
+    Berkeley,
+    Context,
+    StudentAnalytics,
+    StudentMetadata,
+    UserMetadata,
+    Util
+  ],
   props: {
+    listType: String,
+    rowIndex: Number,
     student: Object,
-    sort: Object
+    sortedBy: String
   },
   methods: {
-    removeFromCuratedCohort: function() {
+    removeFromCuratedGroup: function() {
       this.$eventHub.$emit('curated-group-remove-student', this.student.sid);
     }
   }
 };
 </script>
+
+<style scoped>
+.cohort-boxplot-container {
+  align-items: flex-end;
+  display: flex;
+}
+.cohort-course-activity-course-name {
+  width: 180px;
+}
+.cohort-course-activity-data {
+  font-size: 14px;
+  line-height: 1.4em;
+  padding: 0 0 5px 15px;
+  vertical-align: top;
+}
+.cohort-course-activity-header {
+  color: #aaa;
+  font-size: 13px;
+  font-weight: normal;
+  padding: 0 0 5px 15px;
+  vertical-align: top;
+}
+.cohort-course-activity-table {
+  margin: auto;
+  min-width: 340px;
+  width: 85%;
+}
+.cohort-course-activity-wrapper {
+  flex-basis: auto;
+  flex-grow: 0.6;
+  margin-left: 0;
+  min-width: 340px;
+}
+.cohort-list-view-column-00 {
+  align-self: center;
+  flex: 0 0 30px;
+  margin-right: 5px;
+}
+.cohort-list-view-column-01 {
+  align-items: center;
+  display: flex;
+  flex: 0 0 30px;
+  position: relative;
+}
+.cohort-student-name-container {
+  display: flex;
+}
+.cohort-student-name-container div:first-child {
+  flex-basis: 70%;
+}
+.profile-gpa-alert {
+  color: #d0021b;
+}
+.profile-last-term-gpa {
+  color: #000;
+}
+.profile-last-term-gpa-outer {
+  font-size: 12px;
+  padding-left: 5px;
+  text-align: left;
+}
+.student-bio-status-legend {
+  color: #999;
+  font-size: 13px;
+  font-weight: 300;
+  text-transform: uppercase;
+}
+.student-column-gpa {
+  flex: 0.5 0 130px;
+  margin-left: 15px;
+}
+.student-gpa {
+  font-size: 13px;
+  font-weight: bold;
+}
+</style>
+
+<style>
+.cohort-boxplot-container .highcharts-tooltip {
+  background-color: #000;
+  border-color: #000;
+  border-radius: 6px;
+  padding: 8px;
+  width: 250px;
+}
+.cohort-boxplot-container g.highcharts-tooltip {
+  display: none !important;
+}
+.cohort-boxplot-container .highcharts-tooltip span {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: auto !important;
+}
+</style>

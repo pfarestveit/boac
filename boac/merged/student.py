@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -29,7 +29,7 @@ import operator
 
 from boac.externals import data_loch
 from boac.lib import analytics
-from boac.lib.berkeley import current_term_id, term_name_for_sis_id
+from boac.lib.berkeley import current_term_id, future_term_id, term_name_for_sis_id
 from flask_login import current_user
 
 
@@ -85,7 +85,7 @@ def get_full_student_profiles(sids):
     return profiles
 
 
-def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
+def get_course_student_profiles(term_id, section_id, offset=None, limit=None, featured=None):
     enrollment_rows = data_loch.get_sis_section_enrollments(
         term_id,
         section_id,
@@ -99,6 +99,14 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
         total_student_count = count_result[0]['count']
     else:
         total_student_count = len(sids)
+
+    # If we have a featured UID not already present in the result set, add the corresponding SID only if the
+    # student is enrolled and falls within view permissions.
+    if featured and not next((r for r in enrollment_rows if str(r['uid']) == featured), None):
+        featured_enrollment_rows = data_loch.get_sis_section_enrollment_for_uid(term_id, section_id, featured, get_student_query_scope())
+        if featured_enrollment_rows:
+            sids = [str(featured_enrollment_rows[0]['sid'])] + sids
+
     # TODO It's probably more efficient to store class profiles in the loch, rather than distilling them
     # on the fly from full profiles.
     students = get_full_student_profiles(sids)
@@ -113,7 +121,8 @@ def get_course_student_profiles(term_id, section_id, offset=None, limit=None):
         if sis_profile:
             student['cumulativeGPA'] = sis_profile.get('cumulativeGPA')
             student['cumulativeUnits'] = sis_profile.get('cumulativeUnits')
-            student['level'] = sis_profile.get('level', {}).get('description')
+            student['level'] = _get_sis_level_description(sis_profile)
+            student['currentTerm'] = sis_profile.get('currentTerm')
             student['majors'] = sorted(plan.get('description') for plan in sis_profile.get('plans', []))
         term = enrollments_by_sid.get(student['sid'])
         student['hasCurrentTermEnrollments'] = False
@@ -169,8 +178,9 @@ def get_summary_student_profiles(sids, term_id=None):
         if sis_profile:
             profile['cumulativeGPA'] = sis_profile.get('cumulativeGPA')
             profile['cumulativeUnits'] = sis_profile.get('cumulativeUnits')
+            profile['currentTerm'] = sis_profile.get('currentTerm')
             profile['expectedGraduationTerm'] = sis_profile.get('expectedGraduationTerm')
-            profile['level'] = sis_profile.get('level', {}).get('description')
+            profile['level'] = _get_sis_level_description(sis_profile)
             profile['majors'] = sorted(plan.get('description') for plan in sis_profile.get('plans', []))
             if sis_profile.get('withdrawalCancel'):
                 profile['withdrawalCancel'] = sis_profile['withdrawalCancel']
@@ -195,7 +205,10 @@ def get_student_and_terms(uid):
     if not profiles or not profiles[0]:
         return
     profile = profiles[0]
-    enrollments_for_sid = data_loch.get_enrollments_for_sid(student['sid'], latest_term_id=current_term_id())
+    sis_profile = profile.get('sisProfile', None)
+    if sis_profile and 'level' in sis_profile:
+        sis_profile['level']['description'] = _get_sis_level_description(sis_profile)
+    enrollments_for_sid = data_loch.get_enrollments_for_sid(student['sid'], latest_term_id=future_term_id())
     profile['enrollmentTerms'] = [json.loads(row['enrollment_term']) for row in enrollments_for_sid]
     profile['hasCurrentTermEnrollments'] = False
     for term in profile['enrollmentTerms']:
@@ -252,9 +265,6 @@ def query_students(
         'is_active_coe': is_active_coe,
         'underrepresented': underrepresented,
     }
-    if order_by:
-        # 'order_by' value might influence query scope
-        criteria.update({order_by: True})
     scope = narrow_scope_by_criteria(get_student_query_scope(), **criteria)
     query_tables, query_filter, query_bindings = data_loch.get_students_query(
         advisor_ldap_uids=advisor_ldap_uids,
@@ -280,28 +290,32 @@ def query_students(
             'students': [],
             'totalStudentCount': 0,
         }    # First, get total_count of matching students
-    result = data_loch.safe_execute_rds(f'SELECT DISTINCT(sas.sid) {query_tables} {query_filter}', **query_bindings)
-    if result is None:
+    sids_result = data_loch.safe_execute_rds(f'SELECT DISTINCT(sas.sid) {query_tables} {query_filter}', **query_bindings)
+    if sids_result is None:
         return None
+    # Upstream logic may require the full list of SIDs even if we're only returning full results for a particular
+    # paged slice.
     summary = {
-        'totalStudentCount': len(result),
+        'sids': [row['sid'] for row in sids_result],
+        'totalStudentCount': len(sids_result),
     }
-    if sids_only:
-        summary['sids'] = [row['sid'] for row in result]
-    else:
+    if not sids_only:
         o, o_secondary, o_tertiary, supplemental_query_tables = data_loch.get_students_ordering(
             order_by=order_by,
             group_codes=group_codes,
             majors=majors,
+            scope=scope,
         )
         if supplemental_query_tables:
             query_tables += supplemental_query_tables
+        # Sorting by team is the one case where null results should go below not-null results.
+        o_null_order = 'NULLS LAST' if 'group_name' in o else 'NULLS FIRST'
         sql = f"""SELECT
             sas.sid, MIN({o}), MIN({o_secondary}), MIN({o_tertiary})
             {query_tables}
             {query_filter}
             GROUP BY sas.sid
-            ORDER BY MIN({o}) NULLS FIRST, MIN({o_secondary}) NULLS FIRST, MIN({o_tertiary}) NULLS FIRST"""
+            ORDER BY MIN({o}) {o_null_order}, MIN({o_secondary}) NULLS FIRST, MIN({o_tertiary}) NULLS FIRST"""
         if o_tertiary != 'sas.sid':
             sql += ', sas.sid'
         sql += ' OFFSET :offset'
@@ -309,34 +323,23 @@ def query_students(
         if limit and limit < 100:  # Sanity check large limits
             query_bindings['limit'] = limit
             sql += f' LIMIT :limit'
-        result = data_loch.safe_execute_rds(sql, **query_bindings)
+        students_result = data_loch.safe_execute_rds(sql, **query_bindings)
         if include_profiles:
-            summary['students'] = get_summary_student_profiles([row['sid'] for row in result])
+            summary['students'] = get_summary_student_profiles([row['sid'] for row in students_result])
         else:
-            summary['students'] = get_api_json([row['sid'] for row in result])
+            summary['students'] = get_api_json([row['sid'] for row in students_result])
     return summary
 
 
 def search_for_students(
     include_profiles=False,
     search_phrase=None,
-    is_active_asc=None,
-    is_active_coe=None,
     order_by=None,
     offset=0,
     limit=None,
 ):
-    scope = narrow_scope_by_criteria(
-        get_student_query_scope(),
-        is_active_asc=is_active_asc,
-        is_active_coe=is_active_coe,
-    )
-    query_tables, query_filter, query_bindings = data_loch.get_students_query(
-        search_phrase=search_phrase,
-        is_active_asc=is_active_asc,
-        is_active_coe=is_active_coe,
-        scope=scope,
-    )
+    scope = narrow_scope_by_criteria(get_student_query_scope())
+    query_tables, query_filter, query_bindings = data_loch.get_students_query(search_phrase=search_phrase, scope=scope)
     if not query_tables:
         return {
             'students': [],
@@ -433,3 +436,11 @@ def narrow_scope_by_criteria(scope, **kwargs):
     else:
         # Criteria were found for more than one department; return an intersection of those departments.
         return {'intersection': narrowed_scope}
+
+
+def _get_sis_level_description(profile):
+    level = profile.get('level', {}).get('description')
+    if level == 'Not Set':
+        return None
+    else:
+        return level

@@ -1,66 +1,99 @@
 import _ from 'lodash';
-import { getUserProfile, getUserStatus } from '@/api/user';
+import store from '@/store';
+import Vue from 'vue';
+import { getUserByCsid, getUserGroups, getUserProfile, getUserStatus } from '@/api/user';
 
 const $_user_isDepartmentMember = (state, deptCode) => {
   let membership = _.get(state.user, `departments.${deptCode}`);
   return membership && (membership.isAdvisor || membership.isDirector);
 };
 
+const $_user_canViewDepartment = (state, deptCode) => {
+  return (
+    $_user_isDepartmentMember(state, deptCode) || _.get(state.user, 'isAdmin')
+  );
+};
+
 const state = {
-  user: null,
-  isUserAuthenticated: null
+  calnetUsersByCsid: {},
+  preferences: {
+    sortBy: 'last_name'
+  },
+  user: undefined,
+  userAuthStatus: undefined,
+  userGroups: undefined
 };
 
 const getters = {
-  user: (state: any): any => state.user,
+  canViewAsc: (state: any): boolean => $_user_canViewDepartment(state, 'UWASC'),
+  canViewCoe: (state: any): boolean => $_user_canViewDepartment(state, 'COENG'),
   isAscUser: (state: any): boolean => $_user_isDepartmentMember(state, 'UWASC'),
   isCoeUser: (state: any): boolean => $_user_isDepartmentMember(state, 'COENG'),
-  isUserAuthenticated: (state: any): boolean => state.isUserAuthenticated
+  userAuthStatus: (state: any): boolean => state.userAuthStatus,
+  preferences: (state: any): any => state.preferences,
+  user: (state: any): any => state.user
 };
 
 const mutations = {
-  logout: (state: any) => {
-    state.isUserAuthenticated = false;
-    state.user = null;
-  },
   registerUser: (state: any, user: any) => {
-    state.isUserAuthenticated = user.isAuthenticated;
     if (user.uid) {
       state.user = user;
     }
   },
-  setDemoMode: (state: any, demoMode: boolean) => {
-    state.user.demoMode = demoMode;
+  putCalnetUserByCsid: (state: any, { csid, calnetUser }: any) =>
+    (state.calnetUsersByCsid[csid] = calnetUser),
+  setUserGroups: (state: any, userGroups: any[]) => (state.userGroups = userGroups),
+  setDemoMode: (state: any, demoMode: boolean) =>
+    (state.user.inDemoMode = demoMode),
+  setUserPreference: (state: any, { key, value }) => {
+    if (_.has(state.preferences, key)) {
+      state.preferences[key] = value;
+    } else {
+      throw new TypeError('Invalid user preference type: ' + key);
+    }
   },
-  userAuthenticated: (state: any) => {
-    state.isUserAuthenticated = true;
-  }
+  setUserAuthStatus: (state: any, userAuthStatus: any) => (state.userAuthStatus = userAuthStatus)
 };
 
 const actions = {
-  logout: ({ commit }) => {
-    commit('logout');
-  },
-  setDemoMode: ({ commit }, demoMode) => {
-    commit('setDemoMode', demoMode);
-  },
-  userAuthenticated: ({ commit }) => {
-    commit('userAuthenticated');
-  },
-  loadUserStatus: ({ commit, state }) => {
+  loadCalnetUserByCsid: ({ commit, state }, csid) => {
     return new Promise(resolve => {
-      if (_.isNil(state.isUserAuthenticated)) {
+      if (state.calnetUsersByCsid[csid]) {
+        resolve(state.calnetUsersByCsid[csid]);
+      } else {
+        getUserByCsid(csid)
+          .then(calnetUser => {
+            commit('putCalnetUserByCsid', {csid, calnetUser});
+            resolve(state.calnetUsersByCsid[csid]);
+          });
+      }
+    });
+  },
+  loadUserGroups: ({ commit, state }) => {
+    return new Promise(resolve => {
+      if (state.userGroups) {
+        resolve(state.userGroups);
+      } else {
+        getUserGroups('firstName')
+          .then(data => {
+            commit('setUserGroups', data);
+            resolve(state.userGroups);
+          });
+      }
+    });
+  },
+  loadUserAuthStatus: ({ commit, state }) => {
+    return new Promise(resolve => {
+      if (_.get(state.userAuthStatus, 'isAuthenticated')) {
+        resolve(state.userAuthStatus);
+      } else {
         getUserStatus()
           .then(data => {
-            if (data.isAuthenticated) {
-              commit('userAuthenticated');
-            }
+            commit('setUserAuthStatus', data);
           })
           .then(() => {
-            resolve(state.isUserAuthenticated);
+            resolve(state.userAuthStatus);
           });
-      } else {
-        resolve(state.isUserAuthenticated);
       }
     });
   },
@@ -70,12 +103,25 @@ const actions = {
         resolve(state.user);
       } else {
         getUserProfile().then(user => {
+          let googleAnalyticsId = store.getters['context/googleAnalyticsId'];
+          if (googleAnalyticsId) {
+            Vue.prototype.$ga.set('userId', user.uid);
+            const dept_code = user.isAdmin
+              ? 'ADMIN'
+              : _.keys(user.departments)[0];
+            if (dept_code) {
+              Vue.prototype.$ga.set('dimension1', dept_code);
+            }
+          }
           commit('registerUser', user);
           resolve(user);
         });
       }
     });
-  }
+  },
+  logout: ({ commit }) => commit('logout'),
+  setDemoMode: ({ commit }, demoMode) => commit('setDemoMode', demoMode),
+  setUserPreference: ({ commit }, { key, value }) => commit('setUserPreference', { key, value })
 };
 
 export default {

@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -73,6 +73,10 @@ def asc_schema():
     return app.config['DATA_LOCH_ASC_SCHEMA']
 
 
+def advising_notes_schema():
+    return app.config['DATA_LOCH_ADVISING_NOTES_SCHEMA']
+
+
 def boac_schema():
     return app.config['DATA_LOCH_BOAC_SCHEMA']
 
@@ -83,6 +87,10 @@ def coe_schema():
 
 def intermediate_schema():
     return app.config['DATA_LOCH_INTERMEDIATE_SCHEMA']
+
+
+def physics_schema():
+    return app.config['DATA_LOCH_PHYSICS_SCHEMA']
 
 
 def sis_schema():
@@ -133,9 +141,10 @@ def get_sis_enrollments(uid, term_id):
     return safe_execute_redshift(sql)
 
 
-def get_sis_holds():
-    sql = f"""SELECT sid, feed
+def get_sis_holds(sid):
+    sql = f"""SELECT feed
         FROM {student_schema()}.student_holds
+        WHERE sid = '{sid}'
         """
     return safe_execute_redshift(sql)
 
@@ -156,12 +165,27 @@ def get_sis_section(term_id, sis_section_id):
     return safe_execute_redshift(sql)
 
 
+def get_sis_section_enrollment_for_uid(term_id, sis_section_id, uid, scope):
+    query_tables = _student_query_tables_for_scope(scope)
+    if not query_tables:
+        return []
+    sql = f"""SELECT DISTINCT sas.sid
+              {query_tables}
+              JOIN {intermediate_schema()}.sis_enrollments enr
+                ON sas.uid = enr.ldap_uid
+                AND enr.ldap_uid = :uid
+                AND enr.sis_term_id = :term_id
+                AND enr.sis_section_id = :sis_section_id"""
+    params = {'term_id': term_id, 'sis_section_id': sis_section_id, 'uid': uid}
+    return safe_execute_redshift(sql, **params)
+
+
 @fixture('loch_sis_section_enrollments_{term_id}_{sis_section_id}.csv')
 def get_sis_section_enrollments(term_id, sis_section_id, scope, offset=None, limit=None):
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
         return []
-    sql = f"""SELECT DISTINCT sas.sid, sas.first_name, sas.last_name
+    sql = f"""SELECT DISTINCT sas.sid, sas.uid, sas.first_name, sas.last_name
               {query_tables}
               JOIN {intermediate_schema()}.sis_enrollments enr
                 ON sas.uid = enr.ldap_uid
@@ -286,13 +310,59 @@ def get_enrollments_for_term(term_id, sids=None):
     return safe_execute_redshift(sql, term_id=term_id, sids=sids)
 
 
+def get_advising_notes(sid):
+    sql = f"""
+        SELECT
+            id, sid, advisor_sid, appointment_id, note_category, note_subcategory,
+            created_by, updated_by, note_body, created_at, updated_at
+        FROM {advising_notes_schema()}.advising_notes
+        WHERE sid=:sid
+        ORDER BY created_at, updated_at"""
+    return safe_execute_redshift(sql, sid=sid)
+
+
+def get_advising_note_topics(sid):
+    sql = f"""SELECT advising_note_id, note_topic
+        FROM {advising_notes_schema()}.advising_note_topics
+        where sid=:sid"""
+    return safe_execute_redshift(sql, sid=sid)
+
+
+def get_advising_note_attachments(sid):
+    sql = f"""SELECT advising_note_id, sis_file_name
+        FROM {advising_notes_schema()}.advising_note_attachments
+        where sid=:sid"""
+    return safe_execute_redshift(sql, sid=sid)
+
+
+def search_advising_notes(search_phrase, sid_filter, limit=None):
+    sql = f"""SELECT
+        an.sid, an.id, an.note_body, an.advisor_sid, an.created_by, an.created_at, an.updated_at
+        FROM (
+          SELECT id, ts_rank(fts_index, to_tsquery('english', :search_phrase)) AS rank
+          FROM {advising_notes_schema()}.advising_notes_search_index
+          WHERE fts_index @@ to_tsquery('english', :search_phrase)
+        )
+        AS s
+        JOIN {advising_notes_schema()}.advising_notes an
+          ON s.id = an.id
+          AND an.sid = ANY(:sid_filter)
+        ORDER BY s.rank DESC"""
+    if limit and limit < 100:  # Sanity check large limits
+        sql += ' LIMIT :limit'
+    return safe_execute_rds(sql, search_phrase=search_phrase, sid_filter=sid_filter, limit=limit)
+
+
 def get_ethnicity_codes(scope=()):
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
         return []
+    # TODO 'Z' is an international visa status rather than an ethnicity, and should be suppressed for now.
+    # BOAC will handle international status separately from ethnicity after switching to campus-wide demographic
+    # data.
     return safe_execute_rds(f"""SELECT DISTINCT s.ethnicity AS ethnicity_code
         {query_tables}
-        WHERE s.ethnicity IS NOT NULL AND s.ethnicity != ''
+        WHERE s.ethnicity IS NOT NULL AND s.ethnicity != '' AND s.ethnicity != 'Z'
         ORDER BY ethnicity_code
         """)
 
@@ -401,7 +471,7 @@ def get_students_query(     # noqa
     return query_tables, query_filter, query_bindings
 
 
-def get_students_ordering(order_by=None, group_codes=None, majors=None):
+def get_students_ordering(order_by=None, group_codes=None, majors=None, scope=None):
     supplemental_query_tables = None
     # Case-insensitive sort of first_name and last_name.
     by_first_name = naturalize_order('sas.first_name')
@@ -414,15 +484,19 @@ def get_students_ordering(order_by=None, group_codes=None, majors=None):
     elif order_by in ['gpa', 'units', 'level']:
         o = f'sas.{order_by}'
     elif order_by == 'group_name':
-        # In the special case where team group name is both a filter criterion and an ordering criterion, we
-        # have to do extra work. The athletics join specified in get_students_query join will include only
-        # those group names that are in filter criteria, but if any students are in multiple team groups,
-        # ordering may depend on group names not present in filter criteria; so we have to join the athletics
-        # rows a second time. Why not do this complex sorting after the query? Because correctly calculating
+        # Sorting by athletic team introduces a couple of onerous special cases where we
+        # have to do an extra join on the athletics table.
+        # 1) If team name is both a filter criterion and a sort criterion, the athletics join specified in the
+        # get_students_query join will include only those group names that are in filter criteria. But if any
+        # students are in multiple team groups, ordering may depend on group names not present in filter criteria,
+        # so we have to join the athletics rows a second time.
+        # 2) If team group name has been specified as an ordering criterion but is not yet present as a join table
+        # (for instance, because the current user is an admin), we have to explicitly bring it in.
+        # Why not do this complex sorting after the query? Because correctly calculating
         # pagination offsets requires filtering and ordering to be done at the SQL level.
-        if group_codes:
-            supplemental_query_tables = f' LEFT JOIN {asc_schema()}.students s2 ON s2.sid = sas.sid'
-            o = naturalize_order('s2.group_name')
+        if group_codes or (scope and asc_schema() not in _student_query_tables_for_scope(scope)):
+            supplemental_query_tables = f' LEFT JOIN {asc_schema()}.students asc_students ON asc_students.sid = sas.sid'
+            o = naturalize_order('asc_students.group_name')
         else:
             o = naturalize_order('s.group_name')
     elif order_by == 'major':
@@ -502,6 +576,7 @@ def _student_query_tables_for_scope(scope):
         schemas_for_codes = {
             'UWASC': asc_schema(),
             'COENG': coe_schema(),
+            'PHYSI': physics_schema(),
         }
         tables = []
         # A dictionary with key 'intersection' indicates that multiple scopes should be treated as an intersection

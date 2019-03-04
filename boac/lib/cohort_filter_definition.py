@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -28,6 +28,7 @@ from copy import deepcopy
 from boac.api.util import authorized_users_api_feed
 from boac.externals import data_loch
 from boac.lib.berkeley import BERKELEY_DEPT_NAME_TO_CODE, COE_ETHNICITIES_PER_CODE, get_dept_codes
+from boac.lib.util import to_bool_or_none as to_bool
 from boac.merged import athletics
 from boac.merged.student import get_student_query_scope
 from boac.models.authorized_user import AuthorizedUser
@@ -223,6 +224,22 @@ def translate_cohort_filter(criteria=None):
     return rows
 
 
+def translate_filters_to_cohort_criteria(filters):
+    criteria = {}
+    for filter_ in filters:
+        key = filter_['key']
+        type_ = filter_['type']
+        value = filter_['value']
+        if type_ == 'boolean':
+            criteria[key] = to_bool(value)
+        elif type_ == 'array':
+            criteria[key] = criteria.get(key) or []
+            criteria[key].append(value)
+        elif type_ == 'range':
+            criteria[key] = value
+    return criteria
+
+
 def get_cohort_filter_options(existing_filters):
     # Default menu has all options available.
     filter_categories = get_cohort_filter_definitions(get_student_query_scope())
@@ -233,8 +250,12 @@ def get_cohort_filter_options(existing_filters):
             if menu['key'] == key:
                 # Disable 'boolean' sub_menu (e.g., 'isInactiveCoe') if it is already in cohort criteria
                 menu['disabled'] = True
-    # Next, get selected 'array' options (e.g., 'levels') from cohort criteria.
-    for key, values in _selections_of_type_array(existing_filters).items():
+    # Get filters of type 'range' (e.g., 'last name')
+    for key, values in _selections_of_type('range', existing_filters).items():
+        menu = next(s for s in menus if s['key'] == key)
+        menu['disabled'] = True
+    # Get filters of type 'array' (e.g., 'levels')
+    for key, values in _selections_of_type('array', existing_filters).items():
         menu = next(s for s in menus if s['key'] == key)
         if len(values) == len(menu['options']):
             # If count of selected values equals number of options then disable the sub_menu
@@ -264,12 +285,15 @@ def _keys_of_type_boolean(rows):
     return list(map(lambda r: r['key'], existing_boolean_rows))
 
 
-def _selections_of_type_array(rows):
-    existing_array_rows = list(filter(lambda row: row['type'] in ['array'], rows))
-    unique_keys = set(map(lambda row: row['key'], existing_array_rows))
-    selections = dict.fromkeys(unique_keys, [])
-    for row in existing_array_rows:
-        selections[row['key']].append(row['value'])
+def _selections_of_type(filter_type, existing_filters):
+    rows = list(filter(lambda row: row['type'] in [filter_type], existing_filters))
+    unique_keys = set(map(lambda row: row['key'], rows))
+    selections = dict.fromkeys(unique_keys)
+    for row in rows:
+        key = row['key']
+        if not selections[key]:
+            selections[key] = []
+        selections[key].append(row['value'])
     return selections
 
 

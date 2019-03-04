@@ -2,7 +2,8 @@ import numFormat from 'vue-filter-number-format';
 import { format as formatDate, parse as parseDate } from 'date-fns';
 
 export default {
-  date: (dateString: string, format: string = 'MMM dd, YYYY') => {
+  ceil: value => Math.ceil(value),
+  date: (dateString: string, format: string = 'MMM DD, YYYY') => {
     let date = parseDate(dateString);
     return formatDate(date, format);
   },
@@ -17,7 +18,7 @@ export default {
     pluralSuffix = 's'
   ) => {
     return (
-      `${substitutions[count] || count} ` +
+      `${substitutions[count] || substitutions['other'] || count} ` +
       (count !== 1 ? `${noun}${pluralSuffix}` : noun)
     );
   },
@@ -25,10 +26,5 @@ export default {
     return (
       Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals)
     ).toFixed(decimals);
-  },
-  variablePrecisionNumber: (value, minPrecision, maxPrecision) => {
-    let maximallyPreciseDecimal = value | numFormat(maxPrecision);
-    let superfluousZeros = new RegExp(`0{1,${maxPrecision - minPrecision}}$`);
-    return maximallyPreciseDecimal.toString().replace(superfluousZeros, '');
   }
 };

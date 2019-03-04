@@ -1,18 +1,21 @@
 <template>
-  <div class="pb-3" v-if="user.isAdmin && devAuthEnabled && inDemoMode !== null">
+  <div v-if="inDemoMode !== null">
     <h2 class="page-section-header-sub">Demo Mode</h2>
     <div class="p-2">
-      <span role="alert"
-            aria-live="passive"
-            class="sr-only" v-if="isToggling">Switching demo mode {{ inDemoMode ? 'off' : 'on' }}</span>
-      <b-form-checkbox id="toggle-demo-mode"
-                       :disabled="isToggling"
-                       v-model="inDemoMode"
-                       @change="toggle"
-                       v-if="!isToggling">
-          <span class="sr-only">Demo mode is </span>{{ inDemoMode ? 'On' : 'Off' }}
+      <span
+        v-if="isToggling"
+        role="alert"
+        aria-live="passive"
+        class="sr-only">Switching demo mode {{ inDemoMode ? 'off' : 'on' }}</span>
+      <b-form-checkbox
+        v-if="!isToggling"
+        id="toggle-demo-mode"
+        v-model="inDemoMode"
+        :disabled="isToggling"
+        @change="toggle">
+        <span class="sr-only">Demo mode is </span>{{ inDemoMode ? 'On' : 'Off' }}
       </b-form-checkbox>
-      <div class="demo-mode-label" v-if="isToggling">
+      <div v-if="isToggling" class="demo-mode-label">
         <span class="fa fa-spinner fa-spin"></span>
         Toggling demo mode...
       </div>
@@ -21,13 +24,12 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
 import UserMetadata from '@/mixins/UserMetadata';
 import { setDemoMode } from '@/api/user';
 
 export default {
   name: 'DemoModeToggle',
-  mixins: [Context, UserMetadata],
+  mixins: [UserMetadata],
   data: () => ({
     inDemoMode: null,
     isToggling: false
@@ -46,3 +48,10 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.demo-mode-label {
+  font-weight: 500;
+  padding-bottom: 3px;
+}
+</style>

@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -72,6 +72,7 @@ class TestUserProfile:
         response = client.get('/api/profile/my')
         assert response.json['isAuthenticated'] is True
         assert response.json['uid'] == test_uid
+        assert 'csid' in response.json
         assert 'firstName' in response.json
         assert 'lastName' in response.json
 
@@ -128,6 +129,37 @@ class TestUserProfile:
         assert response.status_code == 404
 
 
+class TestUserById:
+    """User Profile API."""
+
+    def test_user_by_uid_not_authenticated(self, client):
+        """Returns 401 when not authenticated."""
+        user = AuthorizedUser.find_by_uid('1081940')
+        response = client.get(f'/api/user/by_uid/{user.uid}')
+        assert response.status_code == 401
+
+    def test_user_by_uid(self, client, fake_auth):
+        """Delivers CalNet profile."""
+        fake_auth.login('2040')
+        uid = '1081940'
+        user = AuthorizedUser.find_by_uid(uid)
+        response = client.get(f'/api/user/by_uid/{user.uid}')
+        assert response.status_code == 200
+        assert response.json['uid'] == uid
+
+    def test_user_by_csid_not_authenticated(self, client):
+        """Returns 401 when not authenticated."""
+        response = client.get(f'/api/user/by_csid/{81067873}')
+        assert response.status_code == 401
+
+    def test_user_by_csid(self, client, fake_auth):
+        """Delivers CalNet profile."""
+        fake_auth.login('2040')
+        response = client.get(f'/api/user/by_csid/{81067873}')
+        assert response.status_code == 200
+        assert response.json['csid'] == '81067873'
+
+
 class TestMyCohorts:
     """User Profile API."""
 
@@ -150,26 +182,28 @@ class TestMyCohorts:
 
     def test_cohort_ordering(self, client, asc_advisor_session):
         """Order alphabetically."""
-        CohortFilter.create(uid=asc_advisor_uid, name='Zebra Zealots', group_codes=['MTE', 'WWP'])
-        CohortFilter.create(uid=asc_advisor_uid, name='Aardvark Admirers', group_codes=['MWP', 'WTE'])
+        CohortFilter.create(
+            uid=asc_advisor_uid,
+            name='Zebra Zealots',
+            filter_criteria={
+                'groupCodes': ['MTE', 'WWP'],
+            },
+        )
+        CohortFilter.create(
+            uid=asc_advisor_uid,
+            name='Aardvark Admirers',
+            filter_criteria={
+                'groupCodes': ['MWP', 'WTE'],
+            },
+        )
         response = client.get('/api/profile/my')
         assert response.status_code == 200
         cohorts = response.json['myFilteredCohorts']
         assert cohorts[0]['name'] == 'Aardvark Admirers'
         assert cohorts[-1]['name'] == 'Zebra Zealots'
 
-    def test_my_curated_groups(self, client, fake_auth):
-        """Returns user's curated groups."""
-        fake_auth.login('6446')
-        response = client.get('/api/curated_groups/my')
-        assert response.status_code == 200
-        cohorts = response.json
-        assert len(cohorts) == 2
-        assert 'name' in cohorts[0]
-        assert 'studentCount' in cohorts[0]
 
-
-class TestAuthorizedUserGroups:
+class TestUserGroups:
     """User API."""
 
     admin_uid = '2040'
@@ -192,13 +226,15 @@ class TestAuthorizedUserGroups:
         response = client.get('/api/users/authorized_groups')
         assert response.status_code == 200
         user_groups = sorted(response.json, key=lambda g: g['code'])
-        assert len(user_groups) == 3
+        assert len(user_groups) == 4
         assert user_groups[0]['name'] == 'Admins'
         assert len(user_groups[0]['users']) == 8
         assert user_groups[1]['name'] == 'College of Engineering'
         assert len(user_groups[1]['users']) == 3
-        assert user_groups[2]['name'] == 'Athletic Study Center'
-        assert len(user_groups[2]['users']) == 2
+        assert user_groups[2]['name'] == 'Department of Physics'
+        assert len(user_groups[2]['users']) == 1
+        assert user_groups[3]['name'] == 'Athletic Study Center'
+        assert len(user_groups[3]['users']) == 2
 
 
 class TestDemoMode:

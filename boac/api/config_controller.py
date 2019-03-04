@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,7 +23,6 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 import json
 
 from boac import __version__ as version
@@ -43,11 +42,9 @@ def app_config():
         'disableMatrixViewThreshold': app.config['DISABLE_MATRIX_VIEW_THRESHOLD'],
         'devAuthEnabled': app.config['DEVELOPER_AUTH_ENABLED'],
         'ebEnvironment': app.config['EB_ENVIRONMENT'] if 'EB_ENVIRONMENT' in app.config else None,
-        'supportEmailAddress': app.config['BOAC_SUPPORT_EMAIL'],
+        'featureFlagCreateNotes': app.config['FEATURE_FLAG_CREATE_NOTES'],
         'googleAnalyticsId': app.config['GOOGLE_ANALYTICS_ID'],
-        'vueEnabled': app.config['VUE_ENABLED'],
-        'vueBaseUrl': app.config['VUE_LOCALHOST_BASE_URL'],
-        'vuePaths': app.config['VUE_PATHS'],
+        'supportEmailAddress': app.config['BOAC_SUPPORT_EMAIL'],
     })
 
 

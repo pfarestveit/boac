@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -37,6 +37,7 @@ class TestConfigController:
         assert data['ebEnvironment'] is None
         assert data['googleAnalyticsId'] is False
         assert '@' in data['supportEmailAddress']
+        assert data['featureFlagCreateNotes'] is True
 
     def test_anonymous_api_version_request(self, client):
         """Returns a well-formed response."""

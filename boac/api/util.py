@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -24,9 +24,13 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from functools import wraps
+import json
 
-from boac.lib.berkeley import get_dept_codes
+from boac.api.errors import ResourceNotFoundError
+from boac.externals.data_loch import get_sis_holds
+from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, get_dept_codes
 from boac.merged import calnet
+from boac.merged.advising_note import get_advising_notes
 from boac.models.alert import Alert
 from boac.models.cohort_filter import CohortFilter
 from boac.models.curated_cohort import CuratedCohort
@@ -50,6 +54,16 @@ def admin_required(func):
     return _admin_required
 
 
+def feature_flag_create_notes(func):
+    @wraps(func)
+    def _feature_flag_create_notes(*args, **kw):
+        if app.config['FEATURE_FLAG_CREATE_NOTES']:
+            return func(*args, **kw)
+        else:
+            raise ResourceNotFoundError('API path not found')
+    return _feature_flag_create_notes
+
+
 def add_alert_counts(alert_counts, students):
     students_by_sid = {student['sid']: student for student in students}
     for alert_count in alert_counts:
@@ -69,6 +83,7 @@ def authorized_users_api_feed(users, sort_by='lastName'):
         profile = calnet.get_calnet_user_for_uid(app, user.uid)
         profile['name'] = (profile.get('firstName') or '') + ' ' + (profile.get('lastName') or '')
         profile.update({
+            'id': user.id,
             'isAdmin': user.is_admin,
             'departments': {},
         })
@@ -98,6 +113,44 @@ def canvas_courses_api_feed(courses):
     return [canvas_course_api_feed(course) for course in courses]
 
 
+def current_user_profile(exclude_cohorts=False):
+    profile = get_current_user_status()
+    if current_user.is_authenticated:
+        profile['id'] = current_user.id
+        uid = current_user.get_id()
+        profile.update(calnet.get_calnet_user_for_uid(app, uid))
+        if current_user.is_active:
+            departments = {}
+            for m in current_user.department_memberships:
+                dept_code = m.university_dept.dept_code
+                departments.update({
+                    dept_code: {
+                        'deptName': BERKELEY_DEPT_CODE_TO_NAME[dept_code],
+                        'role': get_dept_role(m),
+                        'isAdvisor': m.is_advisor,
+                        'isDirector': m.is_director,
+                    },
+                })
+            dept_codes = get_dept_codes(current_user)
+            profile['isAsc'] = 'UWASC' in dept_codes
+            profile['isCoe'] = 'COENG' in dept_codes
+            if not exclude_cohorts:
+                profile.update({
+                    'myFilteredCohorts': get_my_cohorts(),
+                    'myCuratedCohorts': get_my_curated_groups(),
+                })
+            profile.update({
+                'isAdmin': current_user.is_admin,
+                'inDemoMode': current_user.in_demo_mode if hasattr(current_user, 'in_demo_mode') else False,
+                'departments': departments,
+            })
+    return profile
+
+
+def get_dept_role(department_membership):
+    return 'Director' if department_membership.is_director else ('Advisor' if department_membership.is_advisor else None)
+
+
 def sis_enrollment_class_feed(enrollment):
     return {
         'displayName': enrollment['sis_course_name'],
@@ -122,6 +175,57 @@ def sis_enrollment_section_feed(enrollment):
         'midtermGrade': next((grade.get('mark') for grade in grades if grade.get('type', {}).get('code') == 'MID'), None),
         'primary': False if grading_basis == 'NON' else True,
     }
+
+
+def put_notifications(student):
+    student['notifications'] = {
+        'note': [],
+        'alert': [],
+        'hold': [],
+        'requirement': [],
+    }
+    # The front-end requires 'type', 'message' and 'read'. Optional fields: id, status, createdAt, updatedAt.
+    for note in get_advising_notes(student['sid']) or []:
+        message = note['body']
+        student['notifications']['note'].append({
+            **note,
+            **{
+                'message': message.strip() if message else None,
+                'type': 'note',
+            },
+        })
+    for alert in Alert.current_alerts_for_sid(viewer_id=current_user.id, sid=student['sid']):
+        student['notifications']['alert'].append({
+            **alert,
+            **{
+                'id': alert['id'],
+                'read': alert['dismissed'],
+                'type': 'alert',
+            },
+        })
+    for row in get_sis_holds(student['sid']):
+        hold = json.loads(row['feed'])
+        reason = hold.get('reason', {})
+        student['notifications']['hold'].append({
+            **hold,
+            **{
+                'createdAt': hold.get('fromDate'),
+                'message': reason.get('description') + '. ' + reason.get('formalDescription'),
+                'read': True,
+                'type': 'hold',
+            },
+        })
+    degree_progress = student.get('sisProfile', {}).get('degreeProgress', {})
+    if degree_progress:
+        for key, requirement in degree_progress.get('requirements', {}).items():
+            student['notifications']['requirement'].append({
+                **requirement,
+                **{
+                    'type': 'requirement',
+                    'message': requirement['name'] + ' ' + requirement['status'],
+                    'read': True,
+                },
+            })
 
 
 def sort_students_by_name(students):
@@ -195,19 +299,17 @@ def is_coe_authorized():
     return current_user.is_admin or 'COENG' in get_dept_codes(current_user)
 
 
-def is_unauthorized_search(params):
-    return (_is_asc_data_request(params) and not is_asc_authorized()) or (_is_coe_data_request(params) and not is_coe_authorized())
-
-
-def _is_coe_data_request(params):
-    keys = ['advisorLdapUids', 'coePrepStatuses', 'coeProbation', 'ethnicities', 'genders', 'isInactiveCoe']
-    return next((key for key in keys if params.get(key) is not None), False)
-
-
-def _is_asc_data_request(params):
-    keys = ['inIntensiveCohort', 'isInactiveAsc', 'groupCodes']
-    is_asc_request = next((key for key in keys if params.get(key) is not None), False)
-    return is_asc_request or params.get('orderBy') in ['group_name']
+def is_unauthorized_search(filter_keys, order_by):
+    filter_key_set = set(filter_keys)
+    asc_keys = {'inIntensiveCohort', 'isInactiveAsc', 'groupCodes'}
+    if list(filter_key_set & asc_keys) or order_by in ['group_name']:
+        if not is_asc_authorized():
+            return True
+    coe_keys = {'advisorLdapUids', 'coePrepStatuses', 'coeProbation', 'ethnicities', 'genders', 'isInactiveCoe'}
+    if list(filter_key_set & coe_keys):
+        if not is_coe_authorized():
+            return True
+    return False
 
 
 def _curated_cohort_api_json(cohort):

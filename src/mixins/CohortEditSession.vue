@@ -1,35 +1,41 @@
 <script>
-import store from '@/store';
 import { mapActions, mapGetters } from 'vuex';
 
 export default {
   name: 'CohortEditSession',
-  methods: {
-    initSession(id) {
-      return new Promise(resolve =>
-        store.dispatch('cohortEditSession/init', id).then(resolve)
-      );
-    },
-    ...mapActions('cohortEditSession', [
-      'addFilter',
-      'removeFilter',
-      'readyForSave',
-      'renameCohort',
-      'setPageMode',
-      'toggleCompactView'
-    ])
-  },
   computed: {
     ...mapGetters('cohortEditSession', [
       'cohortId',
       'cohortName',
+      'editMode',
       'filters',
-      'isOwnedByCurrentUser',
       'isCompactView',
+      'isModifiedSinceLastSearch',
+      'isOwnedByCurrentUser',
       'menu',
-      'pageMode',
+      'pagination',
+      'showApplyButton',
+      'showSaveButton',
+      'showSortBy',
       'students',
       'totalStudentCount'
+    ])
+  },
+  methods: {
+    ...mapActions('cohortEditSession', [
+      'addFilter',
+      'applyFilters',
+      'createCohort',
+      'init',
+      'removeFilter',
+      'renameCohort',
+      'resetFiltersToLastApply',
+      'resetFiltersToSaved',
+      'saveExistingCohort',
+      'setCurrentPage',
+      'setEditMode',
+      'toggleCompactView',
+      'updateExistingFilter'
     ])
   }
 };

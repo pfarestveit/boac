@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -22,7 +22,6 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 "AS IS". REGENTS HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
 ENHANCEMENTS, OR MODIFICATIONS.
 """
-
 
 import re
 
@@ -179,13 +178,90 @@ COE_ETHNICITIES_PER_CODE = {
 }
 
 BERKELEY_DEPT_NAME_TO_CODE = {
+    'ASUC Business Auxiliary': 'FVAUX',
     'Athletic Study Center': 'UWASC',
+    'Berkeley Center for Cosmo Physics': 'IEIRP',
+    'Berkeley International Office': 'LLSIS',
+    'Biosciences Divisional Services': 'IABSS',
+    'Comparative Literature and French': 'HKCLF',
+    'CAP Physical & Environ Planning': 'AQCPE',
+    'Center for Particle Astrophysics': 'PQPAS',
+    'Charles and Louise Travers Department of Political Science': 'SPOLS',
+    'COENG Coleman Fung Institute': 'EDCFI',
+    'COENG Engineering Student Services': 'EDESS',
+    'College of Chemistry Dean': 'CDCDN',
     'College of Engineering': 'COENG',
+    'College of Environmental Design': 'DACED',
+    'College of Natural Resources': 'MANRD',
+    'Comp Sci Div Operations': 'EH1CS',
+    'Department of Anthropology': 'SZANT',
+    'Department of Architecture': 'DBARC',
+    'Department of Astronomy': 'PAAST',
+    'Department of Earth and Planetary Science': 'PGEGE',
+    'Department of East Asian Languages and Cultures': 'HGEAL',
+    'Department of Economics': 'SECON',
+    'Department of English': 'HENGL',
+    'Department of Gender and Women\'s Studies': 'SWOME',
+    'Department of Geography': 'SGEOG',
+    'Department of German': 'HZGER',
+    'Department of History': 'SHIST',
+    'Department of Linguistics': 'SLING',
+    'Department of Mathematics': 'PMATH',
+    'Department of Mechanical Engineering': 'EKMEG',
+    'Department of Molecular and Cell Biology': 'IMMCB',
+    'Department of Music': 'HMUSC',
+    'Department of Near Eastern Studies': 'HNNES',
+    'Department of Nutritional Sciences and Toxicology': 'MDNST',
+    'Department of Philosophy': 'HCPHI',
+    'Department of Physical Education': 'IPPEP',
+    'Department of Physics': 'PHYSI',
+    'Department of Psychology': 'SYPSY',
+    'Department of Rhetoric': 'HRHET',
+    'Department of Scandinavian': 'HSCAN',
+    'Department of Social Welfare': 'CSDEP',
+    'Department of Sociology': 'SISOC',
+    'Department of Statistics': 'PSTAT',
+    'Department of Theater, Dance and Performance Studies': 'HDRAM',
+    'Disabled Students Program': 'UXDSP',
+    'EECS Dept Operations': 'EH1EO',
+    'Engineering Research Centers': 'EERCT',
+    'German, Spanish & Portuguese': 'HOGSP',
+    'Haas School of Business': 'BAHSB',
+    'Housing & Dining Services': 'UKHDS',
+    'Institute of East Asian Studies': 'LBEAS',
+    'Institute of Human Development': 'NYIHD',
+    'International and Area Studies Academic Program': 'QIIAS',
+    'International House': 'LMOIH',
+    'Italian, Scandinavian & Slavic': 'HQISS',
+    'L&S Deans': 'QALSD',
+    'L&S Undergraduate Advising': 'QCADV',
+    'Office of Student Systems': 'UBOSS',
+    'Office of the Registrar': 'UHREG',
+    'Physical Plant Campus Services': 'FJPPS',
+    'Physical Science Dean\'s off': 'PDPSD',
+    'Rhetoric & Film Studies': 'LORFS',
+    'School of Information': 'MMIMS',
+    'School of Law': 'CLLAW',
+    'School of Public Health': 'CQADM',
+    'Summer Sessions': 'EWSUM',
+    'Theoretical Astrophysics Center': 'NRTAC',
+    'UGIS Teaching Programs': 'QHUTL',
+    'UNEX Academic Departments': 'HYACD',
+    'University Health Services': 'FYUHS',
+    'VC University Relations': 'AIDVO',
+    'VCUA Immediate Office': 'UCIMM',
 }
+
+BERKELEY_DEPT_CODE_TO_NAME = {value: key for key, value in BERKELEY_DEPT_NAME_TO_CODE.items()}
 
 
 def current_term_id():
     term_name = app.config['CANVAS_CURRENT_ENROLLMENT_TERM']
+    return sis_term_id_for_name(term_name)
+
+
+def future_term_id():
+    term_name = app.config['CANVAS_FUTURE_ENROLLMENT_TERM']
     return sis_term_id_for_name(term_name)
 
 
@@ -262,14 +338,6 @@ def is_authorized_to_use_boac(user):
 
 def get_dept_codes(user):
     return [m.university_dept.dept_code for m in user.department_memberships] if user else None
-
-
-def convert_inactive_arg(is_inactive, dept_code, user):
-    if user and dept_code in get_dept_codes(user):
-        is_active = not is_inactive
-    else:
-        is_active = None if is_inactive is None else not is_inactive
-    return is_active
 
 
 def can_view_cohort(user, cohort):

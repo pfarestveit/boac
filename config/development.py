@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -26,6 +26,8 @@ ENHANCEMENTS, OR MODIFICATIONS.
 # Development environment.
 DEBUG = True
 
-INDEX_HTML = 'boac/templates/index.html'
-INDEX_HTML_VUE = 'public/index.html'
+INDEX_HTML = 'public/index.html'
 VUE_LOCALHOST_BASE_URL = 'http://localhost:8080'
+
+# TODO: Remove when note creation is in prod
+FEATURE_FLAG_CREATE_NOTES = True

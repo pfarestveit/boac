@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,12 +23,12 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from boac import db, std_commit
 from boac.lib.berkeley import BERKELEY_DEPT_NAME_TO_CODE
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 from boac.models.curated_cohort import CuratedCohort
+from boac.models.note import Note
 from boac.models.university_dept import UniversityDept
 # Models below are included so that db.create_all will find them.
 from boac.models.alert import Alert # noqa
@@ -73,6 +73,13 @@ _users_per_dept = {
             'is_director': False,
         },
     ],
+    'PHYSI': [
+        {
+            'uid': '53791',
+            'is_advisor': False,
+            'is_director': True,
+        },
+    ],
     'UWASC': [
         {
             'uid': '1081940',
@@ -104,8 +111,9 @@ def load(cohort_test_data=False):
     load_schemas()
     load_development_data()
     if cohort_test_data:
-        create_curated_cohorts()
-        create_filtered_cohorts()
+        create_curated_groups()
+        create_cohorts()
+        create_notes()
     return db
 
 
@@ -139,17 +147,17 @@ def load_development_data():
     std_commit(allow_test_environment=True)
 
 
-def create_curated_cohorts():
+def create_curated_groups():
     admin_id = AuthorizedUser.find_by_uid('2040').id
     CuratedCohort.create(admin_id, 'My Students')
 
     advisor_id = AuthorizedUser.find_by_uid('6446').id
     CuratedCohort.create(advisor_id, 'My Students')
     curated_cohort = CuratedCohort.create(advisor_id, 'Cool Kids')
-    CuratedCohort.add_student(curated_cohort.id, '3456789012')  # PaulK
-    CuratedCohort.add_student(curated_cohort.id, '5678901234')  # Sandeep
-    CuratedCohort.add_student(curated_cohort.id, '11667051')    # Deborah
-    CuratedCohort.add_student(curated_cohort.id, '7890123456')  # PaulF
+    CuratedCohort.add_student(curated_cohort.id, '3456789012')
+    CuratedCohort.add_student(curated_cohort.id, '5678901234')
+    CuratedCohort.add_student(curated_cohort.id, '11667051')
+    CuratedCohort.add_student(curated_cohort.id, '7890123456')
 
     coe_advisor = AuthorizedUser.find_by_uid('1133399')
     curated_cohort = CuratedCohort.create(coe_advisor.id, 'Cohort of One')
@@ -158,22 +166,113 @@ def create_curated_cohorts():
     std_commit(allow_test_environment=True)
 
 
-def create_filtered_cohorts():
+def create_cohorts():
     # Oliver's cohorts
-    CohortFilter.create(uid='2040', name='All sports', group_codes=['MFB-DL', 'WFH'])
-    CohortFilter.create(uid='2040', name='Football, Defense', group_codes=['MFB-DB', 'MFB-DL'])
-    CohortFilter.create(uid='2040', name='Field Hockey', group_codes=['WFH'])
+    CohortFilter.create(
+        uid='2040',
+        name='All sports',
+        filter_criteria={
+            'groupCodes': ['MFB-DL', 'WFH'],
+        },
+    )
+    CohortFilter.create(
+        uid='2040',
+        name='Football, Defense',
+        filter_criteria={
+            'groupCodes': ['MFB-DB', 'MFB-DL'],
+        },
+    )
+    CohortFilter.create(
+        uid='2040',
+        name='Field Hockey',
+        filter_criteria={
+            'groupCodes': ['WFH'],
+        },
+    )
     # Flint's cohorts
     asc_advisor_uid = '1081940'
-    CohortFilter.create(uid=asc_advisor_uid, name='Defense Backs, Inactive', group_codes=['MFB-DB'], is_inactive_asc=True)
-    CohortFilter.create(uid=asc_advisor_uid, name='Defense Backs, Active', group_codes=['MFB-DB'], is_inactive_asc=False)
-    CohortFilter.create(uid=asc_advisor_uid, name='Defense Backs, All', group_codes=['MFB-DB'])
-    CohortFilter.create(uid=asc_advisor_uid, name='Undeclared students', majors=['Undeclared'], is_inactive_asc=False)
-    CohortFilter.create(uid=asc_advisor_uid, name='All sports', group_codes=['MFB-DL', 'WFH'], is_inactive_asc=False)
-    # Sandeep's cohorts
+    CohortFilter.create(
+        uid=asc_advisor_uid,
+        name='Defense Backs, Inactive',
+        filter_criteria={
+            'groupCodes': ['MFB-DB'],
+            'isInactiveAsc': True,
+        },
+    )
+    CohortFilter.create(
+        uid=asc_advisor_uid,
+        name='Defense Backs, Active',
+        filter_criteria={
+            'groupCodes': ['MFB-DB'],
+            'isInactiveAsc': False,
+        },
+    )
+    CohortFilter.create(
+        uid=asc_advisor_uid,
+        name='Defense Backs, All',
+        filter_criteria={
+            'groupCodes': ['MFB-DB'],
+        },
+    )
+    CohortFilter.create(
+        uid=asc_advisor_uid,
+        name='Undeclared students',
+        filter_criteria={
+            'majors': ['Undeclared'],
+            'isInactiveAsc': False,
+        },
+    )
+    CohortFilter.create(
+        uid=asc_advisor_uid,
+        name='All sports',
+        filter_criteria={
+            'groupCodes': ['MFB-DL', 'WFH'],
+            'isInactiveAsc': False,
+        },
+    )
     coe_advisor_uid = '1133399'
-    CohortFilter.create(uid=coe_advisor_uid, name='Sandeep\'s Students', advisor_ldap_uids=[coe_advisor_uid])
-    CohortFilter.create(uid='1133399', name='Radioactive Women and Men', majors=['Nuclear Engineering BS'])
+    CohortFilter.create(
+        uid=coe_advisor_uid,
+        name='Roberta\'s Students',
+        filter_criteria={
+            'advisorLdapUids': [coe_advisor_uid],
+        },
+    )
+    CohortFilter.create(
+        uid='1133399',
+        name='Radioactive Women and Men',
+        filter_criteria={
+            'majors': ['Nuclear Engineering BS'],
+        },
+    )
+    std_commit(allow_test_environment=True)
+
+
+def create_notes():
+    Note.create(
+        author_uid='1133399',
+        author_name='Roberta Joan Anderson',
+        author_role='Advisor',
+        author_dept_codes=['COENG'],
+        sid='3456789012',
+        subject='The hissing of summer lawns',
+        body="""
+            She could see the valley barbecues from her window sill.
+            See the blue pools in the squinting sun. Hear the hissing of summer lawns
+        """,
+    )
+    Note.create(
+        author_uid='6446',
+        author_name='Joni Mitchell',
+        author_role='Director',
+        author_dept_codes=['UWASC'],
+        sid='11667051',
+        subject='In France they kiss on main street',
+        body="""
+            My darling dime store thief, in the War of Independence
+            Rock 'n Roll rang sweet as victory, under neon signs
+        """,
+    )
     std_commit(allow_test_environment=True)
 
 

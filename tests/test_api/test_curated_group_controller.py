@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -75,8 +75,8 @@ class TestGetCuratedCohort:
         response = client.get(f'/api/curated_group/{cohort_id}')
         assert response.status_code == 403
 
-    def test_my_curated_groups(self, client, coe_advisor):
-        """Gets curated groups of current user."""
+    def test_coe_curated_groups(self, client, coe_advisor):
+        """Gets curated groups of COE advisor."""
         response = client.get('/api/curated_groups/my')
         assert response.status_code == 200
         groups = response.json
@@ -86,6 +86,16 @@ class TestGetCuratedCohort:
         assert 'alertCount' in group
         assert 'studentCount' in group
         assert group['name'] == 'Cohort of One'
+
+    def test_asc_curated_groups(self, client, fake_auth):
+        """Returns ASC advisor's curated groups."""
+        fake_auth.login(asc_advisor_uid)
+        response = client.get('/api/curated_groups/my')
+        assert response.status_code == 200
+        cohorts = response.json
+        assert len(cohorts) == 2
+        assert 'name' in cohorts[0]
+        assert 'studentCount' in cohorts[0]
 
     def test_curated_cohort_includes_alert_count(self, asc_advisor, client, cohorts_of_asc_advisor, create_alerts):
         """Successfully fetches curated_cohort with alert count per student."""
@@ -117,7 +127,8 @@ class TestMyCuratedCohorts:
         assert len(students_with_alerts) == 2
         assert students_with_alerts[0]['alertCount'] == 3
 
-        alert_to_dismiss = client.get('/api/alerts/current/11667051').json['shown'][0]['id']
+        student = client.get('/api/student/61889').json
+        alert_to_dismiss = student['notifications']['alert'][0]['id']
         client.get('/api/alerts/' + str(alert_to_dismiss) + '/dismiss')
         students_with_alerts = client.get(f'/api/curated_group/{cohort_id}/students_with_alerts').json
         assert students_with_alerts[0]['alertCount'] == 2

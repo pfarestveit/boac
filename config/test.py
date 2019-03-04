@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -31,16 +31,10 @@ TESTING = True
 
 LOGGING_LOCATION = 'STDOUT'
 
-ALERT_HOLDS_ENABLED = False
 ALERT_INFREQUENT_ACTIVITY_ENABLED = False
 ALERT_WITHDRAWAL_ENABLED = False
 
-VUE_ENABLED = True
-INDEX_HTML = 'tests/static/test-index-legacy.html'
-INDEX_HTML_VUE = 'tests/static/test-index-vue.html'
-VUE_PATHS = {
-    '/admin': '/admin',
-    r'/cohort/curated/([0-9]+).*': r'/curated_group/\1',
-    '/cohorts/all': '/cohorts/all',
-    r'/student/([0-9]+).*': r'/student/\1',
-}
+INDEX_HTML = 'tests/static/test-index-vue.html'
+
+# TODO: Remove when note creation is in prod
+FEATURE_FLAG_CREATE_NOTES = True

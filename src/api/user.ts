@@ -15,7 +15,21 @@ export function getUserProfile() {
     .then(response => response.data, () => null);
 }
 
-export function getAuthorizedUserGroups(sortUsersBy: string) {
+export function getUserByCsid(csid) {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
+  return axios
+    .get(`${apiBaseUrl}/api/user/by_csid/${csid}`)
+    .then(response => response.data, () => null);
+}
+
+export function getUserByUid(uid) {
+  let apiBaseUrl = store.getters['context/apiBaseUrl'];
+  return axios
+    .get(`${apiBaseUrl}/api/user/by_uid/${uid}`)
+    .then(response => response.data, () => null);
+}
+
+export function getUserGroups(sortUsersBy: string) {
   let apiBaseUrl = store.getters['context/apiBaseUrl'];
   let query = sortUsersBy ? `sortUsersBy=${sortUsersBy}` : '';
   return axios

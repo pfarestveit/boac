@@ -11,8 +11,6 @@ export default {
 </script>
 
 <style>
-.fill-viewport {
-  height: 100%;
-  font-size: 14px;
-}
+@import './assets/styles/bootstrap-overrides.css';
+@import './assets/styles/boac-global.css';
 </style>

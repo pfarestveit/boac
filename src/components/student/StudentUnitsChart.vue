@@ -1,15 +1,20 @@
 <template>
-  <highcharts class="student-chart-container student-chart-units-container"
-              id="student-chart-units-container"
-              ref="studentUnitsChart"
-              :options="unitsChartOptions"
-              aria-hidden="true">
+  <highcharts
+    id="student-chart-units-container"
+    ref="studentUnitsChart"
+    class="student-chart-container student-chart-units-container"
+    :options="unitsChartOptions"
+    aria-hidden="true">
   </highcharts>
 </template>
 
 <script>
 export default {
   name: 'StudentUnitsChart',
+  props: {
+    cumulativeUnits: Number,
+    currentEnrolledUnits: Number
+  },
   data: () => ({
     unitsChartOptions: {
       chart: {
@@ -98,10 +103,6 @@ export default {
       }
     }
   }),
-  props: {
-    cumulativeUnits: Number,
-    currentEnrolledUnits: Number
-  },
   mounted() {
     this.renderUnitsToChart();
   },
@@ -133,9 +134,8 @@ export default {
           <div class="student-chart-tooltip-row">
             <div class="student-chart-tooltip-swatch swatch-blue-light"></div>
             <div class="student-chart-tooltip-label">Currently Enrolled Units</div>
-            <div class="student-chart-tooltip-value">${
-              this.currentEnrolledUnits
-            }</div>
+            <div class="student-chart-tooltip-value">${this
+              .currentEnrolledUnits || '0'}</div>
           </div>
         </div>`;
     }
@@ -160,10 +160,10 @@ export default {
   transform: rotate(135deg);
   width: 10px;
 }
-.swatch-blue-medium {
+.student-chart-units-container .swatch-blue-medium {
   background-color: #aec9eb;
 }
-.swatch-blue-light {
+.student-chart-units-container .swatch-blue-light {
   background-color: #d6e4f9;
 }
 </style>

@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,7 +23,6 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 import os
 import ssl
 
@@ -34,6 +33,7 @@ SCHEMA_DICT = {
     'berkeleyEduAffiliations': 'affiliations',
     'berkeleyEduCSID': 'csid',
     'berkeleyEduOfficialEmail': 'campus_email',
+    'departmentNumber': 'dept_code',
     'cn': 'sortable_name',
     'displayName': 'name',
     'mail': 'email',
@@ -71,41 +71,35 @@ class Client:
         all_out = []
         for i in range(0, len(csids), BATCH_QUERY_MAXIMUM):
             csids_batch = csids[i:i + BATCH_QUERY_MAXIMUM]
-            entries = self._search_csids(csids_batch)
-            out = [_attributes_to_dict(entry) for entry in entries]
-            all_out += out
+            with self.connect() as conn:
+                search_filter = self._ldap_search_filter(csids_batch, 'berkeleyeducsid')
+                conn.search('dc=berkeley,dc=edu', search_filter, attributes=ldap3.ALL_ATTRIBUTES)
+                all_out += [_attributes_to_dict(entry) for entry in conn.entries]
         return all_out
 
     def search_uids(self, uids):
         all_out = []
         for i in range(0, len(uids), BATCH_QUERY_MAXIMUM):
             uids_batch = uids[i:i + BATCH_QUERY_MAXIMUM]
-            entries = self._search_uids(uids_batch)
-            out = [_attributes_to_dict(entry) for entry in entries]
-            all_out += out
+            with self.connect() as conn:
+                search_filter = self._ldap_search_filter(uids_batch, 'uid')
+                conn.search('dc=berkeley,dc=edu', search_filter, attributes=ldap3.ALL_ATTRIBUTES)
+                all_out += [_attributes_to_dict(entry) for entry in conn.entries]
         return all_out
 
-    def _search_csids(self, csids):
-        with self.connect() as conn:
-            conn.search('ou=people,dc=berkeley,dc=edu', self._csids_filter(csids), attributes=ldap3.ALL_ATTRIBUTES)
-            entries = conn.entries
-        return entries
-
-    def _search_uids(self, uids):
-        with self.connect() as conn:
-            conn.search('ou=people,dc=berkeley,dc=edu', self._uids_filter(uids), attributes=ldap3.ALL_ATTRIBUTES)
-            entries = conn.entries
-        return entries
-
     @classmethod
-    def _csids_filter(cls, csids):
-        clauses = ''.join(f'(berkeleyeducsid={sid})' for sid in csids)
-        return f'(&(objectclass=person)(|{clauses}))'
-
-    @classmethod
-    def _uids_filter(cls, uids):
-        clauses = ''.join(f'(uid={uid})' for uid in uids)
-        return f'(&(objectclass=person)(|{clauses}))'
+    def _ldap_search_filter(cls, ids, id_type):
+        ids_filter = ''.join(f'({id_type}={_id})' for _id in ids)
+        return f"""(&
+            (objectclass=person)
+            (|
+                {ids_filter}
+            )
+            (|
+                (ou=people)
+                (ou=advcon people)
+            )
+        )"""
 
 
 class MockClient(Client):

@@ -1,6 +1,6 @@
 <template>
   <div class="course-container">
-    <Spinner/>
+    <Spinner />
 
     <div v-if="!loading && error">
       <h1 class="page-section-header">Error</h1>
@@ -10,18 +10,20 @@
       </div>
     </div>
 
-    <div class="course-container-inner" v-if="!loading && !error">
-      <a href="#pagination-widget"
-         id="skip-to-pagination-widget"
-         class="sr-only"
-         v-if="section.totalStudentCount > pagination.itemsPerPage">Skip to pagination widget</a>
+    <div v-if="!loading && !error" class="course-container-inner">
+      <a
+        v-if="section.totalStudentCount > pagination.itemsPerPage"
+        id="skip-to-pagination-widget"
+        href="#pagination-widget"
+        class="sr-only">Skip to pagination widget</a>
       <div>
         <div class="course-container-summary">
           <div class="course-column-description">
-            <h1 id="course-header"
-                ref="pageHeader"
-                class="course-header"
-                tabindex="0">
+            <h1
+              id="course-header"
+              ref="pageHeader"
+              class="course-header"
+              tabindex="0">
               {{ section.displayName }}
             </h1>
             <div class="course-details-section">
@@ -34,7 +36,7 @@
                 {{ 'Unit' | pluralize(section.units) }}
               </span>
             </div>
-            <div class="course-section-title" v-if="section.title">
+            <div v-if="section.title" class="course-section-title">
               <span role="alert" aria-live="polite">
                 {{ section.title }}
               </span>
@@ -44,8 +46,8 @@
             <h2 class="sr-only">Schedule</h2>
             <div class="course-term-name">{{ section.termName }}</div>
             <div v-for="(meeting, meetingIndex) in section.meetings" :key="meetingIndex">
-              <div class="course-details-instructors" v-if="!isEmpty(meeting.instructors)">
-                <span class="course-instructors-header" :id="'instructors-' + meetingIndex">
+              <div v-if="!isEmpty(meeting.instructors)" class="course-details-instructors">
+                <span :id="'instructors-' + meetingIndex" class="course-instructors-header">
                   {{ meeting.instructors.length > 1 ? 'Instructors:' : 'Instructor:' }}
                 </span>
                 <span :class="{'demo-mode-blur': user.inDemoMode}">
@@ -63,48 +65,52 @@
       </div>
       <div class="course-terms">
         <h2 class="sr-only">Students</h2>
-
-        <div class="course-view-controls-container" v-if="!section.totalStudentCount">
+        <div v-if="!section.totalStudentCount" class="course-view-controls-container">
           <span class="has-error"><i class="fas fa-exclamation-triangle"></i></span>
           <span class="container-error">No students advised by your department are enrolled in this section.</span>
         </div>
-
-        <div class="course-view-controls-container" v-if="section.totalStudentCount">
-
-          <div class="course-curated-group-selector-container">
-            <CuratedGroupSelector :students="section.students" v-if="!isEmpty(section.students) && (tab === 'list')"/>
+        <div v-if="section.totalStudentCount" class="course-view-controls-container">
+          <div>
+            <CuratedGroupSelector
+              v-if="!isEmpty(section.students) && (tab === 'list')"
+              class="mr-2"
+              :context-description="`Course ${section.displayName}`"
+              :students="section.students" />
           </div>
-
           <div class="course-tabs-container">
-            <div class="btn-group tab-btn-group" role="group" aria-label="Select results view">
-              <button type="button"
-                      class="btn btn-secondary tab-button"
-                      aria-label="Switch to list view"
-                      :class="{'tab-button-selected': tab === 'list'}"
-                      @click="onTab('list')">
+            <div class="btn-group tab-btn-group pb-0" role="group" aria-label="Select results view">
+              <button
+                type="button"
+                class="btn btn-secondary tab-button"
+                aria-label="Switch to list view"
+                :class="{'tab-button-selected': tab === 'list'}"
+                @click="toggleView('list')">
                 <i class="fas fa-list"></i> List
               </button>
-              <button type="button"
-                      class="btn btn-secondary tab-button"
-                      aria-label="Switch to matrix view"
-                      :title="matrixDisabledMessage"
-                      :class="{'tab-button-selected': tab === 'matrix'}"
-                      :disabled="matrixDisabledMessage"
-                      @click="onTab('matrix')">
+              <button
+                type="button"
+                class="btn btn-secondary tab-button"
+                aria-label="Switch to matrix view"
+                :title="matrixDisabledMessage"
+                :class="{'tab-button-selected': tab === 'matrix'}"
+                :disabled="matrixDisabledMessage"
+                @click="toggleView('matrix')">
                 <i class="fas fa-table"></i> Matrix
               </button>
             </div>
           </div>
 
-          <div class="flex-container course-page-size"
-               v-if="tab === 'list' && (section.totalStudentCount > pagination.defaultItemsPerPage)">
+          <div
+            v-if="tab === 'list' && (section.totalStudentCount > pagination.defaultItemsPerPage)"
+            class="flex-container course-page-size">
             {{ section.totalStudentCount }} total students &mdash; View per page:&nbsp;
             <ul class="flex-container">
               <li v-for="(option, optionIndex) in pagination.options" :key="optionIndex">
-                <a href="#"
-                   :class="{'selected': option==pagination.itemsPerPage}"
-                   @click="resizePage(option)"
-                   :title="`Show ${option} results per page`">
+                <a
+                  href="#"
+                  :class="{'selected': option==pagination.itemsPerPage}"
+                  :title="`Show ${option} results per page`"
+                  @click="resizePage(option)">
                   {{ option }}</a><span v-if="optionIndex + 1 < pagination.options.length">&nbsp;|&nbsp;</span>
               </li>
             </ul>
@@ -134,45 +140,41 @@
                 Final<span class="sr-only"> Grade</span>
               </th>
             </tr>
-
-            <tr class="course-list-view-row"
-                :class="{'list-group-item-info': featured===student.uid}"
-                v-for="student in section.students"
-                :key="student.uid">
-
+            <tr
+              v-for="student in section.students"
+              :key="student.uid"
+              class="course-list-view-row"
+              :class="{'list-group-item-info': featured===student.uid}">
               <td class="course-list-view-column course-list-view-column-checkbox">
-                <div class="add-to-cohort-checkbox">
-                  <CuratedStudentCheckbox :sid="student.sid"/>
-                </div>
+                <CuratedStudentCheckbox :sid="student.sid" />
               </td>
-
               <td class="course-list-view-column course-list-view-column-avatar">
-                <StudentAvatar :student="student" size="large"/>
+                <StudentAvatar :student="student" size="medium" />
               </td>
-
               <td class="course-list-view-column course-list-view-column-profile">
                 <div>
-                  <a :id="student.uid" :href="`/student/${student.uid}`">
-                    <h3 class="course-student-name"
-                        :class="{'demo-mode-blur': user.inDemoMode}">
+                  <router-link :id="student.uid" :to="`/student/${student.uid}`">
+                    <h3
+                      class="course-student-name"
+                      :class="{'demo-mode-blur': user.inDemoMode}">
                       {{ student.lastName }}<span v-if="student.firstName">, {{ student.firstName }}</span>
                     </h3>
-                  </a>
+                  </router-link>
                 </div>
                 <div class="student-sid" :class="{'demo-mode-blur': user.inDemoMode}">
                   {{ student.sid }}
-                  <span class="red-flag-status" v-if="student.enrollment.enrollmentStatus === 'W'">WAITLISTED</span>
-                  <span class="red-flag-status" v-if="displayAsInactive(student)">INACTIVE</span>
+                  <span v-if="student.enrollment.enrollmentStatus === 'W'" class="red-flag-status">WAITLISTED</span>
+                  <span v-if="displayAsInactive(student)" class="red-flag-status">INACTIVE</span>
                 </div>
                 <div>
                   <span class="student-text">{{ student.level }}</span>
                 </div>
                 <div>
-                  <div class="student-text" v-for="major in student.majors" :key="major">{{ major }}</div>
+                  <div v-for="major in student.majors" :key="major" class="student-text">{{ major }}</div>
                 </div>
                 <div>
-                  <div class="student-teams-container" v-if="student.athleticsProfile">
-                    <div class="student-teams" v-for="membership in student.athleticsProfile.athletics" :key="membership.groupName">
+                  <div v-if="student.athleticsProfile" class="student-teams-container">
+                    <div v-for="membership in student.athleticsProfile.athletics" :key="membership.groupName" class="student-teams">
                       {{ membership.groupName }}
                     </div>
                   </div>
@@ -181,24 +183,28 @@
 
               <td class="course-list-view-column">
                 <div class="course-list-view-column-canvas-sites">
-                  <div class="course-list-view-column-canvas-sites-border"
-                       v-for="canvasSite in student.enrollment.canvasSites"
-                       :key="canvasSite.courseCode">
+                  <div
+                    v-for="canvasSite in student.enrollment.canvasSites"
+                    :key="canvasSite.courseCode"
+                    class="course-list-view-column-canvas-sites-border">
                     <strong>{{ canvasSite.courseCode }}</strong>
                   </div>
-                  <div class="course-list-view-column-canvas-sites-border"
-                       v-if="!student.enrollment.canvasSites.length">
+                  <div
+                    v-if="!student.enrollment.canvasSites.length"
+                    class="course-list-view-column-canvas-sites-border">
                     No course site
                   </div>
                 </div>
               </td>
 
               <td class="course-list-view-column">
-                <div class="course-list-view-column-canvas-sites">
-                  <div v-for="canvasSite in student.enrollment.canvasSites"
-                      :key="canvasSite.canvasCourseId"
-                       v-if="student.enrollment.canvasSites.length">
-                    <span class="sr-only" v-if="student.enrollment.canvasSites.length > 1">
+                <div
+                  v-if="student.enrollment.canvasSites.length"
+                  class="course-list-view-column-canvas-sites">
+                  <div
+                    v-for="canvasSite in student.enrollment.canvasSites"
+                    :key="canvasSite.canvasCourseId">
+                    <span v-if="student.enrollment.canvasSites.length > 1" class="sr-only">
                       {{ canvasSite.courseCode }}
                     </span>
                     <div v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
@@ -211,22 +217,26 @@
                       No Data
                     </div>
                   </div>
-                  <span v-if="!student.enrollment.canvasSites.length"><span class="sr-only">No data</span>&mdash;</span>
                 </div>
+                <span
+                  v-if="!student.enrollment.canvasSites.length"
+                  class="course-list-view-column-canvas-sites"><span class="sr-only">No data</span>&mdash;</span>
               </td>
 
               <td class="course-list-view-column">
                 <div class="course-list-view-column-canvas-sites">
-                  <div class="profile-boxplot-container"
-                       v-for="canvasSite in student.enrollment.canvasSites"
-                       :key="canvasSite.canvasCourseId">
-                    <span class="sr-only" v-if="student.enrollment.canvasSites.length > 1">
+                  <div
+                    v-for="canvasSite in student.enrollment.canvasSites"
+                    :key="canvasSite.canvasCourseId"
+                    class="profile-boxplot-container">
+                    <span v-if="student.enrollment.canvasSites.length > 1" class="sr-only">
                       {{ canvasSite.courseCode }}
                     </span>
-                    <StudentBoxplot :dataset="canvasSite.analytics"
-                                    :numericId="student.uid + '-' + canvasSite.canvasCourseId.toString()"
-                                    v-if="canvasSite.analytics.currentScore.boxPlottable"></StudentBoxplot>
-                    <div class="sr-only" v-if="canvasSite.analytics.currentScore.boxPlottable">
+                    <StudentBoxplot
+                      v-if="canvasSite.analytics.currentScore.boxPlottable"
+                      :dataset="canvasSite.analytics"
+                      :numeric-id="student.uid + '-' + canvasSite.canvasCourseId.toString()"></StudentBoxplot>
+                    <div v-if="canvasSite.analytics.currentScore.boxPlottable" class="sr-only">
                       <div>User score: {{ canvasSite.analytics.currentScore.student.raw }}</div>
                       <div>Maximum:  {{ canvasSite.analytics.currentScore.courseDeciles[10] }}</div>
                       <div>70th Percentile: {{ canvasSite.analytics.currentScore.courseDeciles[7] }}</div>
@@ -252,10 +262,11 @@
 
               <td class="course-list-view-column">
                 <div class="course-list-view-column-canvas-sites">
-                  <div class="profile-boxplot-container"
-                       v-for="canvasSite in student.enrollment.canvasSites"
-                       :key="canvasSite.canvasCourseId">
-                    <span class="sr-only" v-if="student.enrollment.canvasSites.length > 1">
+                  <div
+                    v-for="canvasSite in student.enrollment.canvasSites"
+                    :key="canvasSite.canvasCourseId"
+                    class="profile-boxplot-container">
+                    <span v-if="student.enrollment.canvasSites.length > 1" class="sr-only">
                       {{ canvasSite.courseCode }}
                     </span>
                     {{ lastActivityDays(canvasSite.analytics) }}
@@ -265,47 +276,44 @@
               </td>
 
               <td class="course-list-view-column">
-                <span class="cohort-grade" v-if="student.enrollment.midtermGrade">
+                <span v-if="student.enrollment.midtermGrade" class="cohort-grade">
                   {{ student.enrollment.midtermGrade }}
                 </span>
-                <i class="fas fa-exclamation-triangle boac-exclamation"
-                   v-if="isAlertGrade(student.enrollment.midtermGrade)"></i>
+                <i
+                  v-if="isAlertGrade(student.enrollment.midtermGrade)"
+                  class="fas fa-exclamation-triangle boac-exclamation"></i>
                 <span v-if="!student.enrollment.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
               </td>
 
               <td class="course-list-view-column">
-                <span class="cohort-grade" v-if="student.enrollment.grade">
+                <span v-if="student.enrollment.grade" class="cohort-grade">
                   {{ student.enrollment.grade }}
                 </span>
-                <i class="fas fa-exclamation-triangle boac-exclamation"
-                   v-if="isAlertGrade(student.enrollment.grade)"></i>
-                <span class="cohort-grading-basis" v-if="!student.enrollment.grade">
+                <i
+                  v-if="isAlertGrade(student.enrollment.grade)"
+                  class="fas fa-exclamation-triangle boac-exclamation"></i>
+                <span v-if="!student.enrollment.grade" class="cohort-grading-basis">
                   {{ student.enrollment.gradingBasis }}
                 </span>
               </td>
             </tr>
           </table>
 
-         <div class="course-pagination">
-           <b-pagination
-             id="pagination-widget"
-             size="md"
-             :total-rows="section.totalStudentCount"
-             :limit="20"
-             v-model="pagination.currentPage"
-             :per-page="pagination.itemsPerPage"
-             :hide-goto-end-buttons="true"
-             v-if="section.totalStudentCount > pagination.itemsPerPage"
-             @input="nextPage()">
-           </b-pagination>
-         </div>
+          <div class="course-pagination">
+            <div v-if="section.totalStudentCount > pagination.itemsPerPage">
+              <Pagination
+                :click-handler="goToPage"
+                :init-page-number="pagination.currentPage"
+                :limit="20"
+                :per-page="pagination.itemsPerPage"
+                :total-rows="section.totalStudentCount" />
+            </div>
+          </div>
         </div>
 
-        <!-- TODO matrix
-        <div id="matrix-outer" class="matrix-outer" data-ng-show="tab === 'matrix' && !isLoading && !error">
-          <div data-ng-include="'/static/app/shared/matrix.html'"></div>
+        <div v-if="tab === 'matrix' && !loading && !error" id="matrix-outer" class="matrix-outer">
+          <Matrix :featured="featured" :section="section" />
         </div>
-        -->
       </div>
     </div>
   </div>
@@ -313,37 +321,46 @@
 
 <script>
 import _ from 'lodash';
-import { getSection } from '@/api/course';
 import CuratedGroupSelector from '@/components/curated/CuratedGroupSelector';
 import CuratedStudentCheckbox from '@/components/curated/CuratedStudentCheckbox';
-import Loading from '@/mixins/Loading.vue';
-import Spinner from '@/components/Spinner.vue';
+import Loading from '@/mixins/Loading';
+import Matrix from '@/components/matrix/Matrix';
+import MatrixUtil from '@/components/matrix/MatrixUtil';
+import Pagination from '@/components/util/Pagination';
+import Scrollable from '@/mixins/Scrollable';
+import Spinner from '@/components/util/Spinner';
 import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
 import StudentBoxplot from '@/components/student/StudentBoxplot';
 import StudentMetadata from '@/mixins/StudentMetadata';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
+import { getSection } from '@/api/course';
 
 export default {
   name: 'Course',
-  mixins: [Loading, StudentAnalytics, StudentMetadata, UserMetadata, Util],
   components: {
     CuratedGroupSelector,
     CuratedStudentCheckbox,
+    Matrix,
+    Pagination,
     Spinner,
     StudentAvatar,
     StudentBoxplot
   },
-  created() {
-    this.initViewMode();
-    this.initPagination();
-    this.loadListView();
-  },
+  mixins: [
+    Loading,
+    MatrixUtil,
+    Scrollable,
+    StudentAnalytics,
+    StudentMetadata,
+    UserMetadata,
+    Util
+  ],
   data: () => ({
     error: null,
     featured: null,
-    matrixDisabledMessage: 'Matrix not implemented',
+    matrixDisabledMessage: null,
     pagination: {
       currentPage: 1,
       defaultItemsPerPage: 50,
@@ -355,14 +372,33 @@ export default {
     },
     tab: 'list'
   }),
+  created() {
+    this.initViewMode();
+    this.initPagination();
+    if (this.tab === 'matrix') {
+      this.loadMatrixView();
+    } else {
+      this.loadListView();
+    }
+  },
+  mounted() {
+    this.scrollToTop();
+  },
   methods: {
     featureSearchedStudent(data) {
       var section = _.clone(data);
       var subject = _.remove(section.students, student => {
-        return student.uid === this.$route.query.u;
+        return student.uid === this.featured;
       });
-      section.students = _.union(subject, section.students);
-      this.featured = this.$route.query.u;
+      var students = _.union(subject, section.students);
+      // Discrepancies in our loch-hosted SIS data dumps may occasionally result in students without enrollment
+      // objects. A placeholder object keeps the front end from breaking.
+      _.each(students, student => {
+        if (!student.enrollment) {
+          student.enrollment = { canvasSites: [] };
+        }
+      });
+      section.students = students;
       return section;
     },
     initViewMode() {
@@ -376,7 +412,7 @@ export default {
       }
       if (this.$route.query.s && !isNaN(this.$route.query.s)) {
         var itemsPerPage = parseInt(this.$route.query.s, 10);
-        if (_.includes(_.map(this.pagination.options, 'value'), itemsPerPage)) {
+        if (_.includes(this.pagination.options, itemsPerPage)) {
           this.pagination.itemsPerPage = itemsPerPage;
         } else {
           this.$router.push({
@@ -384,34 +420,11 @@ export default {
           });
         }
       }
+      if (this.$route.query.u) {
+        this.featured = this.$route.query.u;
+      }
     },
     loadListView() {
-      if (
-        this.pagination.currentPage > 1 &&
-        this.section &&
-        this.section.students.length > this.pagination.itemsPerPage
-      ) {
-        var start =
-          (this.pagination.currentPage - 1) * this.pagination.itemsPerPage;
-        this.section.students = _.slice(
-          this.section.students,
-          start,
-          start + this.pagination.itemsPerPage
-        );
-      }
-      this.refreshListView();
-    },
-    nextPage() {
-      this.$router.push({
-        query: { ...this.$route.query, p: this.pagination.currentPage }
-      });
-      this.startLoading();
-      this.refreshListView();
-    },
-    onTab() {
-      // TODO
-    },
-    refreshListView() {
       var limit = this.pagination.itemsPerPage;
       var offset =
         this.pagination.currentPage === 0
@@ -421,133 +434,143 @@ export default {
         this.$route.params.termId,
         this.$route.params.sectionId,
         offset,
-        limit
+        limit,
+        this.featured
       ).then(data => {
-        this.updateCourseData(data);
-        this.loaded();
+        if (data) {
+          this.updateCourseData(data);
+          this.loaded();
+        } else {
+          this.$router.push({ path: '/404' });
+        }
+      });
+    },
+    loadMatrixView() {
+      getSection(this.$route.params.termId, this.$route.params.sectionId).then(
+        data => {
+          this.updateCourseData(data);
+          this.loaded();
+        }
+      );
+    },
+    goToPage(page) {
+      this.pagination.currentPage = page;
+      this.$router.push({
+        query: { ...this.$route.query, p: this.pagination.currentPage }
       });
     },
     resizePage(selectedItemsPerPage) {
       var currentItemsPerPage = this.pagination.itemsPerPage;
-      this.pagination.itemsPerPage = selectedItemsPerPage;
-      this.pagination.currentPage = Math.round(
+      var newPage = Math.round(
         this.pagination.currentPage *
           (currentItemsPerPage / selectedItemsPerPage)
       );
       this.$router.push({
         query: {
           ...this.$route.query,
-          p: this.pagination.currentPage,
-          s: this.pagination.itemsPerPage
+          p: newPage,
+          s: selectedItemsPerPage
         }
       });
-      this.startLoading();
-      this.refreshListView();
+    },
+    toggleView(tabName) {
+      this.$router.push({
+        query: { ...this.$route.query, tab: tabName }
+      });
     },
     updateCourseData(data) {
-      document.title = data.displayName;
+      this.setPageTitle(data.displayName);
       this.section = this.featureSearchedStudent(data);
+      if (
+        this.exceedsMatrixThreshold(_.get(this.section, 'totalStudentCount'))
+      ) {
+        this.matrixDisabledMessage = this.exceedsMatrixThresholdMessage();
+      } else {
+        var plottableStudents = this.partitionPlottableStudents();
+        if (plottableStudents[0].length === 0) {
+          this.matrixDisabledMessage =
+            'No student data is available to display.';
+        } else {
+          this.matrixDisabledMessage = null;
+        }
+      }
     }
   }
 };
 </script>
 
 <style scoped>
+.container-error {
+  padding: 0 10px 0 10px;
+}
 .course-column-description {
   background-color: #e3f5ff;
   flex: 3 0 0;
   padding: 10px 10px 20px 10px;
 }
-
 .course-column-schedule {
   background-color: #8bbdda;
   color: #fff;
   flex: 2 0 0;
   padding: 10px 10px 20px 10px;
 }
-
 .course-container {
   width: 100%;
 }
-
 .course-container-inner {
   display: flex;
   flex-direction: column;
 }
-
 .course-container-summary {
   display: flex;
   flex-direction: row;
 }
-
-.course-curated-group-selector-container {
-  margin-right: 10px;
-}
-
 .course-details-instructors {
   margin-top: 15px;
 }
-
 .course-details-meetings {
   font-size: 16px;
 }
-
 .course-details-section {
   font-size: 14px;
 }
-
 .course-header {
   font-size: 24px;
   font-weight: bold;
   margin: 0 0 5px 0;
 }
-
 .course-instructors-header {
   font-size: 16px;
   font-weight: bold;
 }
-
 .course-list-view-column {
   line-height: 1.4em;
   padding: 5px 10px;
   vertical-align: top;
 }
-
 .course-list-view-column-avatar {
   width: 120px;
 }
-
 .course-list-view-column-canvas-sites {
   display: flex;
   flex-direction: column;
   font-size: 14px;
 }
-
 .course-list-view-column-canvas-sites > div {
   align-items: flex-start;
   flex: 0 0 50px;
 }
-
 .course-list-view-column-canvas-sites > div:not(:first-child) {
   margin-top: 5px;
 }
-
-.course-list-view-column-canvas-sites .profile-boxplot {
-  color: #555;
-  font-size: 14px;
-  font-style: normal;
-}
-
 .course-list-view-column-canvas-sites-border {
   align-self: flex-start;
   border-left: 1px solid #ddd;
   padding-left: 5px;
 }
-
 .course-list-view-column-checkbox {
   vertical-align: middle;
 }
-
 .course-list-view-column-header {
   color: #aaa;
   font-size: 12px;
@@ -555,46 +578,36 @@ export default {
   text-transform: uppercase;
   vertical-align: bottom;
 }
-
 .course-list-view-column-profile {
   width: 20%;
 }
-
 .course-list-view-column-profile button {
   padding: 2px 0 0 5px;
 }
-
 .course-list-view-row {
   border-bottom: 1px solid #ddd;
 }
-
 .course-list-view-table {
   width: 100%;
 }
-
 .course-page-size {
   margin-left: auto;
 }
-
 .course-page-size a {
   text-decoration: none;
 }
-
 .course-page-size a.selected {
   color: #000;
   font-weight: bold;
 }
-
 .course-pagination {
   margin-top: 20px;
 }
-
 .course-section-title {
   font-size: 16px;
   font-weight: bold;
   padding-top: 20px;
 }
-
 .course-student-name {
   color: #49b;
   font-size: 16px;
@@ -602,39 +615,22 @@ export default {
   max-width: 150px;
   padding: 0;
 }
-
 .course-tabs-container {
   flex: 0 0 200px;
   white-space: nowrap;
 }
-
 .course-term-name {
   font-size: 16px;
   font-weight: bold;
 }
-
 .course-terms {
   margin: 0 20px 0 20px;
 }
-
 .course-view-controls-container {
   align-items: baseline;
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
   padding: 20px 0 15px 0;
-}
-</style>
-
-<style>
-#content .page-item.active .page-link {
-  background-color: #337ab7;
-  border-color: #337ab7;
-}
-
-/* Hide default first/last buttons in bootstrap-vue pagination widget. */
-#content ul.pagination li:first-child,
-#content ul.pagination li:last-child {
-  display: none;
 }
 </style>

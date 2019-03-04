@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -24,15 +24,49 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.externals import calnet
+from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.models.json_cache import stow
 
 
 @stow('calnet_user_for_uid_{uid}')
 def get_calnet_user_for_uid(app, uid):
     persons = calnet.client(app).search_uids([uid])
-    p = persons[0] if len(persons) > 0 else None
     return {
-        'uid': uid,
-        'firstName': p and p['first_name'],
-        'lastName': p and p['last_name'],
+        **_calnet_user_api_feed(persons[0] if len(persons) else None),
+        **{'uid': uid},
+    }
+
+
+@stow('calnet_user_for_csid_{csid}')
+def get_calnet_user_for_csid(app, csid):
+    persons = calnet.client(app).search_csids([csid])
+    return {
+        **_calnet_user_api_feed(persons[0] if len(persons) else None),
+        **{'csid': csid},
+    }
+
+
+def get_calnet_users_for_csids(app, csids):
+    persons = calnet.client(app).search_csids(csids)
+    return {person['csid']: _calnet_user_api_feed(person) for person in persons}
+
+
+def _calnet_user_api_feed(person):
+    def _get(key):
+        return person and person[key]
+
+    dept_names = None
+    dept_code = _get('dept_code')
+    if isinstance(dept_code, list):
+        dept_names = [BERKELEY_DEPT_CODE_TO_NAME.get(code) for code in dept_code]
+    elif dept_code:
+        dept_names = [BERKELEY_DEPT_CODE_TO_NAME.get(dept_code)]
+    return {
+        'uid': _get('uid'),
+        'csid': _get('csid'),
+        'firstName': _get('first_name'),
+        'lastName': _get('last_name'),
+        'name': _get('name'),
+        'deptCode': dept_code,
+        'depts': dept_names,
     }

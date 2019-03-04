@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -28,7 +28,6 @@ import json
 from boac import db, std_commit
 from boac.api.errors import InternalServerError
 from boac.lib import util
-from boac.lib.berkeley import convert_inactive_arg
 from boac.merged import athletics
 from boac.merged.student import query_students
 from boac.models.alert import Alert
@@ -65,15 +64,11 @@ class CohortFilter(Base, UserMixin):
             created_at={self.created_at}>"""
 
     @classmethod
-    def create(cls, uid, name, **kwargs):
-        at_least_one_is_defined = False
-        filter_criteria = {}
-        for k, v in kwargs.items():
-            at_least_one_is_defined = at_least_one_is_defined or (len(v) if isinstance(v, list) else v is not None)
-            filter_criteria[util.camelize(k)] = v
-        if not at_least_one_is_defined:
+    def create(cls, uid, name, filter_criteria, student_count=None):
+        if all(not isinstance(value, bool) and not value for value in filter_criteria.values()):
             raise InternalServerError('Cohort creation requires at least one filter specification.')
         cohort = CohortFilter(name=name, filter_criteria=filter_criteria)
+        cohort.student_count = student_count
         user = AuthorizedUser.find_by_uid(uid)
         user.cohort_filters.append(cohort)
         db.session.flush()
@@ -167,6 +162,7 @@ class CohortFilter(Base, UserMixin):
             'code': self.id,
             'name': cohort_name,
             'owners': [user.uid for user in self.owners],
+            'alertCount': self.alert_count,
         }
         coe_prep_statuses = c.get('coePrepStatuses')
         coe_probation = util.to_bool_or_none(c.get('coeProbation'))
@@ -203,17 +199,12 @@ class CohortFilter(Base, UserMixin):
             },
             'teamGroups': team_groups,
         })
-
         if not include_students and not include_alerts_for_user_id and self.student_count is not None:
             # No need for a students query; return the database-stashed student count.
             cohort_json.update({
                 'totalStudentCount': self.student_count,
             })
             return cohort_json
-
-        owner = self.owners[0] if len(self.owners) else None
-        is_active_asc = convert_inactive_arg(is_inactive_asc, 'UWASC', owner)
-        is_active_coe = convert_inactive_arg(is_inactive_coe, 'COENG', owner)
 
         sids_only = not include_students
         results = query_students(
@@ -226,8 +217,8 @@ class CohortFilter(Base, UserMixin):
             group_codes=group_codes,
             in_intensive_cohort=in_intensive_cohort,
             include_profiles=(include_students and include_profiles),
-            is_active_asc=is_active_asc,
-            is_active_coe=is_active_coe,
+            is_active_asc=None if is_inactive_asc is None else not is_inactive_asc,
+            is_active_coe=None if is_inactive_coe is None else not is_inactive_coe,
             last_name_range=last_name_range,
             levels=levels,
             limit=limit,
@@ -256,5 +247,9 @@ class CohortFilter(Base, UserMixin):
                     'alerts': alert_count_per_sid,
                 })
                 if self.alert_count is None:
-                    self.update_alert_count(sum(student['alertCount'] for student in alert_count_per_sid))
+                    alert_count = sum(student['alertCount'] for student in alert_count_per_sid)
+                    self.update_alert_count(alert_count)
+                    cohort_json.update({
+                        'alertCount': alert_count,
+                    })
         return cohort_json

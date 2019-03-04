@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -45,7 +45,7 @@ class TestDevAuth:
         app.config['DEVELOPER_AUTH_ENABLED'] = True
         params = {'uid': self.authorized_uid, 'password': 'Born 2 Lose'}
         response = client.post('/api/auth/dev_auth_login', data=json.dumps(params), content_type='application/json')
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_authorized_user_fail(self, app, client):
         """Fails if the chosen UID does not match an authorized user."""

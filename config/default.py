@@ -1,5 +1,5 @@
 """
-Copyright ©2018. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -30,26 +30,8 @@ import os
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 # These "INDEX_HTML" defaults are good in boac-dev, boac-qa, etc. See development.py for appropriate local configs.
-INDEX_HTML = 'dist/templates/index.html'
+INDEX_HTML = 'dist/static/index.html'
 
-# Vue.js related
-INDEX_HTML_VUE = 'dist/static/index.html'
-VUE_ENABLED = False
-# TODO: Copy VUE_PATHS below and paste to the desired env config. Next, uncomment the ready-for-prime-time paths.
-VUE_PATHS = {
-    # r'/': r'/home',
-    # r'/404': r'/404',
-    # r'/admin': r'/admin',
-    # r'/cohort/curated/([0-9]+).*': r'/curated_group/\1',
-    # r'/cohort/filtered': r'/create_cohort',
-    # r'/cohort/filtered\?id=([0-9]+).*': r'/cohort/\1',
-    # r'/cohorts/all': r'/cohorts/all',
-    # r'/course/([0-9]+)/([0-9]+).*': r'/course/\1/\2',
-    # r'/home': r'/home',
-    # r'/login': r'/login',
-    # r'/student/([0-9]+).*': r'/student/\1',
-    # r'/teams': r'/teams',
-}
 # This base-URL config should only be non-None in the "local" env where the Vue front-end runs on port 8080.
 VUE_LOCALHOST_BASE_URL = None
 
@@ -82,6 +64,9 @@ PORT = 5000
 DEVELOPER_AUTH_ENABLED = False
 DEVELOPER_AUTH_PASSWORD = 'another secret'
 
+# TODO: Remove when note creation is in prod
+FEATURE_FLAG_CREATE_NOTES = False
+
 # Set to a nice long chaotic string to enable scripted access to APIs.
 API_KEY = None
 
@@ -95,21 +80,24 @@ GOOGLE_ANALYTICS_ID = False
 DATA_LOCH_URI = 'postgres://nessie:secret@secreturl.com:5432/canvas'
 DATA_LOCH_RDS_URI = 'postgres://nessie:secret@secret-rds-url.com:5432/canvas'
 
+DATA_LOCH_ADVISING_NOTES_SCHEMA = 'boac_advising_notes'
 DATA_LOCH_ASC_SCHEMA = 'boac_advising_asc'
 DATA_LOCH_BOAC_SCHEMA = 'boac_analytics'
 DATA_LOCH_COE_SCHEMA = 'boac_advising_coe'
 DATA_LOCH_INTERMEDIATE_SCHEMA = 'intermediate'
+DATA_LOCH_PHYSICS_SCHEMA = 'boac_advising_physics'
 DATA_LOCH_SIS_SCHEMA = 'sis_data'
 DATA_LOCH_STUDENT_SCHEMA = 'student'
 
 DISABLE_MATRIX_VIEW_THRESHOLD = 800
 
-LDAP_HOST = 'nds-test.berkeley.edu'
+LDAP_HOST = 'ldap-test.berkeley.edu'
 LDAP_BIND = 'mybind'
 LDAP_PASSWORD = 'secret'
 
 CANVAS_CURRENT_ENROLLMENT_TERM = 'Fall 2017'
 CANVAS_EARLIEST_TERM = 'Fall 2016'
+CANVAS_FUTURE_ENROLLMENT_TERM = 'Spring 2018'
 
 CAL1CARD_PHOTO_API_URL = 'https://secreturl.berkeley.edu/photos'
 CAL1CARD_PHOTO_API_USERNAME = 'secretuser'
@@ -126,7 +114,6 @@ ALERT_INFREQUENT_ACTIVITY_ENABLED = True
 ALERT_INFREQUENT_ACTIVITY_DAYS = 14
 ALERT_INFREQUENT_ACTIVITY_PERCENTILE_CUTOFF = 20
 
-ALERT_HOLDS_ENABLED = True
 ALERT_WITHDRAWAL_ENABLED = True
 
 # Logging
@@ -140,5 +127,7 @@ CACHE_DEFAULT = False
 # If the top decile of any analytics measure is below this number, treat it as zero ("no data").
 # At the beginning of a term, the bar may be lowered.
 MEANINGFUL_STATS_MINIMUM = 4
+
+NOTES_SEARCH_RESULT_SNIPPET_PADDING = 29
 
 BOAC_SUPPORT_EMAIL = 'boac-support@lists.berkeley.edu'

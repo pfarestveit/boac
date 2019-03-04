@@ -3,11 +3,12 @@
     <div v-if="!user"><i class="fas fa-spinner fa-spin b-link-text mr-4"></i></div>
     <div v-if="user">
       <span v-if="user && !user.firstName">{{ user }}</span>
-      <b-dropdown id="header-dropdown-under-name"
-                  class="mr-3"
-                  variant="link"
-                  no-caret
-                  right>
+      <b-dropdown
+        id="header-dropdown-under-name"
+        class="mr-3"
+        variant="link"
+        no-caret
+        right>
         <template slot="button-content">
           <div class="d-flex align-items-center">
             <div class="b-link-text">{{ user.firstName }}</div><i class="ml-1 fas fa-caret-down b-link-text"></i>
@@ -24,19 +25,16 @@
 <script>
 import Context from '@/mixins/Context';
 import UserMetadata from '@/mixins/UserMetadata';
-import store from '@/store';
-import { getCasLogoutURL } from '@/api/auth';
+import { getCasLogoutUrl } from '@/api/auth';
 
 export default {
   name: 'HeaderMenu',
   mixins: [Context, UserMetadata],
   methods: {
     logOut() {
-      getCasLogoutURL().then(data => {
-        store
-          .dispatch('user/logout')
-          .then(() => (window.location.href = data.casLogoutURL));
-      });
+      getCasLogoutUrl().then(
+        data => (window.location.href = data.casLogoutUrl)
+      );
     },
     goAdmin() {
       this.$router.push({ path: '/admin' });
