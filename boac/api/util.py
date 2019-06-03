@@ -33,7 +33,7 @@ from boac.merged import calnet
 from boac.merged.advising_note import get_advising_notes
 from boac.models.alert import Alert
 from boac.models.cohort_filter import CohortFilter
-from boac.models.curated_cohort import CuratedCohort
+from boac.models.curated_group import CuratedGroup
 from flask import current_app as app, request
 from flask_login import current_user
 
@@ -54,14 +54,14 @@ def admin_required(func):
     return _admin_required
 
 
-def feature_flag_create_notes(func):
+def feature_flag_edit_notes(func):
     @wraps(func)
-    def _feature_flag_create_notes(*args, **kw):
-        if app.config['FEATURE_FLAG_CREATE_NOTES']:
+    def _feature_flag_edit_notes(*args, **kw):
+        if app.config['FEATURE_FLAG_EDIT_NOTES']:
             return func(*args, **kw)
         else:
             raise ResourceNotFoundError('API path not found')
-    return _feature_flag_create_notes
+    return _feature_flag_edit_notes
 
 
 def add_alert_counts(alert_counts, students):
@@ -80,8 +80,10 @@ def authorized_users_api_feed(users, sort_by='lastName'):
         return ()
     profiles = []
     for user in users:
-        profile = calnet.get_calnet_user_for_uid(app, user.uid)
-        profile['name'] = (profile.get('firstName') or '') + ' ' + (profile.get('lastName') or '')
+        profile = calnet.get_calnet_user_for_uid(app, user.uid, force_feed=False)
+        if not profile:
+            continue
+        profile['name'] = ((profile.get('firstName') or '') + ' ' + (profile.get('lastName') or '')).strip()
         profile.update({
             'id': user.id,
             'isAdmin': user.is_admin,
@@ -113,32 +115,29 @@ def canvas_courses_api_feed(courses):
     return [canvas_course_api_feed(course) for course in courses]
 
 
-def current_user_profile(exclude_cohorts=False):
+def current_user_profile():
     profile = get_current_user_status()
     if current_user.is_authenticated:
         profile['id'] = current_user.id
         uid = current_user.get_id()
         profile.update(calnet.get_calnet_user_for_uid(app, uid))
         if current_user.is_active:
-            departments = {}
+            departments = []
             for m in current_user.department_memberships:
                 dept_code = m.university_dept.dept_code
-                departments.update({
-                    dept_code: {
-                        'deptName': BERKELEY_DEPT_CODE_TO_NAME[dept_code],
+                departments.append(
+                    {
+                        'code': dept_code,
+                        'name': BERKELEY_DEPT_CODE_TO_NAME[dept_code] or dept_code,
                         'role': get_dept_role(m),
                         'isAdvisor': m.is_advisor,
                         'isDirector': m.is_director,
-                    },
-                })
+                    })
             dept_codes = get_dept_codes(current_user)
             profile['isAsc'] = 'UWASC' in dept_codes
+            profile['canViewAsc'] = profile['isAsc'] or current_user.is_admin
             profile['isCoe'] = 'COENG' in dept_codes
-            if not exclude_cohorts:
-                profile.update({
-                    'myFilteredCohorts': get_my_cohorts(),
-                    'myCuratedCohorts': get_my_curated_groups(),
-                })
+            profile['canViewCoe'] = profile['isCoe'] or current_user.is_admin
             profile.update({
                 'isAdmin': current_user.is_admin,
                 'inDemoMode': current_user.in_demo_mode if hasattr(current_user, 'in_demo_mode') else False,
@@ -228,19 +227,6 @@ def put_notifications(student):
             })
 
 
-def sort_students_by_name(students):
-    return sorted(students, key=lambda s: (s['lastName'], s['firstName']))
-
-
-def strip_analytics(student_term_data):
-    if student_term_data.get('analytics'):
-        del student_term_data['analytics']
-    # The enrolled units count is the one piece of term data we want to preserve.
-    if student_term_data.get('term'):
-        student_term_data['term'] = {'enrolledUnits': student_term_data['term'].get('enrolledUnits')}
-    return student_term_data
-
-
 def translate_grading_basis(code):
     bases = {
         'CNC': 'C/NC',
@@ -269,16 +255,15 @@ def get_current_user_status():
 def get_my_curated_groups():
     curated_groups = []
     user_id = current_user.id
-    for cohort in CuratedCohort.get_curated_cohorts_by_owner_id(user_id):
-        _curated_cohort_api_json(cohort)
-        students = [{'sid': s.sid} for s in cohort.students]
-        students_with_alerts = Alert.include_alert_counts_for_students(viewer_user_id=user_id, cohort={'students': students})
-        curated_groups.append({
-            'id': cohort.id,
-            'name': cohort.name,
-            'alertCount': sum(s['alertCount'] for s in students_with_alerts),
-            'studentCount': len(students),
-        })
+    for curated_group in CuratedGroup.get_curated_groups_by_owner_id(user_id):
+        api_json = curated_group.to_api_json()
+        students = [{'sid': sid} for sid in CuratedGroup.get_all_sids(curated_group.id)]
+        students_with_alerts = Alert.include_alert_counts_for_students(
+            viewer_user_id=user_id,
+            group={'students': students},
+        )
+        api_json['alertCount'] = sum(s['alertCount'] for s in students_with_alerts)
+        curated_groups.append(api_json)
     return curated_groups
 
 
@@ -310,16 +295,3 @@ def is_unauthorized_search(filter_keys, order_by):
         if not is_coe_authorized():
             return True
     return False
-
-
-def _curated_cohort_api_json(cohort):
-    api_json = {
-        'id': cohort.id,
-        'name': cohort.name,
-        'sids': [],
-        'studentCount': 0,
-    }
-    for student in cohort.students:
-        api_json['sids'].append(student.sid)
-        api_json['studentCount'] += 1
-    return api_json

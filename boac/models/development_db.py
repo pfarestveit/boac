@@ -27,8 +27,7 @@ from boac import db, std_commit
 from boac.lib.berkeley import BERKELEY_DEPT_NAME_TO_CODE
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
-from boac.models.curated_cohort import CuratedCohort
-from boac.models.note import Note
+from boac.models.curated_group import CuratedGroup
 from boac.models.university_dept import UniversityDept
 # Models below are included so that db.create_all will find them.
 from boac.models.alert import Alert # noqa
@@ -40,6 +39,7 @@ from sqlalchemy.sql import text
 
 
 _test_users = [
+    ['13', True, False],  # This user has no entry in calnet_search_entries
     ['2040', True, True],
     ['53791', True, False],
     ['95509', True, False],
@@ -69,6 +69,11 @@ _users_per_dept = {
         },
         {
             'uid': '1133399',
+            'is_advisor': True,
+            'is_director': False,
+        },
+        {
+            'uid': '13',
             'is_advisor': True,
             'is_director': False,
         },
@@ -113,7 +118,6 @@ def load(cohort_test_data=False):
     if cohort_test_data:
         create_curated_groups()
         create_cohorts()
-        create_notes()
     return db
 
 
@@ -148,21 +152,21 @@ def load_development_data():
 
 
 def create_curated_groups():
-    admin_id = AuthorizedUser.find_by_uid('2040').id
-    CuratedCohort.create(admin_id, 'My Students')
+    admin_user = AuthorizedUser.find_by_uid('2040')
+    CuratedGroup.create(admin_user.id, 'My Students')
 
-    advisor_id = AuthorizedUser.find_by_uid('6446').id
-    CuratedCohort.create(advisor_id, 'My Students')
-    curated_cohort = CuratedCohort.create(advisor_id, 'Cool Kids')
-    CuratedCohort.add_student(curated_cohort.id, '3456789012')
-    CuratedCohort.add_student(curated_cohort.id, '5678901234')
-    CuratedCohort.add_student(curated_cohort.id, '11667051')
-    CuratedCohort.add_student(curated_cohort.id, '7890123456')
+    asc_advisor = AuthorizedUser.find_by_uid('6446')
+    CuratedGroup.create(asc_advisor.id, 'My Students')
+
+    curated_group = CuratedGroup.create(asc_advisor.id, 'Four students')
+    CuratedGroup.add_student(curated_group.id, '3456789012')
+    CuratedGroup.add_student(curated_group.id, '5678901234')
+    CuratedGroup.add_student(curated_group.id, '11667051')
+    CuratedGroup.add_student(curated_group.id, '7890123456')
 
     coe_advisor = AuthorizedUser.find_by_uid('1133399')
-    curated_cohort = CuratedCohort.create(coe_advisor.id, 'Cohort of One')
-    CuratedCohort.add_student(curated_cohort.id, '7890123456')  # PaulF
-
+    curated_group = CuratedGroup.create(coe_advisor.id, 'I have one student')
+    CuratedGroup.add_student(curated_group.id, '7890123456')
     std_commit(allow_test_environment=True)
 
 
@@ -244,34 +248,6 @@ def create_cohorts():
         filter_criteria={
             'majors': ['Nuclear Engineering BS'],
         },
-    )
-    std_commit(allow_test_environment=True)
-
-
-def create_notes():
-    Note.create(
-        author_uid='1133399',
-        author_name='Roberta Joan Anderson',
-        author_role='Advisor',
-        author_dept_codes=['COENG'],
-        sid='3456789012',
-        subject='The hissing of summer lawns',
-        body="""
-            She could see the valley barbecues from her window sill.
-            See the blue pools in the squinting sun. Hear the hissing of summer lawns
-        """,
-    )
-    Note.create(
-        author_uid='6446',
-        author_name='Joni Mitchell',
-        author_role='Director',
-        author_dept_codes=['UWASC'],
-        sid='11667051',
-        subject='In France they kiss on main street',
-        body="""
-            My darling dime store thief, in the War of Independence
-            Rock 'n Roll rang sweet as victory, under neon signs
-        """,
     )
     std_commit(allow_test_environment=True)
 

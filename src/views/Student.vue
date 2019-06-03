@@ -18,6 +18,12 @@
       </div>
       <div class="m-3">
         <AcademicTimeline :student="student" />
+        <AreYouSureModal
+          v-if="showAreYouSureModal"
+          :function-cancel="cancelTheCancel"
+          :function-confirm="cancelConfirmed"
+          modal-header="Discard unsaved note?"
+          :show-modal="showAreYouSureModal" />
       </div>
       <div>
         <StudentClasses :student="student" />
@@ -28,7 +34,10 @@
 
 <script>
 import AcademicTimeline from '@/components/student/profile/AcademicTimeline';
+import AreYouSureModal from '@/components/util/AreYouSureModal';
+import Context from '@/mixins/Context';
 import Loading from '@/mixins/Loading';
+import NoteEditSession from '@/mixins/NoteEditSession';
 import Scrollable from '@/mixins/Scrollable';
 import Spinner from '@/components/util/Spinner';
 import StudentClasses from '@/components/student/profile/StudentClasses';
@@ -42,24 +51,48 @@ export default {
   name: 'Student',
   components: {
     AcademicTimeline,
+    AreYouSureModal,
     Spinner,
     StudentClasses,
     StudentProfileGPA,
     StudentProfileHeader,
     StudentProfileUnits
   },
-  mixins: [Loading, Scrollable, Util],
+  mixins: [Context, Loading, NoteEditSession, Scrollable, Util],
   data: () => ({
+    cancelTheCancel: undefined,
+    cancelConfirmed: undefined,
     showAllTerms: false,
+    showAreYouSureModal: false,
     student: {
       termGpa: []
     }
   }),
+  computed: {
+    anchor: () => location.hash
+  },
+  beforeRouteLeave(to, from, next) {
+    if (this.newNoteMode || this.editingNoteId) {
+      this.alertScreenReader("Are you sure you want to discard unsaved changes?");
+      this.cancelConfirmed = () => {
+        this.editExistingNoteId(null);
+        next();
+      };
+      this.cancelTheCancel = () => {
+        this.alertScreenReader("Please save changes before exiting the page.");
+        this.showAreYouSureModal = false;
+        next(false);
+      };
+      this.showAreYouSureModal = true;
+    } else {
+      next();
+    }
+  },
   created() {
     const uid = this.get(this.$route, 'params.uid');
     getStudent(uid).then(data => {
       if (data) {
-        this.setPageTitle(data.name);
+        this.setPageTitle(this.user.inDemoMode ? 'Student' : data.name);
         this.assign(this.student, data);
         this.each(this.student.enrollmentTerms, this.parseEnrollmentTerm);
         this.loaded();
@@ -69,7 +102,9 @@ export default {
     });
   },
   mounted() {
-    this.scrollToTop();
+    if (!this.anchor) {
+      this.scrollToTop();
+    }
   },
   methods: {
     decorateCourse(course) {

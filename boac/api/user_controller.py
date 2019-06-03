@@ -36,8 +36,7 @@ from flask_login import current_user, login_required
 
 @app.route('/api/profile/my')
 def my_profile():
-    exclude_cohorts = util.to_bool_or_none(request.args.get('excludeCohorts'))
-    return tolerant_jsonify(current_user_profile(exclude_cohorts))
+    return tolerant_jsonify(current_user_profile())
 
 
 @app.route('/api/profile/<uid>')
@@ -58,10 +57,7 @@ def calnet_profile(csid):
 @app.route('/api/user/by_uid/<uid>')
 @login_required
 def user_by_uid(uid):
-    user = AuthorizedUser.find_by_uid(uid)
-    if not user:
-        raise errors.ResourceNotFoundError('Unknown path')
-    return tolerant_jsonify(calnet.get_calnet_user_for_uid(app, user.uid))
+    return tolerant_jsonify(calnet.get_calnet_user_for_uid(app, uid))
 
 
 @app.route('/api/users/authorized_groups')
@@ -92,16 +88,19 @@ def authorized_user_groups():
 
 
 @app.route('/api/user/demo_mode', methods=['POST'])
-@admin_required
+@login_required
 def set_demo_mode():
-    in_demo_mode = request.get_json().get('demoMode', None)
-    if in_demo_mode is None:
-        raise errors.BadRequestError('Parameter \'demoMode\' not found')
-    user = AuthorizedUser.find_by_id(current_user.id)
-    user.in_demo_mode = bool(in_demo_mode)
-    return tolerant_jsonify({
-        'inDemoMode': user.in_demo_mode,
-    })
+    if app.config['DEMO_MODE_AVAILABLE']:
+        in_demo_mode = request.get_json().get('demoMode', None)
+        if in_demo_mode is None:
+            raise errors.BadRequestError('Parameter \'demoMode\' not found')
+        user = AuthorizedUser.find_by_id(current_user.id)
+        user.in_demo_mode = bool(in_demo_mode)
+        return tolerant_jsonify({
+            'inDemoMode': user.in_demo_mode,
+        })
+    else:
+        raise errors.ResourceNotFoundError('Unknown path')
 
 
 @app.route('/api/user/status')

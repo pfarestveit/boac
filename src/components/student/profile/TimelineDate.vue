@@ -1,24 +1,26 @@
 <template>
-  <div v-if="formattedDate">
-    <span class="sr-only">{{ srPrefix }} </span>{{ formattedDate }}
-    <div v-if="timeOfDay">
-      {{ timeOfDay }}
+  <div v-if="datePerTimezone && dateFormat">
+    <span class="sr-only">{{ srPrefix }} </span>{{ datePerTimezone | moment(dateFormat) }}
+    <div v-if="includeTimeOfDay">
+      {{ datePerTimezone | moment('h:mma') }}
     </div>
   </div>
 </template>
 
 <script>
-import { format as formatDate, parse as parseDate } from 'date-fns';
+import Context from '@/mixins/Context';
 
 export default {
   name: 'TimelineDate',
+  mixins: [Context],
   props: {
     date: String,
     includeTimeOfDay: Boolean,
     srPrefix: String
   },
   data: () => ({
-    formattedDate: undefined,
+    datePerTimezone: undefined,
+    dateFormat: undefined,
     now: new Date(),
     timeOfDay: undefined
   }),
@@ -33,15 +35,9 @@ export default {
   methods: {
     render() {
       if (this.date) {
-        const d = parseDate(this.date);
-        const dateFormat =
-          d.getFullYear() === this.now.getFullYear()
-            ? 'MMM D'
-            : 'MMM D, YYYY';
-        this.formattedDate = formatDate(d, dateFormat);
-        if (this.includeTimeOfDay) {
-          this.timeOfDay = formatDate(d, 'H:mma')
-        }
+        const now = this.$moment();
+        this.datePerTimezone = this.$moment(this.date).tz(this.timezone);
+        this.dateFormat = this.datePerTimezone.year() === now.year() ? 'MMM D' : 'MMM D, YYYY';
       }
     }
   }

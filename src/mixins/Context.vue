@@ -9,15 +9,21 @@ export default {
       'currentEnrollmentTermId',
       'devAuthEnabled',
       'errors',
-      'featureFlagCreateNotes',
-      'supportEmailAddress'
+      'featureFlagEditNotes',
+      'isDemoModeAvailable',
+      'maxAttachmentsPerNote',
+      'announcement',
+      'srAlert',
+      'supportEmailAddress',
+      'timezone'
     ])
   },
   methods: {
     ...mapActions('context', [
-      'clearErrorsInStore',
+      'clearAlertsInStore',
       'dismissError',
-      'reportError'
+      'reportError',
+      'alertScreenReader'
     ])
   }
 };

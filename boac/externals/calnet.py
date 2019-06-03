@@ -33,12 +33,16 @@ SCHEMA_DICT = {
     'berkeleyEduAffiliations': 'affiliations',
     'berkeleyEduCSID': 'csid',
     'berkeleyEduOfficialEmail': 'campus_email',
-    'departmentNumber': 'dept_code',
+    'berkeleyEduPrimaryDeptUnit': 'primary_dept_code',
+    'berkeleyEduUnitCalNetDeptName': 'calnet_dept_code',
+    'berkeleyEduDeptUnitHierarchyString': 'dept_unit_hierarchy',
     'cn': 'sortable_name',
+    'departmentNumber': 'dept_code',
     'displayName': 'name',
     'mail': 'email',
     'givenName': 'first_name',
     'sn': 'last_name',
+    'title': 'title',
     'uid': 'uid',
 }
 
@@ -67,37 +71,37 @@ class Client:
         conn = ldap3.Connection(self.server, user=self.bind, password=self.password, auto_bind=ldap3.AUTO_BIND_TLS_BEFORE_BIND)
         return conn
 
-    def search_csids(self, csids):
+    def search_csids(self, csids, search_expired=False):
         all_out = []
         for i in range(0, len(csids), BATCH_QUERY_MAXIMUM):
             csids_batch = csids[i:i + BATCH_QUERY_MAXIMUM]
             with self.connect() as conn:
-                search_filter = self._ldap_search_filter(csids_batch, 'berkeleyeducsid')
+                search_filter = self._ldap_search_filter(csids_batch, 'berkeleyeducsid', search_expired)
                 conn.search('dc=berkeley,dc=edu', search_filter, attributes=ldap3.ALL_ATTRIBUTES)
-                all_out += [_attributes_to_dict(entry) for entry in conn.entries]
+                all_out += [_attributes_to_dict(entry, search_expired) for entry in conn.entries]
         return all_out
 
-    def search_uids(self, uids):
+    def search_uids(self, uids, search_expired=False):
         all_out = []
         for i in range(0, len(uids), BATCH_QUERY_MAXIMUM):
             uids_batch = uids[i:i + BATCH_QUERY_MAXIMUM]
             with self.connect() as conn:
-                search_filter = self._ldap_search_filter(uids_batch, 'uid')
+                search_filter = self._ldap_search_filter(uids_batch, 'uid', search_expired)
                 conn.search('dc=berkeley,dc=edu', search_filter, attributes=ldap3.ALL_ATTRIBUTES)
-                all_out += [_attributes_to_dict(entry) for entry in conn.entries]
+                all_out += [_attributes_to_dict(entry, search_expired) for entry in conn.entries]
         return all_out
 
     @classmethod
-    def _ldap_search_filter(cls, ids, id_type):
+    def _ldap_search_filter(cls, ids, id_type, search_expired=False):
         ids_filter = ''.join(f'({id_type}={_id})' for _id in ids)
+        ou_scope = '(ou=expired people)' if search_expired else '(ou=people) (ou=advcon people)'
         return f"""(&
             (objectclass=person)
             (|
                 {ids_filter}
             )
             (|
-                (ou=people)
-                (ou=advcon people)
+                { ou_scope }
             )
         )"""
 
@@ -117,8 +121,9 @@ class MockClient(Client):
         return conn
 
 
-def _attributes_to_dict(entry):
+def _attributes_to_dict(entry, expired_per_ldap):
     out = dict.fromkeys(SCHEMA_DICT.values(), None)
+    out['expired'] = expired_per_ldap
     # ldap3's entry.entry_attributes_as_dict would work for us, except that it wraps a single value as a list.
     for attr in SCHEMA_DICT:
         if attr in entry.entry_attributes:

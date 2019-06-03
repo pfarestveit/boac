@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="d-flex flex-wrap">
     <span :id="`row-index-of-${student.sid}`" hidden aria-hidden="true">{{ rowIndex }}</span>
     <span :id="`student-sid-of-row-${rowIndex}`" hidden aria-hidden="true">{{ student.sid }}</span>
     <div class="cohort-list-view-column-01">
@@ -11,7 +11,7 @@
         <i class="fas fa-times-circle"></i>
       </button>
       <div v-if="listType !== 'curatedGroup'">
-        <CuratedStudentCheckbox :sid="student.sid" />
+        <CuratedStudentCheckbox :student="student" />
       </div>
     </div>
     <div class="cohort-list-view-column-01">
@@ -20,7 +20,7 @@
         :student="student"
         :alert-count="student.alertCount" />
     </div>
-    <div class="cohort-student-bio-container">
+    <div class="cohort-student-bio-container mb-1">
       <div class="cohort-student-name-container">
         <div>
           <router-link :id="`row-${rowIndex}-student-href`" :to="`/student/${student.uid}`">
@@ -47,7 +47,7 @@
       </div>
       <div v-if="student.withdrawalCancel">
         <span class="red-flag-small">
-          {{ student.withdrawalCancel.description }} {{ student.withdrawalCancel.date | date }}
+          {{ student.withdrawalCancel.description }} {{ student.withdrawalCancel.date | moment('MMM DD, YYYY') }}
         </span>
       </div>
       <div
@@ -95,10 +95,10 @@
         :width="'130'" />
       <div
         v-if="size(student.termGpa)"
-        class="student-bio-status-legend profile-last-term-gpa-outer">
+        class="student-bio-status-legend profile-last-term-gpa-outer pl-0">
         <i
           v-if="student.termGpa[0].gpa < 2"
-          class="fa fa-exclamation-triangle boac-exclamation"></i>
+          class="fa fa-exclamation-triangle boac-exclamation mr-1"></i>
         <span :id="`row-${rowIndex}-student-gpa-term-name`">{{ student.termGpa[0].termName }}</span> GPA:
         <strong
           :id="`row-${rowIndex}-student-term-gpa`"
@@ -162,14 +162,15 @@
             </div>
           </td>
           <td class="cohort-course-activity-data">
-            <span v-if="enrollment.midtermGrade" class="cohort-grade">{{ enrollment.midtermGrade }}</span>
+            <span v-if="enrollment.midtermGrade" v-accessible-grade="enrollment.midtermGrade" class="font-weight-bold"></span>
             <i v-if="isAlertGrade(enrollment.midtermGrade)" class="fas fa-exclamation-triangle boac-exclamation"></i>
             <span v-if="!enrollment.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
           </td>
           <td class="cohort-course-activity-data">
             <span
               v-if="enrollment.grade"
-              class="cohort-grade">{{ enrollment.grade }}</span>
+              v-accessible-grade="enrollment.grade"
+              class="font-weight-bold"></span>
             <i v-if="isAlertGrade(enrollment.grade)" class="fas fa-exclamation-triangle boac-exclamation"></i>
             <span
               v-if="!enrollment.grade"

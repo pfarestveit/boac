@@ -304,7 +304,7 @@ def _get_coe_profiles():
         uid = user['uid']
         first_name = user.get('firstName')
         last_name = user.get('lastName')
-        name = f'{first_name} {last_name}' if first_name or last_name else uid
+        name = f'{first_name} {last_name}' if first_name or last_name else f'UID: {uid}'
         profiles.append({'name': name, 'value': uid})
     return sorted(profiles, key=lambda p: p['name'])
 
@@ -339,8 +339,8 @@ def _coe_prep_statuses():
 
 def _genders():
     return [
-        {'name': 'Female', 'value': 'f'},
-        {'name': 'Male', 'value': 'm'},
+        {'name': 'Female', 'value': 'F'},
+        {'name': 'Male', 'value': 'M'},
     ]
 
 

@@ -23,18 +23,18 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
-SQLALCHEMY_DATABASE_URI = 'postgres://boac:boac@localhost:5432/boac_test'
-DATA_LOCH_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
-DATA_LOCH_RDS_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
-TESTING = True
-
-LOGGING_LOCATION = 'STDOUT'
-
 ALERT_INFREQUENT_ACTIVITY_ENABLED = False
 ALERT_WITHDRAWAL_ENABLED = False
 
-INDEX_HTML = 'tests/static/test-index-vue.html'
+AWS_APP_ROLE_ARN = 'arn:aws:iam::123456789012:role/test-role'
 
-# TODO: Remove when note creation is in prod
-FEATURE_FLAG_CREATE_NOTES = True
+DATA_LOCH_RDS_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
+DATA_LOCH_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
+
+INDEX_HTML = 'tests/static/test-index.html'
+
+LOGGING_LOCATION = 'STDOUT'
+
+SQLALCHEMY_DATABASE_URI = 'postgres://boac:boac@localhost:5432/boac_test'
+
+TESTING = True

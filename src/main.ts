@@ -8,17 +8,19 @@ import CKEditor from '@ckeditor/ckeditor5-vue';
 import filters from './filters';
 import Highcharts from 'highcharts';
 import HighchartsMore from 'highcharts/highcharts-more';
+import moment from 'moment-timezone';
 import router from './router';
 import store from './store';
 import Vue from 'vue';
 import VueAnalytics from 'vue-analytics';
 import VueHighcharts from 'vue-highcharts';
+import VueMoment from 'vue-moment';
 import { routerHistory, writeHistory } from 'vue-router-back-button';
 
 // Allow cookies in Access-Control requests
 axios.defaults.withCredentials = true;
 axios.interceptors.response.use(response => response, function(error) {
-  let status = error.response.status;
+  let status = _.get(error, 'response.status') || 'Unknown';
   if (_.includes([404], status)) {
     router.push({ path: '/404' });
   } else {
@@ -32,8 +34,9 @@ axios.interceptors.response.use(response => response, function(error) {
 
 Vue.config.productionTip = false;
 Vue.use(BootstrapVue);
-Vue.use(require('vue-lodash'));
 Vue.use(CKEditor);
+Vue.use(require('vue-lodash'));
+Vue.use(VueMoment, { moment });
 
 HighchartsMore(Highcharts);
 Vue.use(VueHighcharts, { Highcharts });
@@ -55,6 +58,9 @@ store.dispatch('context/loadConfig').then(response => {
 
 // Filters and directives
 _.each(filters, (filter, name) => Vue.filter(name, filter));
+Vue.directive('accessibleGrade', {
+  bind: (el, binding) => el.innerHTML = binding.value && binding.value.replace('-', '&minus;').replace('+', '&plus;')
+});
 
 // Emit, and listen for, events via hub
 Vue.prototype.$eventHub = new Vue();

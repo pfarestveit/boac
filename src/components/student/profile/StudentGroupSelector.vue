@@ -34,7 +34,7 @@
         </span>
       </template>
       <b-dropdown-item v-if="!size(myCuratedGroups)">
-        <span class="cohort-selector-zero-cohorts faint-text">You have no curated groups.</span>
+        <span class="text-nowrap pb-1 pl-3 pr-3 pt-1 faint-text">You have no curated groups.</span>
       </b-dropdown-item>
       <div v-if="!groupsLoading" class="pt-1">
         <b-dropdown-item
@@ -53,7 +53,7 @@
           <label
             :id="`curated-group-${group.id}-name`"
             :for="`curated-group-${group.id}-checkbox`"
-            class="cohort-checkbox-name pb-0 pt-0"
+            class="curated-checkbox-label pb-0 pt-0"
             :aria-label="`${checkedGroups.includes(group.id) ? 'Remove student from' : 'Add student to'} group '${group.name}'`">{{ group.name }}</label>
         </b-dropdown-item>
       </div>
@@ -150,7 +150,7 @@ export default {
           );
         };
         removeFromCuratedGroup(group.id, this.sid).finally(() =>
-          setTimeout(done, 1000)
+          setTimeout(done, 2000)
         );
       } else {
         this.isAdding = true;
@@ -164,17 +164,15 @@ export default {
             `Student profile: Added SID ${this.sid}`
           );
         };
-        addStudents(group, [this.sid]).finally(() => setTimeout(done, 1000));
+        addStudents(group, [this.sid]).finally(() => setTimeout(done, 2000));
       }
     },
     modalCreateGroup(name) {
       this.isAdding = true;
       this.showModal = false;
-      let done = () => {
-        this.isAdding = false;
-      };
       createCuratedGroup(name, [this.sid])
         .then(group => {
+          this.checkedGroups.push(group.id);
           this.each(
             [
               'create',
@@ -184,8 +182,8 @@ export default {
               this.gaCuratedEvent(group.id, group.name, action);
             }
           );
-        })
-        .then(setTimeout(() => done(), 2000));
+          setTimeout(() => this.isAdding = false, 2000)
+        });
     },
     modalCancel() {
       this.showModal = false;
@@ -193,12 +191,6 @@ export default {
   }
 };
 </script>
-
-<style>
-.cohort-checkbox-name {
-  padding: 10px;
-}
-</style>
 
 <style scoped>
 .caret-down-width {

@@ -24,16 +24,12 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.models.authorized_user import AuthorizedUser
-from boac.models.cohort_filter import CohortFilter
-import pytest
 import simplejson as json
+from tests.util import override_config
 
+admin_uid = '2040'
 asc_advisor_uid = '1081940'
-
-
-@pytest.fixture()
-def asc_advisor_session(fake_auth):
-    fake_auth.login(asc_advisor_uid)
+coe_advisor_uid = '1133399'
 
 
 class TestUserStatusController:
@@ -46,12 +42,11 @@ class TestUserStatusController:
         assert response.json['isAuthenticated'] is False
 
     def test_when_authenticated(self, client, fake_auth):
-        test_uid = '1133399'
-        fake_auth.login(test_uid)
+        fake_auth.login(coe_advisor_uid)
         response = client.get('/api/user/status')
         assert response.status_code == 200
         assert response.json['isAuthenticated'] is True
-        assert response.json['uid'] == test_uid
+        assert response.json['uid'] == coe_advisor_uid
         assert isinstance(response.json['inDemoMode'], bool)
 
 
@@ -67,23 +62,20 @@ class TestUserProfile:
 
     def test_includes_canvas_profile_if_available(self, client, fake_auth):
         """Includes user profile info from Canvas."""
-        test_uid = '2040'
-        fake_auth.login(test_uid)
+        fake_auth.login(admin_uid)
         response = client.get('/api/profile/my')
         assert response.json['isAuthenticated'] is True
-        assert response.json['uid'] == test_uid
+        assert response.json['uid'] == admin_uid
         assert 'csid' in response.json
         assert 'firstName' in response.json
         assert 'lastName' in response.json
 
     def test_user_with_no_dept_membership(self, client, fake_auth):
         """Returns zero or more departments."""
-        fake_auth.login('2040')
+        fake_auth.login(admin_uid)
         response = client.get('/api/profile/my')
         assert response.status_code == 200
         user = response.json
-        assert 'myFilteredCohorts' in user
-        assert 'myCuratedCohorts' in user
         assert user['isAdmin'] is True
         assert user['isAsc'] is False
         assert user['isCoe'] is False
@@ -97,34 +89,36 @@ class TestUserProfile:
         user = response.json
         assert user['isAdmin'] is False
         assert user['isCoe'] is True
-        assert len(user['departments']) == 1
-        assert 'COENG' in user['departments']
-        assert user['departments']['COENG']['isAdvisor'] is False
-        assert user['departments']['COENG']['isDirector'] is True
+        departments = user['departments']
+        assert len(departments) == 1
+        assert departments[0]['code'] == 'COENG'
+        assert departments[0]['name'] == 'College of Engineering'
+        assert departments[0]['isAdvisor'] is False
+        assert departments[0]['isDirector'] is True
 
     def test_asc_advisor_exclude_cohorts(self, client, fake_auth):
         """Returns Athletic Study Center advisor."""
-        test_uid = '1081940'
-        fake_auth.login(test_uid)
-        response = client.get('/api/profile/my?excludeCohorts=true')
+        fake_auth.login(asc_advisor_uid)
+        response = client.get('/api/profile/my')
         assert response.status_code == 200
         user = response.json
-        assert 'myFilteredCohorts' not in user
-        assert 'myCuratedCohorts' not in user
         assert user['isAsc'] is True
-        assert 'UWASC' in user['departments']
-        assert user['departments']['UWASC']['isAdvisor'] is True
-        assert user['departments']['UWASC']['isDirector'] is False
+        departments = user['departments']
+        assert len(departments) == 1
+        assert departments[0]['code'] == 'UWASC'
+        assert departments[0]['name'] == 'Athletic Study Center'
+        assert departments[0]['isAdvisor'] is True
+        assert departments[0]['isDirector'] is False
 
     def test_other_user_profile(self, client, fake_auth):
-        fake_auth.login('2040')
+        fake_auth.login(admin_uid)
         response = client.get('/api/profile/6446')
         assert response.json['uid'] == '6446'
         assert 'firstName' in response.json
         assert 'lastName' in response.json
 
     def test_other_user_profile_not_found(self, client, fake_auth):
-        fake_auth.login('2040')
+        fake_auth.login(admin_uid)
         response = client.get('/api/profile/2549')
         assert response.status_code == 404
 
@@ -134,18 +128,17 @@ class TestUserById:
 
     def test_user_by_uid_not_authenticated(self, client):
         """Returns 401 when not authenticated."""
-        user = AuthorizedUser.find_by_uid('1081940')
+        user = AuthorizedUser.find_by_uid(asc_advisor_uid)
         response = client.get(f'/api/user/by_uid/{user.uid}')
         assert response.status_code == 401
 
     def test_user_by_uid(self, client, fake_auth):
         """Delivers CalNet profile."""
-        fake_auth.login('2040')
-        uid = '1081940'
-        user = AuthorizedUser.find_by_uid(uid)
+        fake_auth.login(admin_uid)
+        user = AuthorizedUser.find_by_uid(asc_advisor_uid)
         response = client.get(f'/api/user/by_uid/{user.uid}')
         assert response.status_code == 200
-        assert response.json['uid'] == uid
+        assert response.json['uid'] == asc_advisor_uid
 
     def test_user_by_csid_not_authenticated(self, client):
         """Returns 401 when not authenticated."""
@@ -154,60 +147,14 @@ class TestUserById:
 
     def test_user_by_csid(self, client, fake_auth):
         """Delivers CalNet profile."""
-        fake_auth.login('2040')
+        fake_auth.login(admin_uid)
         response = client.get(f'/api/user/by_csid/{81067873}')
         assert response.status_code == 200
         assert response.json['csid'] == '81067873'
 
 
-class TestMyCohorts:
-    """User Profile API."""
-
-    def test_my_cohorts(self, asc_advisor_session, client):
-        response = client.get('/api/profile/my')
-        assert response.status_code == 200
-        user = response.json
-        cohorts = user['myFilteredCohorts']
-        assert [cohort['name'] for cohort in cohorts] == [
-            'All sports',
-            'Defense Backs, Active',
-            'Defense Backs, All',
-            'Defense Backs, Inactive',
-            'Undeclared students',
-        ]
-        cohort = cohorts[0]
-        assert cohort['isOwnedByCurrentUser'] is True
-        assert 'alertCount' in cohort
-        assert 'totalStudentCount' in cohort
-
-    def test_cohort_ordering(self, client, asc_advisor_session):
-        """Order alphabetically."""
-        CohortFilter.create(
-            uid=asc_advisor_uid,
-            name='Zebra Zealots',
-            filter_criteria={
-                'groupCodes': ['MTE', 'WWP'],
-            },
-        )
-        CohortFilter.create(
-            uid=asc_advisor_uid,
-            name='Aardvark Admirers',
-            filter_criteria={
-                'groupCodes': ['MWP', 'WTE'],
-            },
-        )
-        response = client.get('/api/profile/my')
-        assert response.status_code == 200
-        cohorts = response.json['myFilteredCohorts']
-        assert cohorts[0]['name'] == 'Aardvark Admirers'
-        assert cohorts[-1]['name'] == 'Zebra Zealots'
-
-
 class TestUserGroups:
     """User API."""
-
-    admin_uid = '2040'
-    coe_advisor_uid = '1133399'
 
     def test_not_authenticated(self, client):
         """Returns 'unauthorized' response status if user is not authenticated."""
@@ -216,13 +163,13 @@ class TestUserGroups:
 
     def test_unauthorized(self, client, fake_auth):
         """Returns 'unauthorized' response status if user is not admin."""
-        fake_auth.login(self.coe_advisor_uid)
+        fake_auth.login(coe_advisor_uid)
         response = client.get('/api/users/authorized_groups')
         assert response.status_code == 401
 
     def test_authorized(self, client, fake_auth):
         """Returns a well-formed response."""
-        fake_auth.login(self.admin_uid)
+        fake_auth.login(admin_uid)
         response = client.get('/api/users/authorized_groups')
         assert response.status_code == 200
         user_groups = sorted(response.json, key=lambda g: g['code'])
@@ -239,23 +186,33 @@ class TestUserGroups:
 
 class TestDemoMode:
 
-    def test_set_demo_mode_not_authenticated(self, client):
+    def test_set_demo_mode_not_authenticated(self, app, client):
         """Require authentication."""
-        assert client.post('/api/user/demo_mode').status_code == 401
+        with override_config(app, 'DEMO_MODE_AVAILABLE', True):
+            assert client.post('/api/user/demo_mode').status_code == 401
 
-    def test_set_demo_mode_not_an_admin(self, client, asc_advisor_session):
-        """Return 403 for non-admin user."""
-        response = client.post('/api/user/demo_mode')
-        assert response.status_code == 401
+    def test_demo_mode_unavailable(self, app, client, fake_auth):
+        """Return 404 when dev_auth is not enabled."""
+        with override_config(app, 'DEVELOPER_AUTH_ENABLED', True):
+            # Enable dev_auth to confirm that it is ignored
+            with override_config(app, 'DEMO_MODE_AVAILABLE', False):
+                fake_auth.login(admin_uid)
+                assert client.post('/api/user/demo_mode').status_code == 404
 
-    def test_admin_set_demo_mode(self, client, fake_auth):
-        """Admin successfully toggles demo mode."""
-        test_uid = '53791'
-        fake_auth.login(test_uid)
-        # Verify toggle
-        for in_demo_mode in [True, False]:
-            response = client.post('/api/user/demo_mode', data=json.dumps({'demoMode': in_demo_mode}), content_type='application/json')
-            assert response.status_code == 200
-            assert response.json['inDemoMode'] is in_demo_mode
-            user = AuthorizedUser.find_by_uid(test_uid)
-            assert user.in_demo_mode is in_demo_mode
+    def test_set_demo_mode(self, app, client, fake_auth):
+        """Both admin and advisor can toggle demo mode."""
+        with override_config(app, 'DEVELOPER_AUTH_ENABLED', False):
+            # Disable dev_auth to confirm that it is ignored
+            with override_config(app, 'DEMO_MODE_AVAILABLE', True):
+                for uid in admin_uid, coe_advisor_uid:
+                    fake_auth.login(uid)
+                    for in_demo_mode in [True, False]:
+                        response = client.post(
+                            '/api/user/demo_mode',
+                            data=json.dumps({'demoMode': in_demo_mode}),
+                            content_type='application/json',
+                        )
+                        assert response.status_code == 200
+                        assert response.json['inDemoMode'] is in_demo_mode
+                        user = AuthorizedUser.find_by_uid(uid)
+                        assert user.in_demo_mode is in_demo_mode

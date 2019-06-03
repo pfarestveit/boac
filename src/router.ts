@@ -3,6 +3,7 @@ import Admin from '@/views/Admin.vue';
 import AllCohorts from '@/views/AllCohorts.vue';
 import Cohort from '@/views/Cohort.vue';
 import Course from '@/views/Course.vue';
+import CreateCuratedGroup from '@/views/CreateCuratedGroup.vue'
 import CuratedGroup from '@/views/CuratedGroup.vue';
 import Home from '@/views/Home.vue';
 import Login from '@/layouts/Login.vue';
@@ -20,6 +21,24 @@ const requiresAuth = (to: any, from: any, next: any) => {
   store.dispatch('user/loadUserAuthStatus').then(data => {
     if (data.isAuthenticated) {
       next();
+    } else {
+      next({
+        path: '/login',
+        query: {
+          error: to.query.error,
+          redirect: to.name === 'home' ? undefined : to.fullPath
+        }
+      });
+    }
+  });
+};
+
+const requiresUser = (to: any, from: any, next: any) => {
+  store.dispatch('user/loadUserAuthStatus').then(data => {
+    if (data.isAuthenticated) {
+      store.dispatch('user/loadUser').then(() => {
+        next();
+      });
     } else {
       next({
         path: '/login',
@@ -58,16 +77,8 @@ const router = new Router({
     {
       path: '/',
       component: StandardLayout,
-      beforeEnter: requiresAuth,
+      beforeEnter: requiresUser,
       children: [
-        {
-          path: '/home',
-          name: 'home',
-          component: Home,
-          meta: {
-            title: 'Home'
-          }
-        },
         {
           path: '/admin',
           name: 'admin',
@@ -98,11 +109,26 @@ const router = new Router({
           }
         },
         {
-          path: '/curated_group/:id',
+          path: '/curated/:id',
           component: CuratedGroup,
           props: true,
           meta: {
             title: 'Curated Group'
+          }
+        },
+        {
+          path: '/curate',
+          component: CreateCuratedGroup,
+          props: true,
+          meta: {
+            title: 'Create Curated Group'
+          }
+        },
+        {
+          path: '/search',
+          component: Search,
+          meta: {
+            title: 'Search'
           }
         },
         {
@@ -111,12 +137,20 @@ const router = new Router({
           meta: {
             title: 'Student'
           }
-        },
+        }
+      ]
+    },
+    {
+      path: '/',
+      component: StandardLayout,
+      beforeEnter: requiresAuth,
+      children: [
         {
-          path: '/search',
-          component: Search,
+          path: '/home',
+          name: 'home',
+          component: Home,
           meta: {
-            title: 'Search'
+            title: 'Home'
           }
         },
         {
@@ -137,13 +171,13 @@ const router = new Router({
 
 router.beforeEach((to: any, from: any, next: any) => {
   store.dispatch('context/loadConfig').then(() => {
-    store.dispatch('context/clearErrorsInStore').then(() => next());
+    store.dispatch('context/clearAlertsInStore').then(() => next());
   });
 });
 
 router.afterEach((to: any) => {
   let name = _.get(to, 'meta.title') || _.capitalize(to.name) || 'Welcome';
-  document.title = `${name} | BOAC`;
+  document.title = `${name} | BOA`;
   if (to.query.error) {
     store.dispatch('context/reportError', {
       message: to.query.error
@@ -154,6 +188,7 @@ router.afterEach((to: any) => {
       store.dispatch('user/loadUser').then(() => {
         store.dispatch('cohort/loadMyCohorts');
         store.dispatch('curated/loadMyCuratedGroups');
+        store.dispatch('context/loadServiceAnnouncement');
         return;
       });
     }

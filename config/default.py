@@ -29,6 +29,9 @@ import os
 # Base directory for the application (one level up from this config file).
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
+# In demo mode, student profile pictures and sensitive data will be blurred.
+DEMO_MODE_AVAILABLE = False
+
 # These "INDEX_HTML" defaults are good in boac-dev, boac-qa, etc. See development.py for appropriate local configs.
 INDEX_HTML = 'dist/static/index.html'
 
@@ -64,11 +67,16 @@ PORT = 5000
 DEVELOPER_AUTH_ENABLED = False
 DEVELOPER_AUTH_PASSWORD = 'another secret'
 
-# TODO: Remove when note creation is in prod
-FEATURE_FLAG_CREATE_NOTES = False
+# TODO: Remove when notes-related features are stable in prod
+FEATURE_FLAG_EDIT_NOTES = True
+
+ABBREVIATED_WORDS = ['APR', 'EAP', 'PNP', 'SAP']
 
 # Set to a nice long chaotic string to enable scripted access to APIs.
 API_KEY = None
+
+# BOAC-specific AWS credentials.
+AWS_APP_ROLE_ARN = 'aws:arn::<account>:role/<app_boa_role>'
 
 CAS_SERVER = 'https://auth-test.berkeley.edu/cas/'
 CAS_LOGOUT_URL = 'https://auth-test.berkeley.edu/cas/logout'
@@ -81,13 +89,21 @@ DATA_LOCH_URI = 'postgres://nessie:secret@secreturl.com:5432/canvas'
 DATA_LOCH_RDS_URI = 'postgres://nessie:secret@secret-rds-url.com:5432/canvas'
 
 DATA_LOCH_ADVISING_NOTES_SCHEMA = 'boac_advising_notes'
+DATA_LOCH_ASC_ADVISING_NOTES_SCHEMA = 'asc_advising_notes'
 DATA_LOCH_ASC_SCHEMA = 'boac_advising_asc'
 DATA_LOCH_BOAC_SCHEMA = 'boac_analytics'
 DATA_LOCH_COE_SCHEMA = 'boac_advising_coe'
 DATA_LOCH_INTERMEDIATE_SCHEMA = 'intermediate'
+DATA_LOCH_L_S_SCHEMA = 'boac_advising_l_s'
 DATA_LOCH_PHYSICS_SCHEMA = 'boac_advising_physics'
 DATA_LOCH_SIS_SCHEMA = 'sis_data'
 DATA_LOCH_STUDENT_SCHEMA = 'student'
+
+DATA_LOCH_S3_REGION = 'us-west-2'
+DATA_LOCH_S3_ENCRYPTION = 'AES256'
+DATA_LOCH_S3_ADVISING_NOTE_BUCKET = 'advising-note-bucket'
+DATA_LOCH_S3_ADVISING_NOTE_ATTACHMENT_PATH = 'attachment-path'
+DATA_LOCH_S3_BOA_NOTE_ATTACHMENTS_PATH = 'boa-attachment-path'
 
 DISABLE_MATRIX_VIEW_THRESHOLD = 800
 
@@ -129,5 +145,6 @@ CACHE_DEFAULT = False
 MEANINGFUL_STATS_MINIMUM = 4
 
 NOTES_SEARCH_RESULT_SNIPPET_PADDING = 29
+NOTES_ATTACHMENTS_MAX_PER_NOTE = 5
 
-BOAC_SUPPORT_EMAIL = 'boac-support@lists.berkeley.edu'
+BOAC_SUPPORT_EMAIL = 'boahelp@berkeley.edu'

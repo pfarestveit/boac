@@ -23,20 +23,24 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-from boac.api.errors import BadRequestError, ForbiddenRequestError
-from boac.api.util import current_user_profile, feature_flag_create_notes, get_dept_codes, get_dept_role
+import urllib.parse
+
+from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
+from boac.api.util import current_user_profile, feature_flag_edit_notes, get_dept_codes, get_dept_role
 from boac.lib.http import tolerant_jsonify
-from boac.merged.advising_note import note_to_compatible_json
+from boac.lib.util import is_int, process_input_from_rich_text_editor
+from boac.merged.advising_note import get_boa_attachment_stream, get_legacy_attachment_stream, note_to_compatible_json
 from boac.models.note import Note
 from boac.models.note_read import NoteRead
-from flask import current_app as app, request
+from boac.models.topic import Topic
+from flask import current_app as app, request, Response
 from flask_login import current_user, login_required
 
 
 @app.route('/api/notes/<note_id>/mark_read', methods=['POST'])
 @login_required
 def mark_read(note_id):
-    if NoteRead.create(current_user.id, note_id):
+    if NoteRead.find_or_create(current_user.id, note_id):
         return tolerant_jsonify({'status': 'created'}, status=201)
     else:
         raise BadRequestError(f'Failed to mark note {note_id} as read by user {current_user.uid}')
@@ -44,14 +48,15 @@ def mark_read(note_id):
 
 @app.route('/api/notes/create', methods=['POST'])
 @login_required
-@feature_flag_create_notes
+@feature_flag_edit_notes
 def create_note():
-    params = request.get_json()
+    params = request.form
     sid = params.get('sid', None)
     subject = params.get('subject', None)
     body = params.get('body', None)
-    if not sid or not subject or not body:
-        raise BadRequestError('Note creation requires \'subject\', \'body\', and \'sid\'')
+    topics = _get_topics(params)
+    if not sid or not subject:
+        raise BadRequestError('Note creation requires \'subject\' and \'sid\'')
     dept_codes = get_dept_codes(current_user)
     if current_user.is_admin or not len(dept_codes):
         raise ForbiddenRequestError('Sorry, Admin users cannot create advising notes')
@@ -64,14 +69,168 @@ def create_note():
         author_role=role,
         author_dept_codes=dept_codes,
         subject=subject,
-        body=body,
+        body=process_input_from_rich_text_editor(body),
+        topics=topics,
         sid=sid,
+        attachments=_get_attachments(request.files, tolerate_none=True),
     )
-    note_json = note_to_compatible_json(note.to_api_json())
-    return tolerant_jsonify(note_json)
+    note_json = Note.find_by_id(note.id).to_api_json()
+    return tolerant_jsonify(
+        note_to_compatible_json(
+            note=note_json,
+            note_read=NoteRead.find_or_create(current_user.id, note.id),
+            attachments=note_json.get('attachments'),
+            topics=note_json.get('topics'),
+        ),
+    )
+
+
+@app.route('/api/notes/update', methods=['POST'])
+@login_required
+@feature_flag_edit_notes
+def update_note():
+    params = request.form
+    note_id = params.get('id', None)
+    subject = params.get('subject', None)
+    body = params.get('body', None)
+    topics = _get_topics(params)
+    delete_ids_ = params.get('deleteAttachmentIds') or []
+    delete_ids_ = delete_ids_ if isinstance(delete_ids_, list) else str(delete_ids_).split(',')
+    delete_attachment_ids = [int(id_) for id_ in delete_ids_]
+    if not note_id or not subject:
+        raise BadRequestError('Note requires \'id\' and \'subject\'')
+    if Note.find_by_id(note_id=note_id).author_uid != current_user.uid:
+        raise ForbiddenRequestError('Sorry, you are not the author of this note.')
+    note = Note.update(
+        note_id=note_id,
+        subject=subject,
+        body=process_input_from_rich_text_editor(body),
+        topics=topics,
+        attachments=_get_attachments(request.files, tolerate_none=True),
+        delete_attachment_ids=delete_attachment_ids,
+    )
+    note_json = note.to_api_json()
+    return tolerant_jsonify(
+        note_to_compatible_json(
+            note=note_json,
+            note_read=NoteRead.find_or_create(current_user.id, note_id),
+            attachments=note_json.get('attachments'),
+            topics=note_json.get('topics'),
+        ),
+    )
+
+
+@app.route('/api/notes/delete/<note_id>', methods=['DELETE'])
+@login_required
+@feature_flag_edit_notes
+def delete_note(note_id):
+    if not current_user.is_admin:
+        raise ForbiddenRequestError('Sorry, you are not authorized to delete notes.')
+    note = Note.find_by_id(note_id=note_id)
+    if not note:
+        raise ResourceNotFoundError('Note not found')
+    Note.delete(note_id=note_id)
+    return tolerant_jsonify({'message': f'Note {note_id} deleted'}), 200
+
+
+@app.route('/api/notes/topics', methods=['GET'])
+@login_required
+def get_topics():
+    return tolerant_jsonify([topic.to_api_json() for topic in Topic.get()])
+
+
+@app.route('/api/notes/<note_id>/attachment', methods=['POST'])
+@login_required
+@feature_flag_edit_notes
+def add_attachment(note_id):
+    if Note.find_by_id(note_id=note_id).author_uid != current_user.uid:
+        raise ForbiddenRequestError('Sorry, you are not the author of this note.')
+    attachments = _get_attachments(request.files)
+    if len(attachments) != 1:
+        raise BadRequestError('A single attachment file must be supplied.')
+    note = Note.add_attachment(
+        note_id=note_id,
+        attachment=attachments[0],
+    )
+    note_json = note.to_api_json()
+    return tolerant_jsonify(
+        note_to_compatible_json(
+            note=note_json,
+            note_read=NoteRead.find_or_create(current_user.id, note_id),
+            attachments=note_json.get('attachments'),
+            topics=note_json.get('topics'),
+        ),
+    )
+
+
+@app.route('/api/notes/<note_id>/attachment/<attachment_id>', methods=['DELETE'])
+@login_required
+@feature_flag_edit_notes
+def remove_attachment(note_id, attachment_id):
+    existing_note = Note.find_by_id(note_id=note_id)
+    if not existing_note:
+        raise BadRequestError('Note id not found.')
+    if existing_note.author_uid != current_user.uid and not current_user.is_admin:
+        raise ForbiddenRequestError('You are not authorized to remove attachments from this note.')
+    note = Note.delete_attachment(
+        note_id=note_id,
+        attachment_id=int(attachment_id),
+    )
+    note_json = note.to_api_json()
+    return tolerant_jsonify(
+        note_to_compatible_json(
+            note=note_json,
+            note_read=NoteRead.find_or_create(current_user.id, note_id),
+            attachments=note_json.get('attachments'),
+            topics=note_json.get('topics'),
+        ),
+    )
+
+
+@app.route('/api/notes/attachment/<attachment_id>', methods=['GET'])
+@login_required
+def download_attachment(attachment_id):
+    is_legacy = not is_int(attachment_id)
+    id_ = attachment_id if is_legacy else int(attachment_id)
+    stream_data = get_legacy_attachment_stream(id_) if is_legacy else get_boa_attachment_stream(id_)
+    if not stream_data or not stream_data['stream']:
+        return Response('Sorry, attachment not available.', mimetype='text/html', status=404)
+    r = Response(stream_data['stream'])
+    r.headers['Content-Type'] = 'application/octet-stream'
+    encoding_safe_filename = urllib.parse.quote(stream_data['filename'].encode('utf8'))
+    r.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoding_safe_filename}"
+    return r
 
 
 def _get_name(user):
     first_name = user.get('firstName')
     last_name = user.get('lastName')
     return '' if not (first_name or last_name) else (first_name if not last_name else f'{first_name} {last_name}')
+
+
+def _get_topics(params):
+    topics = params.get('topics', ())
+    return topics if isinstance(topics, list) else list(filter(None, str(topics).split(',')))
+
+
+def _get_attachments(request_files, tolerate_none=False):
+    attachments = []
+    for index in range(app.config['NOTES_ATTACHMENTS_MAX_PER_NOTE']):
+        attachment = request_files.get(f'attachment[{index}]')
+        if attachment:
+            attachments.append(attachment)
+        else:
+            break
+    if not tolerate_none and not len(attachments):
+        raise BadRequestError('request.files is empty')
+    byte_stream_bundle = []
+    for attachment in attachments:
+        filename = attachment.filename and attachment.filename.strip()
+        if not filename:
+            raise BadRequestError(f'Invalid file in request form data: {attachment}')
+        else:
+            byte_stream_bundle.append({
+                'name': filename.rsplit('/', 1)[-1],
+                'byte_stream': attachment.read(),
+            })
+    return byte_stream_bundle

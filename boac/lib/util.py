@@ -23,12 +23,16 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from datetime import datetime
 import inspect
+import re
+import string
+import time
 
+from autolink import linkify
 from flask import current_app as app
 import pytz
+from titlecase import titlecase
 
 
 """Generic utilities."""
@@ -58,18 +62,61 @@ def get(_dict, key, default_value=None):
     return _dict[key] if key in _dict else default_value
 
 
+def get_benchmarker(label):
+    benchmark_start = time.time()
+
+    def _log_benchmark(msg):
+        app.logger.debug(f'BENCHMARK {label}: {msg} ({round((time.time() - benchmark_start) * 1000)} ms elapsed)')
+    return _log_benchmark
+
+
+def join_if_present(delimiter, terms):
+    return delimiter.join([t for t in terms if t])
+
+
 def localize_datetime(dt):
     return dt.astimezone(pytz.timezone(app.config['TIMEZONE']))
+
+
+def process_input_from_rich_text_editor(rich_text):
+    parsed = rich_text.strip()
+    exclude_from_parse = {}
+    now = time.time()
+    for index, match in enumerate(re.findall('<a [^>]*>.*?</a>', parsed)):
+        placeholder = f'placeholder-{now}-{index}'
+        exclude_from_parse[placeholder] = match
+        parsed = parsed.replace(match, placeholder, 1)
+    parsed = linkify(parsed, {'target': '_blank'})
+    for placeholder, match in exclude_from_parse.items():
+        parsed = parsed.replace(placeholder, match, 1)
+    return parsed
 
 
 def remove_none_values(_dict):
     return {k: v for k, v in _dict.items() if v is not None}
 
 
+def titleize(_str):
+    def handle_abbreviations(word, **kwargs):
+        if app.config['ABBREVIATED_WORDS'] and word.upper().strip(string.punctuation) in app.config['ABBREVIATED_WORDS']:
+            return word.upper()
+    if not isinstance(_str, str):
+        return _str
+    return titlecase(_str.upper(), callback=handle_abbreviations)
+
+
 def tolerant_remove(_list, item):
     """Remove item from list. Return True if item was present, otherwise False."""
     try:
         _list.remove(item)
+        return True
+    except ValueError:
+        return False
+
+
+def is_int(s):
+    try:
+        int(s)
         return True
     except ValueError:
         return False
@@ -94,6 +141,10 @@ def to_bool_or_none(arg):
 def unix_timestamp_to_localtime(epoch):
     utc_from_timestamp = datetime.utcfromtimestamp(epoch).replace(tzinfo=pytz.utc)
     return localize_datetime(utc_from_timestamp)
+
+
+def utc_now():
+    return datetime.utcnow().replace(tzinfo=pytz.utc)
 
 
 def utc_timestamp_to_localtime(_str):

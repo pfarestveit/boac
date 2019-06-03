@@ -1,11 +1,10 @@
 <template>
   <div v-if="!isTimelineLoading">
-    <div class="d-flex justify-content-between">
+    <div class="d-flex justify-content-between flex-wrap mb-2">
       <div>
         <h2 class="student-section-header">Academic Timeline</h2>
-        <div id="screen-reader-alert" class="sr-only" aria-live="polite">{{ screenReaderAlert }}</div>
-        <div class="d-flex mt-3 mb-3">
-          <div class="align-self-center mr-3">Filter Type:</div>
+        <div class="d-flex mt-1 mb-1">
+          <div class="align-self-center mr-2">Filter Type:</div>
           <div>
             <b-btn
               id="timeline-tab-all"
@@ -34,8 +33,13 @@
           </div>
         </div>
       </div>
-      <div v-if="featureFlagCreateNotes && !user.isAdmin">
-        <NewNoteModal :student="student" :on-successful-create="onCreateAdvisingNote" />
+      <div v-if="featureFlagEditNotes && !user.isAdmin">
+        <NewNoteModal
+          :disable="!!editingNoteId"
+          :student="student"
+          :suggested-topics="suggestedTopics"
+          :on-submit="onSubmitAdvisingNote"
+          :on-successful-create="onCreateAdvisingNote" />
       </div>
     </div>
 
@@ -53,11 +57,23 @@
           <th>Has attachment?</th>
           <th>Date</th>
         </tr>
+        <tr v-if="creatingNewNote">
+          <td class="column-pill align-top p-2">
+            <div class="pill text-center text-uppercase text-white pill-note" tabindex="0">
+              <span class="sr-only">Creating new</span> advising note
+            </div>
+          </td>
+          <td class="column-message">
+            <i class="fas fa-sync fa-spin"></i>
+          </td>
+        </tr>
         <tr
-          v-for="(message, index) in messagesInView"
+          v-for="(message, index) in (isShowingAll ? messagesPerType(filter) : slice(messagesPerType(filter), 0, defaultShowPerTab))"
+          :id="`message-row-${message.id}`"
           :key="index"
           class="message-row border-top border-bottom"
-          :class="{ 'message-row-read': message.read }">
+          :class="{ 'message-row-read': message.read }"
+          :tabindex="includes(openMessages, message.transientId) ? 0 : -1">
           <td class="column-pill align-top p-2">
             <div
               :id="`timeline-tab-${activeTab}-pill-${index}`"
@@ -65,6 +81,30 @@
               :class="`pill-${message.type}`"
               tabindex="0">
               <span class="sr-only">Message of type </span>{{ filterTypes[message.type].name }}
+            </div>
+            <div
+              v-if="featureFlagEditNotes && isEditable(message) && !editingNoteId && isNil(newNoteMode) && includes(openMessages, message.transientId)"
+              class="mt-2">
+              <div v-if="user.uid === message.author.uid">
+                <b-btn
+                  :id="`edit-note-${message.id}-button`"
+                  variant="link"
+                  class="p-0 edit-note-button"
+                  @keypress.enter.stop="editNote(message)"
+                  @click.stop="editNote(message)">
+                  Edit Note
+                </b-btn>
+              </div>
+              <div v-if="user.isAdmin">
+                <b-btn
+                  id="delete-note-button"
+                  variant="link"
+                  class="p-0 edit-note-button"
+                  @keypress.enter.stop="deleteNote(message)"
+                  @click.stop="deleteNote(message)">
+                  Delete Note
+                </b-btn>
+              </div>
             </div>
           </td>
           <td
@@ -77,17 +117,39 @@
                 'truncate': !includes(openMessages, message.transientId),
                 'img-blur': user.inDemoMode && message.type === 'note'
               }"
-              tabindex="0"
-              @keyup.enter="toggle(message)"
-              @click="toggle(message)">
+              :tabindex="includes(openMessages, message.transientId) ? -1 : 0"
+              @keyup.enter="open(message)"
+              @click="open(message)">
+              <span v-if="message.transientId !== editingNoteId" class="when-message-closed sr-only">Open message</span>
               <i v-if="message.status === 'Satisfied'" class="requirements-icon fas fa-check text-success"></i>
               <i v-if="message.status === 'Not Satisfied'" class="requirements-icon fas fa-exclamation text-icon-exclamation"></i>
               <i v-if="message.status === 'In Progress'" class="requirements-icon fas fa-clock text-icon-clock"></i>
               <span v-if="message.type !== 'note'">{{ message.message }}</span>
               <AdvisingNote
-                v-if="message.type === 'note'"
+                v-if="message.type === 'note' && message.transientId !== editingNoteId"
+                :delete-note="deleteNote"
+                :edit-note="editNote"
                 :note="message"
+                :after-saved="afterNoteUpdated"
+                :suggested-topics="suggestedTopics"
                 :is-open="includes(openMessages, message.transientId)" />
+              <EditAdvisingNote
+                v-if="featureFlagEditNotes && message.type === 'note' && message.transientId === editingNoteId"
+                :after-cancelled="afterEditCancel"
+                :note="message"
+                :after-saved="afterNoteUpdated"
+                :suggested-topics="suggestedTopics" />
+              <div v-if="includes(openMessages, message.transientId) && message.transientId !== editingNoteId" class="text-center close-message">
+                <b-btn
+                  :id="`timeline-tab-${activeTab}-close-message`"
+                  class="no-wrap"
+                  variant="link"
+                  @keyup.enter.stop="close(message)"
+                  @click.stop="close(message)">
+                  <i class="fas fa-times-circle"></i>
+                  Close Message
+                </b-btn>
+              </div>
             </div>
           </td>
           <td class="column-right align-top pt-1 pr-1">
@@ -111,8 +173,7 @@
                   <TimelineDate
                     :id="`expanded-${message.type}-${message.id}-created-at`"
                     :date="message.createdAt"
-                    :include-time-of-day="message.createdAt.length > 10"
-                    sr-prefix="Last updated on" />
+                    :include-time-of-day="message.createdAt.length > 10" />
                 </div>
                 <div v-if="displayUpdatedAt(message)">
                   <div class="mt-2 text-muted">Updated:</div>
@@ -120,8 +181,16 @@
                     :id="`expanded-${message.type}-${message.id}-updated-at`"
                     :date="message.updatedAt"
                     :include-time-of-day="message.updatedAt.length > 10"
-                    class="mb-2"
-                    sr-prefix="Last updated on" />
+                    class="mb-2" />
+                </div>
+                <div class="text-muted">
+                  <router-link
+                    v-if="editingNoteId !== message.transientId"
+                    :id="`advising-note-permalink-${message.id}`"
+                    :to="`#${message.id}`"
+                    @click.native="scrollToPermalink(message.id)">
+                    Permalink <i class="fas fa-link"></i>
+                  </router-link>
                 </div>
               </div>
               <span
@@ -133,7 +202,7 @@
         </tr>
       </table>
     </div>
-    <div v-if="countPerActiveTab > defaultShowPerTab" class="text-center pt-2">
+    <div v-if="countPerActiveTab > defaultShowPerTab" class="text-center">
       <b-btn
         :id="`timeline-tab-${activeTab}-previous-messages`"
         class="no-wrap pr-2 pt-0"
@@ -148,28 +217,41 @@
         {{ isShowingAll ? 'Hide' : 'Show' }} Previous Messages
       </b-btn>
     </div>
+    <AreYouSureModal
+      v-if="showDeleteConfirmModal"
+      button-label-confirm="Delete"
+      :function-cancel="cancelTheDelete"
+      :function-confirm="deleteConfirmed"
+      modal-header="Delete note"
+      :modal-body="deleteConfirmModalBody"
+      :show-modal="showDeleteConfirmModal" />
   </div>
 </template>
 
 <script>
 import AdvisingNote from "@/components/note/AdvisingNote";
+import AreYouSureModal from '@/components/util/AreYouSureModal';
 import Context from '@/mixins/Context';
+import EditAdvisingNote from '@/components/note/EditAdvisingNote';
 import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import NewNoteModal from "@/components/note/NewNoteModal";
+import NoteEditSession from "@/mixins/NoteEditSession";
+import Scrollable from '@/mixins/Scrollable';
 import TimelineDate from '@/components/student/profile/TimelineDate';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import { dismissStudentAlert } from '@/api/student';
-import { markRead } from '@/api/notes';
+import { deleteNote, getTopics, markRead } from '@/api/notes';
 
 export default {
   name: 'AcademicTimeline',
-  components: {AdvisingNote, NewNoteModal, TimelineDate},
-  mixins: [Context, GoogleAnalytics, UserMetadata, Util],
+  components: {AdvisingNote, AreYouSureModal, EditAdvisingNote, NewNoteModal, TimelineDate},
+  mixins: [Context, GoogleAnalytics, NoteEditSession, Scrollable, UserMetadata, Util],
   props: {
     student: Object
   },
   data: () => ({
+    creatingNewNote: false,
     countsPerType: undefined,
     defaultShowPerTab: 5,
     filter: undefined,
@@ -193,34 +275,37 @@ export default {
     },
     isShowingAll: false,
     isTimelineLoading: true,
+    messageForDelete: undefined,
     messages: undefined,
     openMessages: [],
-    screenReaderAlert: undefined,
-    showNewNoteModal: false
+    suggestedTopics: undefined
   }),
   computed: {
     activeTab() {
       return this.filter || 'all';
+    },
+    anchor() {
+      return location.hash;
     },
     countPerActiveTab() {
       return this.filter
         ? this.countsPerType[this.filter]
         : this.size(this.messages);
     },
-    messagesInView() {
-      const filtered = this.messagesPerType(this.filter);
-      return this.isShowingAll
-        ? filtered
-        : this.slice(filtered, 0, this.defaultShowPerTab);
+    deleteConfirmModalBody() {
+      return this.messageForDelete ? `Are you sure you want to delete the "<b>${this.messageForDelete.subject}</b>" note?` : '';
+    },
+    showDeleteConfirmModal() {
+      return !!this.messageForDelete;
     }
   },
   watch: {
     filter() {
-      this.screenReaderAlert = this.describeTheActiveTab();
+      this.alertScreenReader(this.describeTheActiveTab());
       this.openMessages = [];
     },
     isShowingAll() {
-      this.screenReaderAlert = this.describeTheActiveTab();
+      this.alertScreenReader(this.describeTheActiveTab());
     }
   },
   created() {
@@ -231,15 +316,82 @@ export default {
       this.countsPerType[type] = this.size(notifications);
       this.each(notifications, (message, index) => {
         this.messages.push(message);
-        // Unique message ids are not guaranteed. Here we generate a (transient) primary key.
-        message.transientId = typeIndex * 1000 + index;
+        // Unique message ids are not guaranteed. Here we generate a transient and non-zero primary key.
+        message.transientId = (typeIndex + 1) * 1000 + index;
       });
     });
     this.sortMessages();
-    this.screenReaderAlert = 'Academic Timeline has loaded';
+    this.alertScreenReader('Academic Timeline has loaded');
     this.isTimelineLoading = false;
+    if (this.featureFlagEditNotes) {
+      this.getSuggestedTopics();
+    }
+  },
+  mounted() {
+    if (this.anchor) {
+      const match = this.anchor.match(/#([0-9-]+)/);
+      if (match) {
+        const messageId = match[1];
+        const note = this.find(this.messages, function(m) {
+          // Legacy advising notes have string IDs; BOA-created advising notes have integer IDs.
+          if (m.id && m.id.toString() === messageId) {
+            return true;
+          }
+        });
+        if (note) {
+          this.isShowingAll = true;
+          this.$nextTick(function() {
+            this.open(note);
+            this.scrollToPermalink(messageId);
+          });
+        }
+      }
+    }
   },
   methods: {
+    afterEditCancel() {
+      this.editExistingNoteId(null);
+    },
+    afterNoteUpdated(updatedNote) {
+      const note = this.find(this.messages, ['id', updatedNote.id]);
+      note.subject = updatedNote.subject;
+      note.body = note.message = updatedNote.body;
+      note.topics = updatedNote.topics;
+      note.attachments = updatedNote.attachments;
+      note.updatedAt = updatedNote.updatedAt;
+      this.editExistingNoteId(null);
+    },
+    cancelTheDelete() {
+      this.alertScreenReader('Cancelled');
+      this.messageForDelete = undefined;
+    },
+    close(message) {
+      if (message.transientId === this.editingNoteId) {
+        return false;
+      }
+      if (this.includes(this.openMessages, message.transientId)) {
+        this.openMessages = this.remove(
+          this.openMessages,
+          id => id !== message.transientId
+        );
+      }
+      this.alertScreenReader('Message closed');
+    },
+    deleteNote(message) {
+      // The following opens the "Are you sure?" modal
+      this.alertScreenReader('Please confirm delete');
+      this.messageForDelete = message;
+    },
+    deleteConfirmed() {
+      const predicate = ['transientId', this.messageForDelete.transientId];
+      const note = this.find(this.messages, predicate);
+      this.remove(this.messages, predicate);
+      this.openMessages = this.remove(this.openMessages, predicate);
+      this.messageForDelete = undefined;
+      deleteNote(note.id).then(() => {
+        this.alertScreenReader('Note deleted');
+      });
+    },
     describeTheActiveTab() {
       const inViewCount =
         this.isShowAll || this.countPerActiveTab <= this.defaultShowPerTab
@@ -256,45 +408,22 @@ export default {
     displayUpdatedAt(message) {
       return message.updatedAt && (message.updatedAt !== message.createdAt);
     },
+    editNote(message) {
+      this.editExistingNoteId(message.transientId);
+      this.putFocusNextTick('edit-note-subject');
+    },
+    getSuggestedTopics() {
+      getTopics().then(data => {
+        this.suggestedTopics = data;
+      });
+    },
     id(rowIndex) {
       return `timeline-tab-${this.activeTab}-message-${rowIndex}`;
     },
-    messagesPerType(type) {
-      return type
-        ? this.filterList(this.messages, ['type', type])
-        : this.messages;
+    isEditable(message) {
+      return message.type === 'note' && !message.isLegacy;
     },
-    onCreateAdvisingNote(note) {
-      note.type = 'note';
-      note.message = note.body;
-      note.transientId = new Date().getTime();
-      this.messages.push(note);
-      this.countsPerType.note++;
-      this.sortMessages();
-      this.gaNoteEvent(note.id, `Advisor ${this.user.uid} created note`, 'create');
-    },
-    sortMessages() {
-      this.messages.sort((m1, m2) => {
-        let d1 = m1.updatedAt || m1.createdAt;
-        let d2 = m2.updatedAt || m2.createdAt;
-        if (d1 && d2) {
-          return d2.localeCompare(d1);
-        } else if (!d1 && !d2) {
-          return m2.transientId - m1.transientId;
-        } else {
-          return d1 ? -1 : 1;
-        }
-      });
-    },
-    toggle(message) {
-      if (this.includes(this.openMessages, message.transientId)) {
-        this.openMessages = this.remove(
-          this.openMessages,
-          id => id !== message.transientId
-        );
-      } else {
-        this.openMessages.push(message.transientId);
-      }
+    markRead(message) {
       if (!message.read) {
         message.read = true;
         if (this.includes(['alert', 'hold'], message.type)) {
@@ -305,12 +434,88 @@ export default {
           this.gaNoteEvent(message.id, `Advisor ${this.user.uid} read note`, 'view');
         }
       }
+    },
+    messagesPerType(type) {
+      return type
+        ? this.filterList(this.messages, ['type', type])
+        : this.messages;
+    },
+    onCreateAdvisingNote(note) {
+      this.creatingNewNote = false;
+      note.type = 'note';
+      note.message = note.body;
+      note.transientId = new Date().getTime();
+      this.messages.push(note);
+      this.countsPerType.note++;
+      this.sortMessages();
+      this.openMessages.push(note.transientId);
+      this.gaNoteEvent(note.id, `Advisor ${this.user.uid} created note`, 'create');
+    },
+    onSubmitAdvisingNote() {
+      this.creatingNewNote = true;
+    },
+    open(message) {
+      if (message.transientId === this.editingNoteId) {
+        return false;
+      }
+      if (!this.includes(this.openMessages, message.transientId)) {
+        this.openMessages.push(message.transientId);
+      }
+      this.markRead(message);
+      this.alertScreenReader('Message opened');
+    },
+    scrollToPermalink(messageId) {
+      this.scrollTo(`#message-row-${messageId}`);
+      this.putFocusNextTick(`message-row-${messageId}`);
+    },
+    sortMessages() {
+      this.messages.sort((m1, m2) => {
+        let d1 = m1.updatedAt || m1.createdAt;
+        let d2 = m2.updatedAt || m2.createdAt;
+        if (d1 && d2 && d1 != d2) {
+          return d2.localeCompare(d1);
+        } else if (d1 === d2 && m1.id && m2.id) {
+          return m2.id < m1.id ? -1 : 1;
+        } else if (!d1 && !d2) {
+          return m2.transientId - m1.transientId;
+        } else {
+          return d1 ? -1 : 1;
+        }
+      });
     }
   }
 };
 </script>
 
+<style>
+.pill {
+  background-color: #fff;
+  border: 1px solid #999;
+  border-radius: 5px;
+  color: #666;
+  font-size: 12px;
+  height: 24px;
+  padding-top: 1px;
+  width: auto;
+}
+.pill-attachment {
+  height: 26px;
+  padding: 6px;
+}
+.pill-list {
+  list-style-type: none;
+}
+.pill-list-header {
+  font-size: 16px;
+  font-weight: 800;
+}
+</style>
+
 <style scoped>
+.close-message {
+  width: 100%;
+  order: -1;
+}
 .column-message {
   max-width: 1px;
   padding: 10px 10px 10px 5px;
@@ -324,12 +529,20 @@ export default {
   text-align: right;
   width: 1%;
 }
+.edit-note-button {
+  font-size: 15px;
+}
 .messages-none {
   font-size: 18px;
   font-weight: 500;
 }
 .message-open {
+  flex-flow: row wrap;
+  display: flex;
   min-height: 40px;
+}
+.message-open > .when-message-closed {
+  display: none;
 }
 .message-row:active,
 .message-row:focus,
@@ -338,12 +551,6 @@ export default {
 }
 .message-row-read {
   background-color: #f9f9f9;
-}
-.pill {
-  border-radius: 5px;
-  font-size: 12px;
-  height: 24px;
-  padding: 2px 0 2px 0;
 }
 .pill-alert {
   width: 60px;

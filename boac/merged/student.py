@@ -30,6 +30,7 @@ import operator
 from boac.externals import data_loch
 from boac.lib import analytics
 from boac.lib.berkeley import current_term_id, future_term_id, term_name_for_sis_id
+from boac.lib.util import get_benchmarker
 from flask_login import current_user
 
 
@@ -235,6 +236,7 @@ def query_students(
     advisor_ldap_uids=None,
     coe_prep_statuses=None,
     coe_probation=None,
+    cohort_owner=None,
     ethnicities=None,
     genders=None,
     gpa_ranges=None,
@@ -249,10 +251,17 @@ def query_students(
     majors=None,
     offset=0,
     order_by=None,
+    sids=(),
     sids_only=False,
     underrepresented=None,
     unit_ranges=None,
 ):
+
+    # Admin users can see advisor-owned cohorts, but queries should be constrained by the cohort owner's department memberships.
+    scope = get_student_query_scope()
+    if 'ADMIN' in scope and cohort_owner:
+        scope = get_student_query_scope(cohort_owner)
+
     criteria = {
         'advisor_ldap_uids': advisor_ldap_uids,
         'coe_prep_statuses': coe_prep_statuses,
@@ -265,7 +274,7 @@ def query_students(
         'is_active_coe': is_active_coe,
         'underrepresented': underrepresented,
     }
-    scope = narrow_scope_by_criteria(get_student_query_scope(), **criteria)
+    scope = narrow_scope_by_criteria(scope, **criteria)
     query_tables, query_filter, query_bindings = data_loch.get_students_query(
         advisor_ldap_uids=advisor_ldap_uids,
         coe_prep_statuses=coe_prep_statuses,
@@ -281,6 +290,7 @@ def query_students(
         levels=levels,
         majors=majors,
         scope=scope,
+        sids=sids,
         underrepresented=underrepresented,
         unit_ranges=unit_ranges,
     )
@@ -338,6 +348,9 @@ def search_for_students(
     offset=0,
     limit=None,
 ):
+    benchmark = get_benchmarker('search_for_students')
+    benchmark('begin')
+
     scope = narrow_scope_by_criteria(get_student_query_scope())
     query_tables, query_filter, query_bindings = data_loch.get_students_query(search_phrase=search_phrase, scope=scope)
     if not query_tables:
@@ -348,7 +361,9 @@ def search_for_students(
     o, o_secondary, o_tertiary, supplemental_query_tables = data_loch.get_students_ordering(order_by=order_by)
     if supplemental_query_tables:
         query_tables += supplemental_query_tables
+    benchmark('begin SID query')
     result = data_loch.safe_execute_rds(f'SELECT DISTINCT(sas.sid) {query_tables} {query_filter}', **query_bindings)
+    benchmark('end SID query')
     total_student_count = len(result)
     sql = f"""SELECT
         sas.sid
@@ -362,30 +377,36 @@ def search_for_students(
     if limit and limit < 100:  # Sanity check large limits
         sql += f' LIMIT :limit'
         query_bindings['limit'] = limit
+    benchmark('begin student query')
     result = data_loch.safe_execute_rds(sql, **query_bindings)
     if include_profiles:
+        benchmark('begin profile collection')
         students = get_summary_student_profiles([row['sid'] for row in result])
+        benchmark('end profile collection')
     else:
         students = get_api_json([row['sid'] for row in result])
+    benchmark('end')
     return {
         'students': students,
         'totalStudentCount': total_student_count,
     }
 
 
-def get_student_query_scope():
+def get_student_query_scope(user=None):
+    if user is None:
+        user = current_user
     # Use department membership and admin status to determine what data we can surface about which students.
     # If this code is being called outside an HTTP request context, then assume it is an administrative task.
     # Not all current_user proxy types define all attributes, and so the ordering of these conditional checks
     # is important.
-    if not current_user:
+    if not user:
         return ['ADMIN']
-    elif not current_user.is_authenticated:
+    elif not user.is_authenticated:
         return []
-    elif current_user.is_admin:
+    elif user.is_admin:
         return ['ADMIN']
     else:
-        return [m.university_dept.dept_code for m in current_user.department_memberships]
+        return [m.university_dept.dept_code for m in user.department_memberships]
 
 
 def narrow_scope_by_criteria(scope, **kwargs):

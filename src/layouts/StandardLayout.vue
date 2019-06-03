@@ -1,39 +1,63 @@
 <template>
-  <div id="app" class="index-container">
-    <a
-      id="skip-to-content-link"
-      href="#content"
-      class="sr-only sr-only-focusable"
-      tabindex="2">Skip to main content</a>
-    <div class="index-container-header">
-      <div class="header-container">
-        <div class="header-text">
-          <router-link
-            id="home-header"
-            to="/home"
-            tabindex="1">
-            <span class="sr-only">Return to </span>Home
-          </router-link>
-        </div>
-        <div><HeaderMenu /></div>
-      </div>
-    </div>
-    <div class="index-container-body">
-      <div class="index-container-sidebar">
+  <b-container id="app" class="h-100 p-0" fluid>
+    <b-row class="header" no-gutters>
+      <b-col cols="auto" class="mr-auto m-3">
+        <a
+          id="skip-to-content-link"
+          href="#content"
+          class="sr-only sr-only-focusable"
+          tabindex="2">Skip to main content</a>
+        <router-link
+          id="home-header"
+          class="header-text"
+          to="/home"
+          tabindex="1">
+          <span class="sr-only">Return to </span>Home
+        </router-link>
+      </b-col>
+      <b-col cols="auto" class="p-0 mt-2">
+        <HeaderMenu />
+      </b-col>
+    </b-row>
+    <b-row class="row-content" no-gutters>
+      <b-col class="sidebar" sm="3">
         <Sidebar />
-      </div>
-      <div class="index-container-content">
-        <div id="content" class="body-text">
-          <!-- The ':key' attribute forces component reload when same route is requested with diff id in path. -->
+      </b-col>
+      <b-col id="content" class="body-text h-100 pb-2" sm="9">
+        <div
+          v-if="announcement && announcement.isPublished"
+          style="display: inline-block"
+          class="service-announcement pl-3 pt-3 pr-3 pb-0 w-100">
+          <span
+            id="service-announcement-banner"
+            aria-live="polite"
+            role="alert"
+            v-html="announcement.text">
+          </span>
+        </div>
+        <div>
+          <span
+            v-if="srAlert"
+            class="sr-only"
+            aria-live="polite"
+            role="alert">
+            {{ srAlert }}
+          </span>
           <router-view :key="stripAnchorRef($route.fullPath)"></router-view>
         </div>
-        <Footer v-if="!loading" />
-      </div>
-    </div>
-  </div>
+      </b-col>
+    </b-row>
+    <b-row class="row-footer" no-gutters>
+      <b-col class="sidebar" sm="3"></b-col>
+      <b-col sm="9">
+        <Footer v-if="!loading" class="mb-3 ml-3 mt-5" />
+      </b-col>
+    </b-row>
+  </b-container>
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import Footer from '@/components/Footer';
 import HeaderMenu from '@/components/HeaderMenu';
 import Loading from '@/mixins/Loading';
@@ -47,7 +71,7 @@ export default {
     HeaderMenu,
     Sidebar
   },
-  mixins: [Loading, Util],
+  mixins: [Context, Loading, Util],
   created() {
     this.putFocusNextTick('home-header');
   },
@@ -62,25 +86,6 @@ export default {
 <style scoped>
 .body-text {
   font-size: 16px;
-  height: 100%;
-  line-height: 1.4em;
-}
-.header-container {
-  align-items: center;
-  display: flex;
-  height: 56px;
-  justify-content: space-between;
-}
-.header-container div {
-  margin-left: 20px;
-  -webkit-flex: 1 0 0;
-  flex: 1 0 0;
-}
-.header-container div:last-child {
-  flex-grow: 0;
-}
-.header-container div:last-child > span {
-  float: right;
 }
 .header-text {
   font-size: 16px;
@@ -101,30 +106,21 @@ export default {
 .header-text h1 {
   font-size: inherit;
   font-weight: inherit;
-  margin: 0;
 }
-.index-container {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
-.index-container-content {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 100%;
-}
-.index-container-body {
-  display: flex;
-  flex-direction: row;
-  min-height: 100%;
-}
-.index-container-header {
+.header {
   background-color: #3b7ea5;
 }
-.index-container-sidebar {
+.row-content {
+  min-height: 82%;
+}
+.row-footer {
+  min-height: 18%;
+}
+.service-announcement {
+  background-color: #f0ad4e;
+  font-weight: 500;
+}
+.sidebar {
   background-color: #125074;
-  flex: 0 0 230px;
-  min-height: 100%;
 }
 </style>

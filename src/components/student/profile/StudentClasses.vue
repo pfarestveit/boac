@@ -1,15 +1,15 @@
 <template>
-  <div id="student-terms-container" class="student-terms-container">
+  <div id="student-terms-container" class="m-3">
     <h2 class="student-section-header">Classes</h2>
     <div v-if="student.sisProfile.withdrawalCancel">
       <span class="red-flag-small">
         {{ student.sisProfile.withdrawalCancel.description }}
         ({{ student.sisProfile.withdrawalCancel.reason }})
-        {{ student.sisProfile.withdrawalCancel.date | date }}
+        {{ student.sisProfile.withdrawalCancel.date | moment('MMM DD, YYYY') }}
       </span>
     </div>
     <div
-      v-for="(term, index) in (showAllTerms ? student.enrollmentTerms : currentAndFutureTerms)"
+      v-for="(term, index) in (showAllTerms ? student.enrollmentTerms : relevantTerms)"
       :key="index"
       class="student-term">
       <div
@@ -18,8 +18,7 @@
         <h3 class="student-term-header">{{ currentEnrollmentTerm }}</h3>
         <div class="term-no-enrollments-description">No enrollments</div>
       </div>
-
-      <h3 class="student-term-header">{{ term.termName }}</h3>
+      <h3 :id="`term-header-${index}`" tabindex="0" class="student-term-header">{{ term.termName }}</h3>
       <div v-for="(course, courseIndex) in term.enrollments" :key="courseIndex" class="student-course">
         <div class="student-course-heading">
           <div class="student-course-heading-start">
@@ -58,7 +57,7 @@ v-if="section.isViewableOnCoursePage"
                     </span>
                   </span>
                 </div>
-                <span v-if="course.waitlisted" class="student-waitlisted red-flag-status">WAITLISTED</span>
+                <span v-if="course.waitlisted" class="pl-1 red-flag-status">WAITLISTED</span>
               </div>
             </div>
             <div class="student-course-name">{{ course.title }}</div>
@@ -68,26 +67,28 @@ v-if="section.isViewableOnCoursePage"
               {{ 'Unit' | pluralize(course.units) }}
             </div>
             <div v-if="'grade' in course || 'gradingBasis' in course" class="student-course-heading-grades">
-              <div class="student-course-heading-grade">
+              <div class="text-nowrap">
                 Final:
                 <span
                   v-if="course.grade"
-                  class="student-course-grade">{{ course.grade }}</span>
+                  v-accessible-grade="course.grade"
+                  class="font-weight-bold"></span>
                 <span
                   v-if="!course.grade"
-                  class="student-course-grading-basis">{{ course.gradingBasis }}</span>
+                  class="font-italic">{{ course.gradingBasis }}</span>
                 <span
                   v-if="!course.grade && !course.gradingBasis"
-                  class="student-course-grade"><span class="sr-only">No data</span>&mdash;</span>
+                  class="font-weight-bold"><span class="sr-only">No data</span>&mdash;</span>
               </div>
-              <div v-if="currentEnrollmentTermId === parseInt(term.termId)" class="student-course-heading-grade">
+              <div v-if="currentEnrollmentTermId === parseInt(term.termId)" class="text-nowrap">
                 Mid:
                 <span
                   v-if="course.midtermGrade"
-                  class="student-course-grade">{{ course.midtermGrade }}</span>
+                  v-accessible-grade="course.midtermGrade"
+                  class="font-weight-bold"></span>
                 <span
                   v-if="!course.midtermGrade"
-                  class="student-course-grade"><span class="sr-only">No data</span>&mdash;</span>
+                  class="font-weight-bold"><span class="sr-only">No data</span>&mdash;</span>
               </div>
             </div>
           </div>
@@ -109,7 +110,7 @@ v-if="section.isViewableOnCoursePage"
                   </span>
                   <span
                     v-if="!canvasSite.analytics.assignmentsSubmitted.displayPercentile"
-                    class="student-bcourses-no-data">
+                    class="font-italic text-muted">
                     No Assignments
                   </span>
                 </td>
@@ -117,13 +118,13 @@ v-if="section.isViewableOnCoursePage"
                   <span v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
                     Score:
                     <strong>{{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</strong>
-                    <span class="student-bcourses-maximum">
+                    <span class="text-muted">
                       (Maximum: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }})
                     </span>
                   </span>
                   <span
                     v-if="!canvasSite.analytics.assignmentsSubmitted.courseDeciles"
-                    class="student-bcourses-no-data">
+                    class="font-italic text-muted">
                     No Data
                   </span>
                 </td>
@@ -138,7 +139,7 @@ v-if="section.isViewableOnCoursePage"
                   </span>
                   <span
                     v-if="!canvasSite.analytics.currentScore.displayPercentile"
-                    class="student-bcourses-no-data">
+                    class="font-italic text-muted">
                     No Grades
                   </span>
                 </td>
@@ -158,16 +159,16 @@ v-if="section.isViewableOnCoursePage"
                   <div v-if="!canvasSite.analytics.currentScore.boxPlottable">
                     <span
                       v-if="canvasSite.analytics.currentScore.courseDeciles"
-                      class="student-bcourses-no-data">
+                      class="font-italic text-muted">
                       Score:
                       <strong>{{ canvasSite.analytics.currentScore.student.raw }}</strong>
-                      <span class="student-bcourses-maximum">
+                      <span class="text-muted">
                         (Maximum: {{ canvasSite.analytics.currentScore.courseDeciles[10] }})
                       </span>
                     </span>
                     <span
                       v-if="!canvasSite.analytics.currentScore.courseDeciles"
-                      class="student-bcourses-no-data">
+                      class="font-italic text-muted">
                       No Data
                     </span>
                   </div>
@@ -200,6 +201,7 @@ v-if="section.isViewableOnCoursePage"
         <div class="student-course-heading-end">
           <div class="student-course-heading-units-total">
             <span>Total {{ term.enrolledUnits }}</span>
+            <span class="sr-only">units</span>
             <span
               v-if="currentEnrollmentTermId === parseInt(term.termId) && get(student, 'sisProfile.currentTerm.unitsMinOverride')"
               class="student-course-heading-units-override">
@@ -215,10 +217,10 @@ v-if="section.isViewableOnCoursePage"
       </div>
       <div
         v-if="!isEmpty(term.droppedSections)"
-        class="student-course student-course-dropped"
+        class="student-course mt-1 pt-1"
         is-open="true">
         <div v-for="(droppedSection, dsIndex) in term.droppedSections" :key="dsIndex">
-          <div class="student-course-dropped-title">
+          <div class="font-weight-bold">
             {{ droppedSection.displayName }} - {{ droppedSection.component }} {{ droppedSection.sectionNumber }}
             <div class="student-course-notation">
               <i class="fas fa-exclamation-triangle student-course-dropped-icon"></i> Dropped
@@ -227,13 +229,11 @@ v-if="section.isViewableOnCoursePage"
         </div>
       </div>
     </div>
-    <div
-      v-if="get(student, 'enrollmentTerms.length') > 1"
-      class="toggle-previous-semesters-wrapper">
+    <div v-if="get(student, 'enrollmentTerms.length') > 1" class="text-center">
       <b-btn
         id="toggle-show-all-terms"
         variant="link"
-        @click="showAllTerms = !showAllTerms">
+        @click.prevent="toggleShowAllTerms()">
         <i
           :class="{
             'fas fa-caret-right': !showAllTerms,
@@ -246,7 +246,7 @@ v-if="section.isViewableOnCoursePage"
       No courses
       <div v-if="student.sisProfile.withdrawalCancel">
         <span class="red-flag-small">
-          {{ student.sisProfile.withdrawalCancel.description }} ({{ student.sisProfile.withdrawalCancel.reason }}) {{ student.sisProfile.withdrawalCancel.date | date }}
+          {{ student.sisProfile.withdrawalCancel.description }} ({{ student.sisProfile.withdrawalCancel.reason }}) {{ student.sisProfile.withdrawalCancel.date | moment('MMM DD, YYYY') }}
         </span>
       </div>
     </div>
@@ -274,11 +274,12 @@ export default {
     showAllTerms: false
   }),
   computed: {
-    currentAndFutureTerms() {
+    relevantTerms() {
       var currentTermIndex = this.findIndex(this.student.enrollmentTerms, term => {
         return term.termId === this.currentEnrollmentTermId.toString()
       });
-      return this.student.enrollmentTerms.slice(0, currentTermIndex + 1);
+      var index = currentTermIndex < 0 ? 0 : currentTermIndex;
+      return this.student.enrollmentTerms.slice(0, index + 1);
     }
   },
   created() {
@@ -288,6 +289,12 @@ export default {
         termId: this.currentEnrollmentTermId.toString()
       }
     );
+  },
+  methods: {
+    toggleShowAllTerms() {
+      this.showAllTerms = !this.showAllTerms;
+      this.putFocusNextTick(this.showAllTerms ? 'term-header-1' : 'term-header-0');
+    }
   }
 };
 </script>
@@ -353,13 +360,6 @@ export default {
   white-space: nowrap;
   width: 15em;
 }
-.student-bcourses-maximum {
-  color: #666;
-}
-.student-bcourses-no-data {
-  color: #666;
-  font-style: italic;
-}
 .student-bcourses-site-code {
   font-size: 15px;
   margin-bottom: 5px;
@@ -382,21 +382,8 @@ export default {
   padding: 0;
   width: 12px;
 }
-.student-course-dropped {
-  margin-top: 15px;
-  padding-top: 15px;
-}
 .student-course-dropped-icon {
   color: #f0ad4e;
-}
-.student-course-dropped-title {
-  font-weight: bold;
-}
-.student-course-grade {
-  font-weight: bold;
-}
-.student-course-grading-basis {
-  font-style: italic;
 }
 .student-course-heading {
   color: #777;
@@ -411,9 +398,6 @@ export default {
 .student-course-heading-end {
   display: flex;
   flex: 0 0 200px;
-}
-.student-course-heading-grade {
-  white-space: nowrap;
 }
 .student-course-heading-grades {
   display: flex;
@@ -490,16 +474,6 @@ export default {
   margin: 20px 0 15px 0;
   color: #999;
 }
-.student-terms {
-  flex: 1;
-  margin-left: 20px;
-}
-.student-terms-container {
-  margin: 20px;
-}
-.student-waitlisted {
-  padding-left: 5px;
-}
 .term-no-enrollments {
   border-bottom: 1px solid #999;
   margin-bottom: 30px;
@@ -508,8 +482,5 @@ export default {
 .term-no-enrollments-description {
   border-top: 1px solid #999;
   padding-top: 20px;
-}
-.toggle-previous-semesters-wrapper {
-  text-align: center;
 }
 </style>

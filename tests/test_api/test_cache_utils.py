@@ -25,8 +25,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 from boac import std_commit
 from boac.models.alert import Alert
+from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
-from boac.models.curated_cohort import CuratedCohort
+from boac.models.curated_group import CuratedGroup, CuratedGroupStudent
 import pytest
 
 
@@ -44,19 +45,25 @@ class TestCacheUtils:
         assert '2178_90100' == alerts[0]['key']
         assert 'BURMESE 1A midterm grade of D+.' == alerts[0]['message']
 
-    def test_update_curated_cohort_lists(self, app):
-        from boac.api.cache_utils import update_curated_cohort_lists
-        cohort = CuratedCohort.query.filter_by(name='Cool Kids').first()
-        cohort_id = cohort.id
-        original_sids = [s.sid for s in cohort.students]
+    def test_update_curated_group_lists(self, app):
+        from boac.api.cache_utils import update_curated_group_lists
+        curated_group = CuratedGroup.create(
+            owner_id=AuthorizedUser.find_by_uid('6446').id,
+            name='This group has one student not in Data Loch',
+        )
+        original_sids = ['3456789012', '5678901234', '7890123456']
+        for sid in original_sids:
+            CuratedGroup.add_student(curated_group.id, sid)
         sid_not_in_data_loch = '19040616'
-        CuratedCohort.add_student(cohort_id, sid_not_in_data_loch)
+        CuratedGroup.add_student(curated_group.id, sid_not_in_data_loch)
         std_commit(allow_test_environment=True)
-        revised_sids = [s.sid for s in CuratedCohort.find_by_id(cohort_id).students]
+
+        revised_sids = CuratedGroupStudent.get_sids(curated_group.id)
         assert sid_not_in_data_loch in revised_sids
-        update_curated_cohort_lists()
+        update_curated_group_lists()
         std_commit(allow_test_environment=True)
-        final_sids = [s.sid for s in CuratedCohort.find_by_id(cohort_id).students]
+
+        final_sids = CuratedGroupStudent.get_sids(curated_group.id)
         assert sid_not_in_data_loch not in final_sids
         assert set(final_sids) == set(original_sids)
 

@@ -1,33 +1,45 @@
 <template>
-  <div class="sidebar-section-search">
+  <div>
     <form
       id="search-students-form"
       autocomplete="off"
-      :class="{'search-students-page-body': context === 'pageBody'}"
+      class="search-form"
+      :class="{'search-page-body': context === 'pageBody'}"
       @submit.prevent="search()">
-      <div v-if="context === 'sidebar'" class="d-flex justify-content-between text-white mt-2 mb-1 search-label">
+      <div v-if="context === 'sidebar'" class="d-flex justify-content-between search-label text-nowrap text-white">
         <div>
           <i class="fas fa-search"></i>
           <label
             for="search-students-input"
-            class="search-students-form-label">Search</label>
+            class="search-form-label pl-1">Search</label>
         </div>
         <b-btn
           id="search-options-panel-toggle"
           v-b-toggle="'search-options-panel'"
-          class="search-options-panel-toggle"
-          variant="link">
-          <span class="when-options-panel-closed">Show options</span>
-          <span class="when-options-panel-open">Hide options</span>
+          class="pr-0 search-options-panel-toggle"
+          variant="link"
+          @click="toggleSearchOptions()">
+          {{ showSearchOptions ? 'Hide' : 'Show' }} options
         </b-btn>
       </div>
-      <div :class="{'search-students-form-button': context === 'pageBody'}">
+      <div :class="{'search-form-button': context === 'pageBody'}">
+        <span
+          v-if="allOptionsUnchecked"
+          class="sr-only"
+          aria-live="polite"
+          role="alert">
+          At least one search option must be checked.
+        </span>
         <input
           id="search-students-input"
           v-model="searchPhrase"
-          class="search-students-input"
-          :readonly="disable"
+          class="pl-2 pr-2 search-input w-100"
+          :class="{ 'input-disabled': allOptionsUnchecked }"
+          :readonly="allOptionsUnchecked"
+          :aria-readonly="allOptionsUnchecked"
+          aria-label="Hit enter to execute search"
           type="text"
+          required
           maxlength="255" />
       </div>
       <div v-if="context === 'pageBody'">
@@ -39,7 +51,7 @@
           Search
         </b-btn>
       </div>
-      <b-collapse v-if="context === 'sidebar'" id="search-options-panel" class="ml-1 mt-1 text-white">
+      <b-collapse v-if="context === 'sidebar'" id="search-options-panel" class="mt-2 text-white">
         <div class="d-flex">
           <b-form-checkbox
             id="search-include-students-checkbox"
@@ -48,7 +60,7 @@
           </b-form-checkbox>
           <label
             for="search-include-students-checkbox"
-            class="search-students-form-label">
+            class="search-form-label">
             <span class="sr-only">Search for</span>
             Students (name or SID)
           </label>
@@ -61,7 +73,7 @@
           </b-form-checkbox>
           <label
             for="search-include-courses-checkbox"
-            class="search-students-form-label">
+            class="search-form-label">
             <span class="sr-only">Search for</span>
             Classes
           </label>
@@ -74,48 +86,135 @@
           </b-form-checkbox>
           <label
             for="search-include-notes-checkbox"
-            class="search-students-form-label">
+            class="search-form-label">
             <span class="sr-only">Search for</span>
             Notes
           </label>
+          <b-btn
+            id="search-options-note-filters-toggle"
+            class="search-options-panel-toggle search-options-panel-toggle-subpanel"
+            variant="link"
+            :class="includeNotes ? 'visible' : 'invisible'"
+            @click="toggleNoteFilters()">
+            ({{ showNoteFilters ? 'hide' : 'show' }} filters)
+          </b-btn>
         </div>
+        <b-collapse
+          id="search-options-note-filters-subpanel"
+          v-model="showNoteFilters"
+          class="search-options-note-filters-subpanel text-white">
+          <div>
+            <b-form-group label="Topic">
+              <b-form-select
+                id="search-option-note-filters-topic"
+                v-model="noteFilters.topic"
+                :options="topicOptions">
+              </b-form-select>
+            </b-form-group>
+            <b-form-group label="Posted By">
+              <b-form-radio
+                id="search-options-note-filters-posted-by-anyone"
+                v-model="noteFilters.postedBy"
+                name="note-filters-posted-by"
+                value="anyone">
+                Anyone
+              </b-form-radio>
+              <b-form-radio
+                id="search-options-note-filters-posted-by-you"
+                v-model="noteFilters.postedBy"
+                name="note-filters-posted-by"
+                value="you">
+                You
+              </b-form-radio>
+            </b-form-group>
+          </div>
+        </b-collapse>
+        <b-button type="submit" variant="primary">Search</b-button>
       </b-collapse>
     </form>
+    <hr v-if="showSearchOptions" class="ml-2 mr-2 section-divider" />
   </div>
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import GoogleAnalytics from '@/mixins/GoogleAnalytics';
+import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
+import { getTopics } from '@/api/notes';
 
 export default {
   name: 'SearchForm',
-  mixins: [GoogleAnalytics, Util],
+  mixins: [Context, GoogleAnalytics, UserMetadata, Util],
   props: {
     context: String,
     domain: Array,
   },
   data() {
     return {
-      disable: false,
       includeCourses: this.domain.includes('courses'),
       includeNotes: this.domain.includes('notes'),
       includeStudents: this.domain.includes('students'),
-      searchPhrase: null
+      noteFilters: {
+        postedBy: 'anyone',
+        topic: null,
+      },
+      searchPhrase: null,
+      showNoteFilters: false,
+      showSearchOptions: false,
+      topicOptions: [
+        {text: 'Any topic', value: null}
+      ]
     };
   },
+  computed: {
+    allOptionsUnchecked() {
+      return this.showSearchOptions && !this.includeCourses && !this.includeNotes && !this.includeStudents;
+    }
+  },
+  watch: {
+    includeNotes: function(val) {
+      if (!val) {
+        this.showNoteFilters = false;
+      }
+    }
+  },
+  created() {
+    this.getNoteTopics();
+  },
   methods: {
+    getNoteTopics() {
+      getTopics().then(data => {
+        this.each(data, topic => {
+          this.topicOptions.push({
+            text: topic,
+            value: topic
+          })
+        });
+      });
+    },
+    resetNoteFilters() {
+      this.noteFilters.postedBy = 'anyone';
+      this.noteFilters.topic = null;
+    },
     search() {
       this.searchPhrase = this.trim(this.searchPhrase);
       if (this.searchPhrase) {
+        const query = {
+          q: this.searchPhrase,
+          courses: this.includeCourses,
+          notes: this.includeNotes,
+          students: this.includeStudents
+        };
+        if (this.includeNotes && this.noteFilters.postedBy === 'you') {
+          query.authorCsid = this.user.csid;
+        }
+        if (this.includeNotes && this.noteFilters.topic) {
+          query.noteTopic = this.noteFilters.topic;
+        }
         this.$router.push({
           path: this.forceUniquePath('/search'),
-          query: {
-            q: this.searchPhrase,
-            courses: this.includeCourses,
-            notes: this.includeNotes,
-            students: this.includeStudents
-          }
+          query: query
         });
         this.gaEvent(
           'Search',
@@ -123,6 +222,20 @@ export default {
           `courses: ${this.includeCourses}; notes: ${this.includeNotes}; students: ${this.includeStudents}`,
           this.searchPhrase
         );
+      } else {
+        this.alertScreenReader('Search input is required');
+      }
+    },
+    toggleNoteFilters() {
+      this.showNoteFilters = !this.showNoteFilters;
+      if (!this.showNoteFilters) {
+        this.resetNoteFilters();
+      }
+    },
+    toggleSearchOptions() {
+      this.showSearchOptions = !this.showSearchOptions;
+      if (!this.showSearchOptions) {
+        this.resetNoteFilters();
       }
     }
   }
@@ -133,52 +246,50 @@ export default {
 .btn-search-students {
   height: 46px;
 }
-.collapsed > .when-options-panel-open,
-:not(.collapsed) > .when-options-panel-closed {
-  display: none;
+.input-disabled {
+  background: #ddd;
+}
+.search-form {
+  margin: 10px 10px 15px 15px;
 }
 .search-label {
-  display: flex;
   align-items: baseline;
   font-size: 14px;
-}
-.search-label i {
-  padding-right: 4px;
 }
 .search-options-panel-toggle {
   color: #8bbdda;
   font-size: 12px;
-  padding: 0;
+}
+.search-options-panel-toggle-subpanel {
+  margin-bottom: .5rem;
+  padding: 0 0 0 5px;
 }
 .search-students-form-button {
   min-width: 200px;
-  width: 60%;
 }
-.search-students-form-label {
+.search-form-label {
   font-weight: 400;
-  margin: 0;
 }
-.search-students-input {
+.search-input {
   box-sizing: border-box;
   border: 2px solid #ccc;
   border-radius: 4px;
   color: #333;
-  padding: 10px;
-  width: 100%;
+  height: 45px;
 }
-.search-students-page-body {
+.search-options-note-filters-subpanel {
+  margin-left: 20px;
+}
+.search-page-body {
   align-items: center;
   display: flex;
   flex-flow: row wrap;
   margin-top: 10px;
 }
-.search-students-page-body div {
+.search-page-body div {
   align-self: flex-end;
 }
-.search-students-page-body div:first-child {
+.search-page-body div:first-child {
   padding-right: 15px;
-}
-.sidebar-section-search {
-  margin: 0 12px 12px 12px;
 }
 </style>

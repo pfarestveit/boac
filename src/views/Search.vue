@@ -14,13 +14,15 @@
         <li>Keep your search term simple.</li>
         <li>Check your spelling and try again.</li>
         <li>Search classes by section title, e.g., <strong>AMERSTD 10</strong>.</li>
+        <li>Avoid using generic terms, such as test or enrollment.</li>
+        <li>Longer search terms may refine results; registration fees instead of registration.</li>
         <li>Abbreviations of section titles may not return results; <strong>COMPSCI 161</strong> instead of <strong>CS 161</strong>.</li>
       </ul>
     </div>
     <div
       v-if="!loading && results.totalStudentCount"
       tabindex="0">
-      <h1 id="page-header" class="page-section-header">
+      <h1 id="student-results-page-header" class="page-section-header">
         {{ 'student' | pluralize(results.totalStudentCount) }} matching '{{ phrase }}'
       </h1>
       <div v-if="results.totalStudentCount > limit">
@@ -37,14 +39,14 @@
         <SortableStudents :students="results.students" :options="studentListOptions" />
       </div>
     </div>
-    <div v-if="!loading && results.totalCourseCount">
+    <div v-if="!loading && results.totalCourseCount" class="pt-4">
       <SortableCourseList
         :search-phrase="phrase"
         :courses="results.courses"
         :total-course-count="results.totalCourseCount"
         :render-primary-header="!results.totalStudentCount && !!results.totalCourseCount && !size(results.notes)" />
     </div>
-    <div v-if="!loading && size(results.notes)">
+    <div v-if="!loading && size(results.notes)" class="pt-4">
       <h2
         id="search-results-category-header-notes"
         class="page-section-header">
@@ -54,7 +56,7 @@
       </h2>
       <AdvisingNoteSnippet
         v-for="advisingNote in results.notes"
-        :key="advisingNote.noteId"
+        :key="advisingNote.id"
         :note="advisingNote" />
     </div>
   </div>
@@ -98,19 +100,25 @@ export default {
       reverse: false
     }
   }),
-  created() {
+  mounted() {
     this.phrase = this.$route.query.q;
     const includeCourses = this.$route.query.courses;
     const includeNotes = this.$route.query.notes;
     const includeStudents = this.$route.query.students;
+    const noteOptions = {};
+    if (includeNotes) {
+      noteOptions.authorCsid = this.$route.query.authorCsid;
+      noteOptions.topic = this.$route.query.noteTopic;
+    }
     if (this.phrase) {
       search(
         this.phrase,
         this.isNil(includeCourses) ? false : includeCourses,
         this.isNil(includeNotes) ? false : includeNotes,
         this.isNil(includeStudents) ? false : includeStudents,
-        this.isAscUser ? false : null,
-        this.isCoeUser ? false : null
+        noteOptions,
+        this.user.isAsc ? false : null,
+        this.user.isCoe ? false : null
       )
         .then(data => {
           this.assign(this.results, data);

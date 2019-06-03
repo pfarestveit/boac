@@ -1,18 +1,7 @@
 import _ from 'lodash';
-import store from '@/store';
 import Vue from 'vue';
 import { getUserByCsid, getUserGroups, getUserProfile, getUserStatus } from '@/api/user';
-
-const $_user_isDepartmentMember = (state, deptCode) => {
-  let membership = _.get(state.user, `departments.${deptCode}`);
-  return membership && (membership.isAdvisor || membership.isDirector);
-};
-
-const $_user_canViewDepartment = (state, deptCode) => {
-  return (
-    $_user_isDepartmentMember(state, deptCode) || _.get(state.user, 'isAdmin')
-  );
-};
+import { gaTrackUserSessionStart } from '@/api/ga';
 
 const state = {
   calnetUsersByCsid: {},
@@ -25,10 +14,6 @@ const state = {
 };
 
 const getters = {
-  canViewAsc: (state: any): boolean => $_user_canViewDepartment(state, 'UWASC'),
-  canViewCoe: (state: any): boolean => $_user_canViewDepartment(state, 'COENG'),
-  isAscUser: (state: any): boolean => $_user_isDepartmentMember(state, 'UWASC'),
-  isCoeUser: (state: any): boolean => $_user_isDepartmentMember(state, 'COENG'),
   userAuthStatus: (state: any): boolean => state.userAuthStatus,
   preferences: (state: any): any => state.preferences,
   user: (state: any): any => state.user
@@ -48,6 +33,7 @@ const mutations = {
   setUserPreference: (state: any, { key, value }) => {
     if (_.has(state.preferences, key)) {
       state.preferences[key] = value;
+      Vue.prototype.$eventHub.$emit(`${key}-user-preference-change`, value);
     } else {
       throw new TypeError('Invalid user preference type: ' + key);
     }
@@ -103,17 +89,9 @@ const actions = {
         resolve(state.user);
       } else {
         getUserProfile().then(user => {
-          let googleAnalyticsId = store.getters['context/googleAnalyticsId'];
-          if (googleAnalyticsId) {
-            Vue.prototype.$ga.set('userId', user.uid);
-            const dept_code = user.isAdmin
-              ? 'ADMIN'
-              : _.keys(user.departments)[0];
-            if (dept_code) {
-              Vue.prototype.$ga.set('dimension1', dept_code);
-            }
-          }
+          gaTrackUserSessionStart(user);
           commit('registerUser', user);
+          Vue.prototype.$eventHub.$emit('user-profile-loaded');
           resolve(user);
         });
       }

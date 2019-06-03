@@ -26,9 +26,14 @@ ENHANCEMENTS, OR MODIFICATIONS.
 import json
 
 from boac import __version__ as version
+from boac.api.errors import BadRequestError
+from boac.api.util import admin_required
 from boac.lib.berkeley import sis_term_id_for_name
 from boac.lib.http import tolerant_jsonify
-from flask import current_app as app
+from boac.lib.util import process_input_from_rich_text_editor, to_bool_or_none
+from boac.models.tool_setting import ToolSetting
+from flask import current_app as app, request
+from flask_login import current_user
 
 
 @app.route('/api/config')
@@ -42,9 +47,12 @@ def app_config():
         'disableMatrixViewThreshold': app.config['DISABLE_MATRIX_VIEW_THRESHOLD'],
         'devAuthEnabled': app.config['DEVELOPER_AUTH_ENABLED'],
         'ebEnvironment': app.config['EB_ENVIRONMENT'] if 'EB_ENVIRONMENT' in app.config else None,
-        'featureFlagCreateNotes': app.config['FEATURE_FLAG_CREATE_NOTES'],
+        'featureFlagEditNotes': app.config['FEATURE_FLAG_EDIT_NOTES'],
         'googleAnalyticsId': app.config['GOOGLE_ANALYTICS_ID'],
+        'isDemoModeAvailable': app.config['DEMO_MODE_AVAILABLE'],
+        'maxAttachmentsPerNote': app.config['NOTES_ATTACHMENTS_MAX_PER_NOTE'],
         'supportEmailAddress': app.config['BOAC_SUPPORT_EMAIL'],
+        'timezone': app.config['TIMEZONE'],
     })
 
 
@@ -63,9 +71,51 @@ def app_version():
     return tolerant_jsonify(v)
 
 
+@app.route('/api/service_announcement')
+def get_service_announcement():
+    if current_user.is_authenticated:
+        announcement = _get_service_announcement()
+        return tolerant_jsonify(announcement if current_user.is_admin or announcement['isPublished'] else None)
+    else:
+        return tolerant_jsonify(None)
+
+
+@app.route('/api/service_announcement/update', methods=['POST'])
+@admin_required
+def update_service_announcement():
+    params = request.get_json()
+    text = process_input_from_rich_text_editor(params.get('text', ''))
+    if not text and _is_service_announcement_published():
+        raise BadRequestError('If the service announcement is published then API requires \'text\'')
+    ToolSetting.upsert('SERVICE_ANNOUNCEMENT_TEXT', text)
+    return tolerant_jsonify(_get_service_announcement())
+
+
+@app.route('/api/service_announcement/publish', methods=['POST'])
+@admin_required
+def publish_service_announcement():
+    publish = to_bool_or_none(request.get_json().get('publish'))
+    if publish is None:
+        raise BadRequestError('API requires \'publish\' arg')
+    ToolSetting.upsert('SERVICE_ANNOUNCEMENT_IS_PUBLISHED', publish)
+    return tolerant_jsonify(_get_service_announcement())
+
+
 def load_json(relative_path):
     try:
         file = open(app.config['BASE_DIR'] + '/' + relative_path)
         return json.load(file)
     except (FileNotFoundError, KeyError, TypeError):
         return None
+
+
+def _get_service_announcement():
+    return {
+        'text': ToolSetting.get_tool_setting('SERVICE_ANNOUNCEMENT_TEXT'),
+        'isPublished': _is_service_announcement_published(),
+    }
+
+
+def _is_service_announcement_published():
+    is_published = ToolSetting.get_tool_setting('SERVICE_ANNOUNCEMENT_IS_PUBLISHED')
+    return False if is_published is None else to_bool_or_none(is_published)

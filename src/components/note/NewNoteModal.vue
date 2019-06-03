@@ -1,12 +1,11 @@
 <template>
   <div>
-    <div id="sr-alert-new-note" class="sr-only" aria-live="polite">{{ screenReaderAlert }}</div>
     <div>
       <b-btn
         id="new-note-button"
-        class="mt-1 mr-2"
+        class="mt-1 mr-2 btn-primary-color-override"
         variant="primary"
-        :disabled="includes(['minimized', 'open'], mode)"
+        :disabled="disable || includes(['minimized', 'open'], newNoteMode)"
         @click="openNewNoteModal()">
         <span class="m-1">
           <i class="fas fa-file-alt"></i>
@@ -14,82 +13,166 @@
         </span>
       </b-btn>
     </div>
-    <div
-      :class="{
-        'd-none': mode === 'hidden',
-        'modal-open': mode === 'open',
-        'modal-open modal-minimized': mode === 'minimized',
-        'modal-open modal-saving': mode === 'saving'
-      }">
-      <form @submit.prevent="create()">
-        <div class="d-flex align-items-end pt-2 mb-1">
-          <div class="flex-grow-1 new-note-header font-weight-bolder">
-            New Note
+    <FocusLock
+      :disabled="newNoteMode !== 'fullScreen' || showAreYouSureModal"
+      :class="{'modal-full-screen': newNoteMode === 'fullScreen'}">
+      <div
+        id="new-note-modal-container"
+        :class="{
+          'd-none': isNil(newNoteMode),
+          'modal-open': newNoteMode === 'open',
+          'modal-open modal-minimized': newNoteMode === 'minimized',
+          'modal-open modal-saving': newNoteMode === 'saving',
+          'modal-full-screen-content': newNoteMode === 'fullScreen'
+        }">
+        <form @submit.prevent="create()">
+          <div class="d-flex align-items-end pt-2 mb-1" :class="{'mt-2': newNoteMode === 'fullScreen'}">
+            <div class="flex-grow-1 new-note-header font-weight-bolder">
+              New Note
+            </div>
+            <div v-if="newNoteMode !== 'fullScreen'" class="pr-0">
+              <label id="minimize-button-label" class="sr-only">Minimize the create note dialog box</label>
+              <b-btn
+                id="minimize-new-note-modal"
+                variant="link"
+                aria-labelledby="minimize-button-label"
+                class="pr-2"
+                @click.prevent="minimize()">
+                <span class="sr-only">Minimize</span>
+                <i class="fas fa-window-minimize minimize-icon text-dark"></i>
+              </b-btn>
+            </div>
+            <div v-if="newNoteMode !== 'fullScreen'" class="pr-2">
+              <label id="cancel-button-label" class="sr-only">Cancel the create-note form</label>
+              <b-btn
+                id="cancel-new-note-modal"
+                variant="link"
+                aria-labelledby="cancel-button-label"
+                class="pl-1 pb-1"
+                @click.prevent="cancel()">
+                <span class="sr-only">Cancel</span>
+                <i class="fas fa-times fa-icon-size text-dark"></i>
+              </b-btn>
+            </div>
           </div>
-          <div class="pr-0">
-            <label id="minimize-button-label" class="sr-only">Minimize the create note dialog box</label>
-            <b-btn
-              id="minimize-new-note-modal"
-              variant="link"
-              aria-labelledby="minimize-button-label"
-              class="pr-2"
-              @click.prevent="minimize()">
-              <span class="sr-only">Minimize</span>
-              <i class="fas fa-window-minimize minimize-icon text-dark"></i>
-            </b-btn>
+          <hr class="m-0" />
+          <div class="mt-2 mr-3 mb-1 ml-3">
+            <div>
+              <label for="create-note-subject" class="input-label mb-1"><span class="sr-only">Note </span>Subject</label>
+            </div>
+            <div>
+              <input
+                id="create-note-subject"
+                v-model="subject"
+                aria-labelledby="create-note-subject-label"
+                class="cohort-create-input-name"
+                type="text"
+                maxlength="255"
+                @keydown.esc="cancel()">
+            </div>
+            <div>
+              <label for="create-note-body" class="input-label mt-3 mb-1">Note Details</label>
+            </div>
+            <div id="note-details">
+              <span id="create-note-body">
+                <ckeditor v-model="body" :editor="editor" :config="editorConfig"></ckeditor>
+              </span>
+            </div>
           </div>
-          <div class="pr-2">
-            <label id="cancel-button-label" class="sr-only">Cancel the create-note form</label>
-            <b-btn
-              id="cancel-new-note-modal"
-              variant="link"
-              aria-labelledby="cancel-button-label"
-              class="pl-1 pb-1"
-              @click.prevent="cancel()">
-              <span class="sr-only">Cancel</span>
-              <i class="fas fa-times fa-icon-size text-dark"></i>
-            </b-btn>
+          <AdvisingNoteTopics
+            v-if="newNoteMode === 'fullScreen'"
+            class="mt-2 mr-3 mb-1 ml-3"
+            :function-add="addTopic"
+            :function-remove="removeTopic"
+            :suggested-topics="suggestedTopics"
+            :topics="topics" />
+          <div v-if="newNoteMode === 'fullScreen'" class="mt-2 mr-3 mb-1 ml-3">
+            <div v-if="attachmentError" class="mt-3 mb-3 w-100">
+              <i class="fa fa-exclamation-triangle text-danger pr-1"></i>
+              <span aria-live="polite" role="alert">{{ attachmentError }}</span>
+            </div>
+            <div v-if="size(attachments) < maxAttachmentsPerNote" class="w-100">
+              <label for="choose-file-for-note-attachment" class="sr-only"><span class="sr-only">Note </span>Attachments</label>
+              <div class="choose-attachment-file-wrapper no-wrap pl-3 pr-3 w-100">
+                Drop file to upload attachment or
+                <b-btn
+                  id="choose-file-for-note-attachment"
+                  type="file"
+                  variant="outline-primary"
+                  class="btn-file-upload mt-2 mb-2"
+                  size="sm"
+                  @keydown.enter.prevent="triggerFileInput">
+                  Browse<span class="sr-only"> for file to upload</span>
+                </b-btn>
+                <b-form-file
+                  ref="attachment-file-input"
+                  v-model="attachment"
+                  :disabled="size(attachments) === maxAttachmentsPerNote"
+                  :state="Boolean(attachment)"
+                  :plain="true"
+                ></b-form-file>
+              </div>
+            </div>
+            <div v-if="size(attachments) === maxAttachmentsPerNote" class="w-100">
+              A note can have no more than {{ maxAttachmentsPerNote }} attachments.
+            </div>
+            <div>
+              <ul class="pill-list pl-0 mt-3">
+                <li
+                  v-for="(attachment, index) in attachments"
+                  :id="`new-note-attachment-${index}`"
+                  :key="attachment.name"
+                  class="mt-2">
+                  <span class="pill pill-attachment text-nowrap">
+                    <i class="fas fa-paperclip pr-1 pl-1"></i> {{ attachment.name }}
+                    <b-btn
+                      :id="`remove-note-attachment-${index}`"
+                      variant="link"
+                      class="p-0"
+                      @click.prevent="removeAttachment(index)">
+                      <i class="fas fa-times-circle has-error pl-2"></i>
+                      <span class="sr-only">Delete attachment {{ attachment.name }}</span>
+                    </b-btn>
+                  </span>
+                </li>
+              </ul>
+            </div>
           </div>
-        </div>
-        <hr class="m-0" />
-        <div class="mt-2 mr-3 mb-1 ml-3">
-          <div>
-            <label for="create-note-subject" class="input-label mb-1"><span class="sr-only">Note </span>Subject</label>
+          <hr />
+          <div class="d-flex mt-1 mr-3 mb-0 ml-3">
+            <div class="flex-grow-1">
+              <b-btn
+                v-if="newNoteMode !== 'fullScreen'"
+                id="btn-to-advanced-note-options"
+                variant="link"
+                @click.prevent="setNewNoteMode('fullScreen')">
+                Advanced note options
+              </b-btn>
+            </div>
+            <div>
+              <b-btn
+                id="create-note-button"
+                class="btn-primary-color-override"
+                aria-label="Create new note"
+                variant="primary"
+                @click.prevent="create()">
+                Save
+              </b-btn>
+            </div>
+            <div>
+              <b-btn
+                id="create-note-cancel"
+                variant="link"
+                :class="{'sr-only': newNoteMode !== 'fullScreen'}"
+                @click.prevent="cancel()">
+                Cancel
+              </b-btn>
+            </div>
           </div>
-          <div>
-            <input
-              id="create-note-subject"
-              v-model="subject"
-              aria-labelledby="create-note-subject-label"
-              class="cohort-create-input-name"
-              type="text"
-              maxlength="255">
-          </div>
-          <div>
-            <label for="create-note-body" class="input-label mt-3 mb-1">Note Details</label>
-          </div>
-          <div id="note-details">
-            <span id="create-note-body">
-              <ckeditor v-model="body" :editor="editor" :config="editorConfig"></ckeditor>
-            </span>
-          </div>
-        </div>
-        <hr />
-        <div class="d-flex justify-content-end mt-1 mr-3 mb-0 ml-3">
-          <div>
-            <b-btn
-              id="create-note"
-              class="btn-primary-color-override"
-              aria-label="Create new note"
-              variant="primary"
-              @click.prevent="create()">
-              Save
-            </b-btn>
-          </div>
-        </div>
-      </form>
-    </div>
-    <div v-if="!isMinimizing && mode === 'minimized'" class="minimized-placeholder d-flex align-items-end ml-3 mr-3">
+        </form>
+      </div>
+    </FocusLock>
+    <div v-if="!isMinimizing && newNoteMode === 'minimized'" class="minimized-placeholder d-flex align-items-end ml-3 mr-3">
       <div class="flex-grow-1 new-note-header">
         New Note
       </div>
@@ -99,7 +182,7 @@
           aria-label="Bring create-note form into view"
           variant="link"
           class="pr-2"
-          @click.prevent="maximize()">
+          @click.stop="maximize()">
           <span class="sr-only">Maximize</span>
           <i class="fas fa-window-maximize fa-icon-size text-white"></i>
         </b-btn>
@@ -116,11 +199,17 @@
         </b-btn>
       </div>
     </div>
+    <AreYouSureModal
+      v-if="showAreYouSureModal"
+      :function-cancel="cancelTheCancel"
+      :function-confirm="cancelConfirmed"
+      modal-header="Discard unsaved note?"
+      :show-modal="showAreYouSureModal" />
     <b-popover
       v-if="showErrorPopover"
       :show.sync="showErrorPopover"
       placement="top"
-      :target="`${subject ? 'create-note-body' : 'create-note-subject'}`"
+      target="create-note-subject"
       title="">
       <span class="has-error">{{ error }}</span>
     </b-popover>
@@ -128,7 +217,13 @@
 </template>
 
 <script>
+import AdvisingNoteTopics from '@/components/note/AdvisingNoteTopics';
+import AreYouSureModal from '@/components/util/AreYouSureModal';
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
+import Context from '@/mixins/Context';
+import FocusLock from 'vue-focus-lock';
+import NoteEditSession from '@/mixins/NoteEditSession';
+import NoteUtil from '@/components/note/NoteUtil';
 import Util from '@/mixins/Util';
 import { createNote } from '@/api/notes';
 
@@ -136,90 +231,170 @@ require('@/assets/styles/ckeditor-custom.css');
 
 export default {
   name: 'NewNoteModal',
-  mixins: [Util],
+  components: { AdvisingNoteTopics, AreYouSureModal, FocusLock },
+  mixins: [Context, NoteEditSession, NoteUtil, Util],
   props: {
+    disable: Boolean,
+    onSubmit: Function,
     onSuccessfulCreate: Function,
-    student: Object
+    student: Object,
+    suggestedTopics: Array
   },
   data: () => ({
+    attachment: undefined,
+    attachmentError: undefined,
+    attachments: [],
     body: undefined,
     error: undefined,
     isMinimizing: false,
-    mode: undefined,
     showErrorPopover: false,
-    screenReaderAlert: undefined,
     subject: undefined,
+    topics: [],
     editor: ClassicEditor,
     editorConfig: {
       toolbar: ['bold', 'italic', 'bulletedList', 'numberedList', 'link'],
-    }
+    },
+    showAreYouSureModal: false
   }),
   watch: {
-    body(str) {
-      if (str) this.clearError();
+    attachment() {
+      if (this.validateAttachment()) {
+        this.attachments.push(this.attachment);
+        this.alertScreenReader(`Attachment '${name}' added`);
+      }
+      this.$refs['attachment-file-input'].reset();
     },
-    subject(str) {
-      if (str) this.clearError();
+    body(b) {
+      if (b) this.clearErrors();
+    },
+    subject(s) {
+      if (s) this.clearErrors();
     }
   },
   created() {
+    this.initFileDropPrevention();
     this.reset();
   },
   methods: {
-    cancel() {
-      this.reset();
-      this.screenReaderAlert = "Cancelled create new note";
+    addTopic(topic) {
+      this.topics.push(topic);
     },
-    clearError() {
+    cancel() {
+      this.clearErrors();
+      if (this.trim(this.subject) || this.stripHtmlAndTrim(this.body) || this.size(this.attachments)) {
+        this.showAreYouSureModal = true;
+      } else {
+        this.cancelConfirmed();
+      }
+    },
+    cancelConfirmed() {
+      this.showAreYouSureModal = false;
+      this.reset();
+      this.alertScreenReader("Cancelled create new note");
+    },
+    cancelTheCancel() {
+      this.showAreYouSureModal = false;
+      this.putFocusNextTick('create-note-subject');
+    },
+    clearErrors() {
+      this.attachmentError = null;
       this.error = null;
       this.showErrorPopover = false;
     },
     create() {
       this.subject = this.trim(this.subject);
-      this.body = this.trim(this.body);
-      if (this.subject && this.body) {
-        this.mode = 'saving';
-        createNote(this.student.sid, this.subject, this.body).then(data => {
+      if (this.subject) {
+        this.body = this.trim(this.body);
+        this.setNewNoteMode('saving');
+        this.onSubmit();
+        createNote(this.student.sid, this.subject, this.body, this.topics, this.attachments).then(data => {
           this.reset();
           this.onSuccessfulCreate(data);
-          this.screenReaderAlert = "New note saved";
+          this.alertScreenReader("New note saved.");
         });
       } else {
-        if (this.subject) {
-          this.error = 'Note details required';
-        } else {
-          this.error = this.body ? 'Subject is required' : 'Both subject and note details are required.';
-        }
+        this.error = 'Subject is required';
         this.showErrorPopover = true;
-        this.screenReaderAlert = `Validation failed: ${this.error}`;
+        this.alertScreenReader(`Validation failed: ${this.error}`);
+        this.putFocusNextTick('create-note-subject');
       }
     },
     maximize() {
-      this.mode = 'open';
-      this.screenReaderAlert = "The create-note form is visible";
+      this.setNewNoteMode('open');
+      this.alertScreenReader("Create note form is visible.");
       this.putFocusNextTick('create-note-subject');
     },
     minimize() {
       this.isMinimizing = true;
-      this.mode = 'minimized';
+      this.setNewNoteMode('minimized');
       setTimeout(() => this.isMinimizing = false, 300);
-      this.screenReaderAlert = "The create-note form minimized";
+      this.alertScreenReader("Create note form minimized.");
     },
     openNewNoteModal() {
-       this.mode = 'open';
+       this.setNewNoteMode('open');
        this.putFocusNextTick('create-note-subject');
     },
+    removeAttachment(index) {
+      this.clearErrors();
+      this.alertScreenReader(`Attachment '${this.attachments[index].name}' removed`);
+      this.attachments.splice(index, 1);
+    },
+    removeTopic(topic) {
+      let index = this.topics.indexOf(topic);
+      this.topics.splice(index, 1);
+    },
     reset() {
-      this.mode = 'hidden';
+      this.clearErrors();
+      this.setNewNoteMode(null);
       this.subject = this.body = undefined;
+      this.attachments = [];
+      this.topics = [];
     }
   }
 }
 </script>
 
 <style scoped>
+.btn-file-upload {
+  border-color: grey;
+  color: grey;
+}
+.btn-file-upload:hover,
+.btn-file-upload:focus,
+.btn-file-upload:active
+{
+  color: #333;
+  background-color: #aaa;
+}
+.choose-attachment-file-wrapper {
+  position: relative;
+  align-items: center;
+  overflow: hidden;
+  display: inline-block;
+  background-color: #f7f7f7;
+  border: 1px solid #E0E0E0;
+  border-radius: 4px;
+  text-align: center;
+}
+.choose-attachment-file-wrapper input[type=file] {
+  font-size: 100px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+}
+.choose-attachment-file-wrapper:hover,
+.choose-attachment-file-wrapper:focus,
+.choose-attachment-file-wrapper:active
+{
+  color: #333;
+  background-color: #eee;
+}
 .fa-icon-size {
   font-size: 28px;
+}
+.form-control-file {
+  height: 100%;
 }
 .input-label {
   font-weight: 600;
@@ -239,6 +414,25 @@ export default {
   width: 30%;
   z-index: 2;
 }
+.modal-full-screen {
+  display: block;
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgb(0,0,0);
+  background-color: rgba(0,0,0,0.4);
+}
+.modal-full-screen-content {
+  background-color: #fff;
+  margin: 140px auto auto auto;
+  padding-bottom: 20px;
+  border: 1px solid #888;
+  width: 60%;
+}
 .modal-minimized {
   height: 1px !important;
   z-index: 1;
@@ -254,6 +448,7 @@ export default {
   right: 30px;
   transition: height 0.5s;
   width: 30%;
+  z-index: 1;
 }
 .modal-saving {
   height: 1px !important;

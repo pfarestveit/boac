@@ -1,16 +1,42 @@
+DROP SCHEMA IF EXISTS asc_advising_notes cascade;
 DROP SCHEMA IF EXISTS boac_advising_asc cascade;
 DROP SCHEMA IF EXISTS boac_advising_coe cascade;
+DROP SCHEMA IF EXISTS boac_advising_l_s cascade;
 DROP SCHEMA IF EXISTS boac_advising_notes cascade;
 DROP SCHEMA IF EXISTS boac_analytics cascade;
 DROP SCHEMA IF EXISTS sis_data cascade;
 DROP SCHEMA IF EXISTS student cascade;
 
+CREATE SCHEMA asc_advising_notes;
 CREATE SCHEMA boac_advising_asc;
 CREATE SCHEMA boac_advising_coe;
+CREATE SCHEMA boac_advising_l_s;
 CREATE SCHEMA boac_advising_notes;
 CREATE SCHEMA boac_analytics;
 CREATE SCHEMA sis_data;
 CREATE SCHEMA student;
+
+CREATE TABLE asc_advising_notes.advising_notes
+(
+    id VARCHAR NOT NULL,
+    asc_id VARCHAR NOT NULL,
+    sid VARCHAR NOT NULL,
+    student_first_name VARCHAR,
+    student_last_name VARCHAR,
+    meeting_date VARCHAR,
+    advisor_uid VARCHAR,
+    advisor_first_name VARCHAR,
+    advisor_last_name VARCHAR,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE asc_advising_notes.advising_note_topics (
+    id VARCHAR NOT NULL,
+    asc_id VARCHAR NOT NULL,
+    sid VARCHAR NOT NULL,
+    topic VARCHAR
+);
 
 CREATE TABLE boac_advising_asc.students
 (
@@ -57,6 +83,20 @@ CREATE TABLE boac_advising_coe.student_profiles
     profile TEXT NOT NULL
 );
 
+CREATE TABLE boac_advising_l_s.students
+(
+    sid VARCHAR NOT NULL,
+    acadplan_code VARCHAR,
+    acadplan_descr VARCHAR,
+    acadplan_type_code VARCHAR,
+    acadplan_ownedby_code VARCHAR,
+    ldap_uid VARCHAR,
+    first_name VARCHAR,
+    last_name VARCHAR,
+    email_address VARCHAR,
+    affiliations VARCHAR
+);
+
 CREATE TABLE boac_advising_notes.advising_notes
 (
     id VARCHAR NOT NULL,
@@ -86,9 +126,16 @@ CREATE TABLE boac_advising_notes.advising_note_attachments
     sid VARCHAR NOT NULL,
     attachment_seq_nr INT,
     attachment_date DATE,
+    created_by VARCHAR NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    sis_file_name VARCHAR NOT NULL
+    sis_file_name VARCHAR NOT NULL,
+    user_file_name VARCHAR NOT NULL
+);
+
+CREATE TABLE boac_advising_notes.advising_note_topic_mappings (
+  boa_topic VARCHAR NOT NULL,
+  sis_topic VARCHAR NOT NULL
 );
 
 CREATE TABLE boac_analytics.section_mean_gpas
@@ -105,6 +152,8 @@ CREATE TABLE sis_data.enrolled_primary_sections
     sis_section_id VARCHAR NOT NULL,
     sis_course_name VARCHAR NOT NULL,
     sis_course_name_compressed VARCHAR NOT NULL,
+    sis_subject_area_compressed VARCHAR NOT NULL,
+    sis_catalog_id VARCHAR NOT NULL,
     sis_course_title VARCHAR NOT NULL,
     sis_instruction_format VARCHAR NOT NULL,
     sis_section_num VARCHAR NOT NULL,
@@ -153,6 +202,12 @@ CREATE TABLE student.student_majors
     major VARCHAR NOT NULL
 );
 
+CREATE TABLE student.student_names
+(
+    sid VARCHAR NOT NULL,
+    name VARCHAR NOT NULL
+);
+
 CREATE TABLE student.student_enrollment_terms
 (
     sid VARCHAR NOT NULL,
@@ -167,6 +222,20 @@ CREATE TABLE student.student_term_gpas
     gpa DECIMAL(4,3),
     units_taken_for_gpa DECIMAL(4,1)
 );
+
+INSERT INTO asc_advising_notes.advising_notes
+(id, asc_id, sid, student_first_name, student_last_name, meeting_date, advisor_uid, advisor_first_name, advisor_last_name, created_at, updated_at)
+VALUES
+('11667051-139362', '139362', '11667051', 'Deborah',  'Davies', '2014-01-03', '1133399', 'Lemmy', 'Kilmister', '2014-01-03 20:30:00+00', '2014-01-03 20:30:00+00'),
+('11667051-139379', '139379', '11667051', 'Deborah',  'Davies', '2014-01-16', '90412', 'Ginger', 'Baker', '2014-01-16 16:52:00+00', '2014-01-16 16:52:00+00'),
+('9000000000-139379', '139379', '9000000000', 'Wolfgang',  'Pauli-O''Rourke', '2014-01-16', '90412', 'Ginger', 'Baker', '2014-01-16 16:52:00+00', '2014-01-16 16:52:00+00'),
+('9100000000-139379', '139379', '9100000000', 'Nora Stanton',  'Barney', '2014-01-16', '90412', 'Ginger', 'Baker', '2014-01-16 16:52:00+00', '2014-01-16 16:52:00+00');
+
+INSERT INTO asc_advising_notes.advising_note_topics
+(id, asc_id, sid, topic)
+VALUES
+('11667051-139362', '139362', '11667051', 'Academic'),
+('11667051-139362', '139362', '11667051', 'Other');
 
 INSERT INTO boac_advising_asc.students
 (sid, intensive, active, status_asc, group_code, group_name, team_code, team_name)
@@ -204,10 +273,10 @@ INSERT INTO boac_advising_coe.students
 (sid, advisor_ldap_uid, gender, ethnicity, minority, did_prep, prep_eligible, did_tprep, tprep_eligible,
   sat1read, sat1math, sat2math, in_met, grad_term, grad_year, probation, status)
 VALUES
-('11667051', '90412', 'm', 'H', FALSE, TRUE, FALSE, FALSE, FALSE, NULL, NULL, NULL, FALSE, NULL, NULL, FALSE, 'C'),
-('7890123456', '1133399', 'f', 'B', TRUE, FALSE, TRUE, FALSE, FALSE, 510, 520, 620, FALSE, 'sp', '2020', FALSE, 'C'),
-('9000000000', '1133399', 'f', 'B', TRUE, FALSE, TRUE, FALSE, FALSE, NULL, NULL, 720, FALSE, NULL, NULL, FALSE, 'Z'),
-('9100000000', '90412', 'm', 'X', FALSE, FALSE, FALSE, FALSE, TRUE, 720, 760, 770, TRUE, 'fa', '2018', TRUE, 'N');
+('11667051', '90412', 'M', 'H', FALSE, TRUE, FALSE, FALSE, FALSE, NULL, NULL, NULL, FALSE, NULL, NULL, FALSE, 'C'),
+('7890123456', '1133399', 'F', 'B', TRUE, FALSE, TRUE, FALSE, FALSE, 510, 520, 620, FALSE, 'sp', '2020', FALSE, 'C'),
+('9000000000', '1133399', 'F', 'B', TRUE, FALSE, TRUE, FALSE, FALSE, NULL, NULL, 720, FALSE, NULL, NULL, FALSE, 'Z'),
+('9100000000', '90412', 'M', 'X', FALSE, FALSE, FALSE, FALSE, TRUE, 720, 760, 770, TRUE, 'fa', '2018', TRUE, 'N');
 
 INSERT INTO boac_advising_coe.student_profiles
 (sid, profile)
@@ -217,6 +286,12 @@ VALUES
 ('9000000000', :coe_profile_9000000000),
 ('9100000000', :coe_profile_9100000000);
 
+INSERT INTO boac_advising_l_s.students
+(sid, acadplan_code, acadplan_descr, acadplan_type_code, acadplan_ownedby_code, ldap_uid, first_name, last_name, email_address, affiliations)
+VALUES
+('3456789012', '252B2U', 'Political Economy BA', 'MAJ', 'ISSP', '242881', 'Paul', 'Kerschen', 'atem@example.edu', 'STUDENT-TYPE-REGISTERED'),
+('5678901234', '25000U', 'Letters & Sci Undeclared UG', 'MAJ', 'CLS', '9933311', 'Sandeep', 'Jayaprakash', 'sj@example.edu', 'STUDENT-TYPE-NOT REGISTERED');
+
 INSERT INTO boac_advising_notes.advising_notes
 (id, sid, student_note_nr, advisor_sid, appointment_id, note_category, note_subcategory, note_body, created_by, updated_by, created_at, updated_at)
 VALUES
@@ -224,7 +299,8 @@ VALUES
 ('11667051-00002', '11667051', '00002', '700600500', NULL, 'Evaluation', '', 'Brigitte demonstrates a cavalier attitude toward university requirements', NULL, NULL, '2017-11-01T12:00:00+00', '2017-11-01T12:00:00+00'),
 ('11667051-00003', '11667051', '00003', '600500400', NULL, 'Appointment', '', 'But the iniquity of oblivion blindely scattereth her poppy, and deals with the memory of men without distinction to merit of perpetuity. Who can but pity the founder of the Pyramids? Herostratus lives that burnt the Temple of Diana, he is almost lost that built it; Time hath spared the Epitaph of Adrians horse, confounded that of himself. In vain we compute our felicities by the advantage of our good names, since bad have equall durations; and Thersites is like to live as long as Agamenon, without the favour of the everlasting Register: Who knows whether the best of men be known? or whether there be not more remarkable persons forgot, then any that stand remembred in the known account of time? the first man had been as unknown as the last, and Methuselahs long life had been his only Chronicle.', NULL, NULL, '2017-11-05T12:00:00+00', '2017-11-06T12:00:00+00'),
 ('9000000000-00001', '9000000000', '00001', '600500400', NULL, 'Appointment', '', 'Is this student even on campus?', NULL, NULL, '2017-11-02T12:00:00+00', '2017-11-02T13:00:00+00'),
-('9000000000-00002', '9000000000', '00002', '700600500', NULL, 'Evaluation', '', 'I am confounded by this confounding student', 'UCBCONVERSION', NULL, '2017-11-02T12:00:00+00', '2017-11-02T12:00:00+00');
+('9000000000-00002', '9000000000', '00002', '700600500', NULL, 'Evaluation', '', 'I am confounded by this confounding student', 'UCBCONVERSION', NULL, '2017-11-02T12:00:00+00', '2017-11-02T12:00:00+00'),
+('9100000000-00001', '9100000000', '00001', '600500400', NULL, 'Evaluation', '', 'Met w/ stu; scheduled next appt. 2/1/2019 @ 1:30. Student continued on 2.0 prob (COP) until Sp ''19. E-mailed test@berkeley.edu: told her she''ll need to drop Eng. 123 by 1-24-19', 'UCBCONVERSION', NULL, '2017-11-02T12:00:00+00', '2017-11-02T12:00:00+00');
 
 CREATE MATERIALIZED VIEW boac_advising_notes.advising_notes_search_index AS (
   SELECT id, to_tsvector('english', note_body) AS fts_index
@@ -234,15 +310,27 @@ CREATE MATERIALIZED VIEW boac_advising_notes.advising_notes_search_index AS (
 INSERT INTO boac_advising_notes.advising_note_topics
 (advising_note_id, sid, note_topic)
 VALUES
-('11667051-00001', '11667051', 'Good show'),
-('11667051-00002', '11667051', 'Bad show'),
-('9000000000-00001', '9000000000', 'No show');
+('11667051-00001', '11667051', 'God Scéaw'),
+('11667051-00002', '11667051', 'Earg Scéaw'),
+('11667051-00003', '11667051', 'Scéaw Tima'),
+('11667051-00002', '11667051', 'Ofscéaw'),
+('9000000000-00001', '9000000000', 'Ne Scéaw');
+
+INSERT INTO boac_advising_notes.advising_note_topic_mappings
+(boa_topic, sis_topic)
+VALUES
+('Good Show', 'God Scéaw'),
+('Bad Show', 'Earg Scéaw'),
+('Show Time', 'Scéaw Tima'),
+('Show Off', 'Ofscéaw'),
+('No Show', 'Ne Scéaw');
 
 INSERT INTO boac_advising_notes.advising_note_attachments
-(advising_note_id, sid, attachment_seq_nr, attachment_date, created_at, updated_at, sis_file_name)
+(advising_note_id, sid, attachment_seq_nr, attachment_date, created_by, created_at, updated_at, sis_file_name, user_file_name)
 VALUES
-('11667051-00001', '11667051', 1, '2017-10-31', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', 'form.pdf'),
-('11667051-00002', '11667051', 2, '2017-10-31', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', 'photo.jpeg');
+('11667051-00001', '11667051', 1, '2017-10-31', 'UCBCONVERSION', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', '11667051_00001_1.pdf', 'efac7b10-c3f2-11e4-9bbd-ab6a6597d26f.pdf'),
+('11667051-00002', '11667051', 2, '2017-10-31', '1234', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', '11667051_00002_2.jpeg', 'brigitte_photo.jpeg'),
+('9000000000-00002', '9000000000', 1, '2017-10-31', '4567', '2017-10-31T12:00:00+00', '2017-10-31T12:00:00+00', '9000000000_00002_1.pdf', 'dog_eaten_homework.pdf');
 
 INSERT INTO boac_analytics.section_mean_gpas
 (sis_term_id, sis_section_id, gpa_term_id, avg_gpa)
@@ -255,17 +343,17 @@ VALUES
 ('2178','90200','2172',3.23);
 
 INSERT INTO sis_data.enrolled_primary_sections
-(term_id, sis_section_id, sis_course_name, sis_course_name_compressed, sis_course_title, sis_instruction_format, sis_section_num, instructors)
+(term_id, sis_section_id, sis_course_name, sis_course_name_compressed, sis_subject_area_compressed, sis_catalog_id, sis_course_title, sis_instruction_format, sis_section_num, instructors)
 VALUES
-('2172', '22100', 'MATH 1A', 'MATH1A', 'Calculus', 'LEC', '001', 'Gottfried Wilhelm Leibniz'),
-('2178', '21057', 'DANISH 1A', 'DANISH1A', 'Beginning Danish', 'LEC', '001', 'Karen Blixen'),
-('2178', '22140', 'MATH 1A', 'MATH1A', 'Calculus', 'LEC', '001', 'Gottfried Wilhelm Leibniz'),
-('2178', '22141', 'MATH 1A', 'MATH1A', 'Calculus', 'LEC', '002', 'Sir Isaac Newton'),
-('2178', '22172', 'MATH 16A', 'MATH16A', 'Analytic Geometry and Calculus', 'LEC', '001', 'Gottfried Wilhelm Leibniz, Sir Isaac Newton'),
-('2178', '22173', 'MATH 16A', 'MATH16A', 'Analytic Geometry and Calculus', 'LEC', '002', 'Gottfried Wilhelm Leibniz'),
-('2178', '22174', 'MATH 16B', 'MATH16B', 'Analytic Geometry and Calculus', 'LEC', '001', 'Sir Isaac Newton'),
-('2178', '22460', 'MATH 185', 'MATH185', 'Introduction to Complex Analysis', 'LEC', '001', 'Leonhard Euler'),
-('2178', '22114', 'MATH 55', 'MATH55', 'Discrete Mathematics', 'LEC', '001', 'David Hilbert');
+('2172', '22100', 'MATH 1A', 'MATH1A', 'MATH', '1A', 'Calculus', 'LEC', '001', 'Gottfried Wilhelm Leibniz'),
+('2178', '21057', 'DANISH 1A', 'DANISH1A', 'DANISH', '1A', 'Beginning Danish', 'LEC', '001', 'Karen Blixen'),
+('2178', '22140', 'MATH 1A', 'MATH1A', 'MATH', '1A', 'Calculus', 'LEC', '001', 'Gottfried Wilhelm Leibniz'),
+('2178', '22141', 'MATH 1A', 'MATH1A', 'MATH', '1A', 'Calculus', 'LEC', '002', 'Sir Isaac Newton'),
+('2178', '22172', 'MATH 16A', 'MATH16A', 'MATH', '16A', 'Analytic Geometry and Calculus', 'LEC', '001', 'Gottfried Wilhelm Leibniz, Sir Isaac Newton'),
+('2178', '22173', 'MATH 16A', 'MATH16A', 'MATH', '16A', 'Analytic Geometry and Calculus', 'LEC', '002', 'Gottfried Wilhelm Leibniz'),
+('2178', '22174', 'MATH 16B', 'MATH16B', 'MATH', '16B', 'Analytic Geometry and Calculus', 'LEC', '001', 'Sir Isaac Newton'),
+('2178', '22460', 'MATH 185', 'MATH185', 'MATH', '185', 'Introduction to Complex Analysis', 'LEC', '001', 'Leonhard Euler'),
+('2178', '22114', 'MATH 55', 'MATH55', 'MATH', '55', 'Discrete Mathematics', 'LEC', '001', 'David Hilbert');
 
 INSERT INTO sis_data.sis_terms
 (term_id, term_name, academic_career, term_begins, term_ends, session_id, session_name, session_begins, session_ends)
@@ -359,7 +447,7 @@ VALUES
 ('7890123456', '1049291', 'Paul', 'Farestveit', '40', 3.9, 110),
 ('8901234567', '123456', 'John David', 'Crossman', '10', 1.85, 12),
 ('890127492', '211159', 'Siegfried', 'Schlemiel', '20', 0.4, 8),
-('9000000000', '300847', 'Wolfgang', 'Pauli', '20', 2.3, 55),
+('9000000000', '300847', 'Wolfgang', 'Pauli-O''Rourke', '20', 2.3, 55),
 ('9100000000', '300848', 'Nora Stanton', 'Barney', '20', 3.85, 60);
 
 INSERT INTO student.student_majors
@@ -376,6 +464,30 @@ VALUES
 ('890127492', 'Mathematics'),
 ('9000000000', 'Engineering Undeclared UG'),
 ('9100000000', 'Engineering Undeclared UG');
+
+INSERT INTO student.student_names
+(sid, name)
+VALUES
+('11667051', 'DAVIES'),
+('11667051', 'DEBORAH'),
+('2345678901', 'DAVE'),
+('2345678901', 'DOOLITTLE'),
+('3456789012', 'KERSCHEN'),
+('3456789012', 'PAUL'),
+('5678901234', 'JAYAPRAKASH'),
+('5678901234', 'SANDEEP'),
+('7890123456', 'FARESTVEIT'),
+('7890123456', 'PAUL'),
+('8901234567', 'CROSSMAN'),
+('8901234567', 'DAVID'),
+('8901234567', 'JOHN'),
+('890127492', 'SCHLEMIEL'),
+('890127492', 'SIEGFRIED'),
+('9000000000', 'PAULIOROURKE'),
+('9000000000', 'WOLFGANG'),
+('9100000000', 'BARNEY'),
+('9100000000', 'NORA'),
+('9100000000', 'STANTON');
 
 INSERT INTO student.student_enrollment_terms
 (sid, term_id, enrollment_term)

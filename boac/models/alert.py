@@ -228,21 +228,21 @@ class Alert(Base):
 
     @classmethod
     def infrequent_activity_alerts_enabled(cls):
+        if not app.config['ALERT_INFREQUENT_ACTIVITY_ENABLED']:
+            return False
+        if app.config['CANVAS_CURRENT_ENROLLMENT_TERM'].startswith('Summer'):
+            return False
         days_into_session = (datetime.date(datetime.today()) - _get_current_session_start()).days
-        return (
-            app.config['ALERT_INFREQUENT_ACTIVITY_ENABLED']
-            and not app.config['CANVAS_CURRENT_ENROLLMENT_TERM'].startswith('Summer')
-            and days_into_session >= app.config['ALERT_INFREQUENT_ACTIVITY_DAYS']
-        )
+        return days_into_session >= app.config['ALERT_INFREQUENT_ACTIVITY_DAYS']
 
     @classmethod
     def no_activity_alerts_enabled(cls):
+        if not app.config['ALERT_NO_ACTIVITY_ENABLED']:
+            return False
+        if app.config['CANVAS_CURRENT_ENROLLMENT_TERM'].startswith('Summer'):
+            return False
         days_into_session = (datetime.date(datetime.today()) - _get_current_session_start()).days
-        return (
-            app.config['ALERT_NO_ACTIVITY_ENABLED']
-            and not app.config['CANVAS_CURRENT_ENROLLMENT_TERM'].startswith('Summer')
-            and days_into_session >= app.config['ALERT_NO_ACTIVITY_DAYS_INTO_SESSION']
-        )
+        return days_into_session >= app.config['ALERT_NO_ACTIVITY_DAYS_INTO_SESSION']
 
     @classmethod
     def deactivate_all_for_term(cls, term_id):
@@ -356,12 +356,12 @@ class Alert(Base):
         cls.create_or_activate(sid=sid, alert_type='withdrawal', key=key, message=message)
 
     @classmethod
-    def include_alert_counts_for_students(cls, viewer_user_id, cohort):
-        sids = cohort.get('sids') if 'sids' in cohort else [s['sid'] for s in cohort.get('students', [])]
+    def include_alert_counts_for_students(cls, viewer_user_id, group):
+        sids = group.get('sids') if 'sids' in group else [s['sid'] for s in group.get('students', [])]
         alert_counts = cls.current_alert_counts_for_sids(viewer_user_id, sids)
-        if 'students' in cohort:
+        if 'students' in group:
             counts_per_sid = {s.get('sid'): s.get('alertCount') for s in alert_counts}
-            for student in cohort.get('students'):
+            for student in group.get('students'):
                 sid = student['sid']
                 student['alertCount'] = counts_per_sid.get(sid) if sid in counts_per_sid else 0
         return alert_counts

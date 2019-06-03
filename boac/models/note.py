@@ -23,9 +23,17 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+
 from boac import db, std_commit
+from boac.lib.util import titleize, utc_now, vacuum_whitespace
+from boac.merged.calnet import get_uid_for_csid
 from boac.models.base import Base
+from boac.models.note_attachment import NoteAttachment
+from boac.models.note_topic import NoteTopic
+from flask import current_app as app
+from sqlalchemy import and_
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.sql import text
 
 
 class Note(Base):
@@ -39,6 +47,19 @@ class Note(Base):
     sid = db.Column(db.String(80), nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     body = db.Column(db.Text, nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    topics = db.relationship(
+        'NoteTopic',
+        primaryjoin='and_(Note.id==NoteTopic.note_id, NoteTopic.deleted_at==None)',
+        back_populates='note',
+        lazy=True,
+    )
+    attachments = db.relationship(
+        'NoteAttachment',
+        primaryjoin='and_(Note.id==NoteAttachment.note_id, NoteAttachment.deleted_at==None)',
+        back_populates='note',
+        lazy=True,
+    )
 
     def __init__(self, author_uid, author_name, author_role, author_dept_codes, sid, subject, body):
         self.author_uid = author_uid
@@ -50,19 +71,177 @@ class Note(Base):
         self.body = body
 
     @classmethod
-    def create(cls, author_uid, author_name, author_role, author_dept_codes, sid, subject, body):
+    def find_by_id(cls, note_id):
+        return cls.query.filter(and_(cls.id == note_id, cls.deleted_at == None)).first()  # noqa: E711
+
+    @classmethod
+    def create(cls, author_uid, author_name, author_role, author_dept_codes, sid, subject, body, topics=(), attachments=()):
         note = cls(author_uid, author_name, author_role, author_dept_codes, sid, subject, body)
+        for topic in topics:
+            note.topics.append(
+                NoteTopic.create_note_topic(note, titleize(vacuum_whitespace(topic)), author_uid),
+            )
+        for byte_stream_bundle in attachments:
+            note.attachments.append(
+                NoteAttachment.create_attachment(
+                    note=note,
+                    name=byte_stream_bundle['name'],
+                    byte_stream=byte_stream_bundle['byte_stream'],
+                    uploaded_by=author_uid,
+                ),
+            )
         db.session.add(note)
         std_commit()
+        cls.refresh_search_index()
         return note
 
     @classmethod
+    def search(cls, search_phrase, sid_filter, author_csid, topic):
+        params = {
+            'search_phrase': search_phrase,
+            'sid_filter': sid_filter,
+        }
+        author_uid = get_uid_for_csid(app, author_csid) if author_csid else None
+        if author_uid:
+            author_filter = 'AND notes.author_uid = :author_uid'
+            params.update({'author_uid': author_uid})
+        else:
+            author_filter = ''
+
+        if topic:
+            topic_join = 'JOIN note_topics nt on nt.topic = :topic AND nt.note_id = notes.id'
+            params.update({'topic': topic})
+        else:
+            topic_join = ''
+
+        query = text(f"""
+            SELECT notes.* FROM (
+                SELECT id, ts_rank(fts_index, plainto_tsquery('english', :search_phrase)) AS rank
+                FROM notes_fts_index
+                WHERE fts_index @@ plainto_tsquery('english', :search_phrase)
+            ) AS fts
+            JOIN notes
+                ON fts.id = notes.id
+                AND notes.sid = ANY(:sid_filter)
+                {author_filter}
+            {topic_join}
+            ORDER BY fts.rank DESC, notes.id
+        """).bindparams(**params)
+        result = db.session.execute(query)
+        keys = result.keys()
+        return [dict(zip(keys, row)) for row in result.fetchall()]
+
+    @classmethod
+    def refresh_search_index(cls):
+        db.session.execute(text('REFRESH MATERIALIZED VIEW notes_fts_index'))
+        std_commit()
+
+    @classmethod
+    def update(cls, note_id, subject, body, topics=(), attachments=(), delete_attachment_ids=()):
+        note = cls.find_by_id(note_id=note_id)
+        if note:
+            note.subject = subject
+            note.body = body
+            cls._update_topics(note, topics)
+            if delete_attachment_ids:
+                cls._delete_attachments(note, delete_attachment_ids)
+            for byte_stream_bundle in attachments:
+                cls._add_attachment(note, byte_stream_bundle)
+            std_commit()
+            db.session.refresh(note)
+            cls.refresh_search_index()
+            return note
+        else:
+            return None
+
+    @classmethod
+    def add_attachment(cls, note_id, attachment):
+        note = cls.find_by_id(note_id=note_id)
+        if note:
+            cls._add_attachment(note, attachment)
+            std_commit()
+            return note
+        else:
+            return None
+
+    @classmethod
+    def delete_attachment(cls, note_id, attachment_id):
+        note = cls.find_by_id(note_id=note_id)
+        if note:
+            cls._delete_attachments(note, (attachment_id,))
+            std_commit()
+            return note
+        else:
+            return None
+
+    @classmethod
+    def _update_topics(cls, note, topics):
+        modified = False
+        now = utc_now()
+        topics = set([titleize(vacuum_whitespace(topic)) for topic in topics])
+        existing_topics = set(note_topic.topic for note_topic in NoteTopic.find_by_note_id(note.id))
+        topics_to_delete = existing_topics - topics
+        topics_to_add = topics - existing_topics
+        for topic in topics_to_delete:
+            topic_to_delete = next((t for t in note.topics if t.topic == topic), None)
+            if topic_to_delete:
+                topic_to_delete.deleted_at = now
+                modified = True
+        for topic in topics_to_add:
+            note.topics.append(
+                NoteTopic.create_note_topic(note, topic, note.author_uid),
+            )
+            modified = True
+        if modified:
+            note.updated_at = now
+
+    @classmethod
+    def _add_attachment(cls, note, attachment):
+        note.attachments.append(
+            NoteAttachment.create_attachment(
+                note=note,
+                name=attachment['name'],
+                byte_stream=attachment['byte_stream'],
+                uploaded_by=note.author_uid,
+            ),
+        )
+        note.updated_at = utc_now()
+
+    @classmethod
+    def _delete_attachments(cls, note, delete_attachment_ids):
+        modified = False
+        now = utc_now()
+        for attachment in note.attachments:
+            if attachment.id in delete_attachment_ids:
+                attachment.deleted_at = now
+                modified = True
+        if modified:
+            note.updated_at = now
+
+    @classmethod
     def get_notes_by_sid(cls, sid):
-        return cls.query.filter(cls.sid == sid).all()
+        # SQLAlchemy uses "magic methods" to create SQL; it requires '==' instead of 'is'.
+        return cls.query.filter(and_(cls.sid == sid, cls.deleted_at == None)).order_by(cls.updated_at, cls.id).all()  # noqa: E711
+
+    @classmethod
+    def delete(cls, note_id):
+        note = cls.find_by_id(note_id)
+        if note:
+            now = utc_now()
+            note.deleted_at = now
+            for attachment in note.attachments:
+                attachment.deleted_at = now
+            for topic in note.topics:
+                topic.deleted_at = now
+            std_commit()
+            cls.refresh_search_index()
 
     def to_api_json(self):
+        attachments = [a.to_api_json() for a in self.attachments if not a.deleted_at]
+        topics = [t.to_api_json() for t in self.topics if not t.deleted_at]
         return {
             'id': self.id,
+            'attachments': attachments,
             'authorUid': self.author_uid,
             'authorName': self.author_name,
             'authorRole': self.author_role,
@@ -70,6 +249,7 @@ class Note(Base):
             'sid': self.sid,
             'subject': self.subject,
             'body': self.body,
+            'topics': topics,
             'createdAt': self.created_at,
             'updatedAt': self.updated_at,
         }

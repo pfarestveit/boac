@@ -1,22 +1,17 @@
 <template>
   <div class="d-flex">
-    <div class="checkbox-container mr-1">
-      <label
-        id="checkbox-add-all-label"
-        class="sr-only">Select all students to add to a curated group</label>
-      <b-form-checkbox
-        id="add-all-to-curated-group"
-        v-model="isSelectAllChecked"
-        class="add-all-checkbox"
-        plain
-        :disabled="isSaving"
-        :indeterminate="indeterminate"
-        aria-describedby="checkbox-add-all-label"
-        aria-controls="curated-group-dropdown-select"
-        @change="toggle">
-        <span class="sr-only">{{ isSelectAllChecked ? 'Un-select All Students' : 'Select All Students' }}</span>
-      </b-form-checkbox>
-    </div>
+    <b-form-checkbox
+      id="add-all-to-curated-group"
+      v-model="isSelectAllChecked"
+      class="add-all-checkbox mr-1"
+      plain
+      :disabled="isSaving"
+      :indeterminate="indeterminate"
+      aria-describedby="checkbox-add-all-label"
+      aria-controls="curated-group-dropdown-select"
+      @change="toggle">
+      <span id="checkbox-add-all-label" class="sr-only">{{ 'Select all students to add to a curated group' }}</span>
+    </b-form-checkbox>
     <div>
       <b-dropdown
         v-if="showMenu"
@@ -46,24 +41,22 @@
           </span>
         </template>
         <b-dropdown-item v-if="!size(myCuratedGroups)">
-          <span class="cohort-selector-zero-cohorts faint-text">You have no curated groups.</span>
+          <span class="text-nowrap pb-1 pl-3 pr-3 pt-1 faint-text">You have no curated groups.</span>
         </b-dropdown-item>
         <b-dropdown-item
           v-for="group in myCuratedGroups"
           :id="`curated-group-${group.id}-menu-item`"
           :key="group.id"
-          class="b-dd-item-override"
-          @keyup.space.prevent.stop="curatedGroupCheckboxClick(group)">
+          class="b-dd-item-override">
           <input
             :id="`curated-group-${group.id}-checkbox`"
             type="checkbox"
-            :aria-labelledby="`curated-group-${group.id}-name`"
-            @click="curatedGroupCheckboxClick(group)" />
+            :aria-label="`Add students to curated group '${group.name}'`"
+            @click.prevent="curatedGroupCheckboxClick(group)" />
           <label
             :id="`curated-group-${group.id}-name`"
             :for="`curated-group-${group.id}-checkbox`"
-            class="cohort-checkbox-name pb-0 pt-0"
-            :aria-label="`Add students to curated group '${group.name}'`">{{ group.name }}</label>
+            class="curated-checkbox-label pb-0 pt-0">{{ group.name }}</label>
         </b-dropdown-item>
         <b-dropdown-divider></b-dropdown-divider>
         <b-dropdown-item>
@@ -164,18 +157,17 @@ export default {
         this.sids = [];
         this.isSelectAllChecked = this.indeterminate = false;
         this.$eventHub.$emit('curated-group-deselect-all');
-        this.isSaving = false;
         this.gaCuratedEvent(
           group.id,
           group.name,
           `${this.contextDescription}: add students`
         );
       };
-      const done = () => (self.isSaving = false);
+      const done = () => (this.isSaving = false);
       this.isSaving = true;
       addStudents(group, this.sids)
         .then(afterAddStudents)
-        .finally(() => setTimeout(done, 1000));
+        .finally(() => setTimeout(done, 2000));
     },
     modalCreateCuratedGroup(name) {
       this.isSaving = true;
@@ -217,17 +209,14 @@ label {
   margin-bottom: 0;
 }
 .add-all-checkbox {
-  vertical-align: center;
-  padding-left: 25px;
-  padding-top: 3px;
-}
-.checkbox-container {
   background-color: #eee;
   border: 1px solid #aaa;
   border-radius: 4px;
   height: 34px;
-  width: 34px;
+  padding-left: 25px;
+  padding-top: 3px;
   text-align: center;
+  width: 34px;
 }
 .curated-selector {
   height: 35px;

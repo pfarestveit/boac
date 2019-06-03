@@ -102,22 +102,22 @@ class TestCollegeOfEngineering:
 
     def test_authorized_request_for_gender(self, client, coe_advisor):
         """For now, only COE users can access gender data."""
-        response = self._api_students(client, {'genders': ['f']})
+        response = self._api_students(client, {'genders': ['F']})
         assert response.status_code == 200
         students = response.json['students']
         assert len(students) == 2
         assert students[0]['sid'] == '7890123456'
-        assert students[0]['coeProfile']['gender'] == 'w'
+        assert students[0]['coeProfile']['gender'] == 'F'
         assert students[0]['coeProfile']['isActiveCoe'] is True
         assert students[1]['sid'] == '9000000000'
-        assert students[1]['coeProfile']['gender'] == 'w'
+        assert students[1]['coeProfile']['gender'] == 'F'
         assert students[1]['coeProfile']['isActiveCoe'] is False
 
     def test_authorized_request_for_coe_inactive_gender(self, client, coe_advisor):
         response = self._api_students(
             client,
             {
-                'genders': ['f'],
+                'genders': ['F'],
                 'isInactiveCoe': True,
             },
         )
@@ -255,7 +255,7 @@ class TestAthleticsStudyCenter:
 
 
 class TestStudentResultsForFilter:
-    """Student API results for filtered cohort criteria."""
+    """Student API."""
 
     sample_filter = {
         'gpaRanges': ['numrange(3, 3.5, \'[)\')', 'numrange(3.5, 4, \'[]\')'],
@@ -341,7 +341,7 @@ class TestStudentResultsForFilter:
         students = response.json['students']
         assert len(students) == 3
         assert next(s for s in students if s['name'] == 'Siegfried Schlemiel')
-        assert next(s for s in students if s['name'] == 'Wolfgang Pauli')
+        assert next(s for s in students if s['name'] == 'Wolfgang Pauli-O\'Rourke')
         assert next(s for s in students if s['name'] == 'Nora Stanton Barney')
 
 
@@ -391,7 +391,7 @@ class TestAthletics:
 
 @pytest.mark.usefixtures('db_session')
 class TestStudent:
-    """Student Analytics API."""
+    """Student API."""
 
     coe_student = '/api/student/1049291'
     dave = '/api/student/98765'
@@ -696,10 +696,6 @@ class TestStudent:
         assert sis_profile['expectedGraduationTerm']['id'] == '2198'
         assert sis_profile['expectedGraduationTerm']['name'] == 'Fall 2019'
 
-    def test_student_overview_link(self, authenticated_response):
-        """Provides a link to official data about the student."""
-        assert authenticated_response.json['studentProfileLink']
-
     def test_athletics_profile_non_asc(self, authenticated_response):
         """Does not include athletics profile for non-ASC users."""
         assert 'athleticsProfile' not in authenticated_response.json
@@ -728,14 +724,13 @@ class TestStudent:
         coe_profile = response['coeProfile']
         assert coe_profile == {
             'advisorUid': '1133399',
-            'gender': 'w',
+            'gender': 'F',
             'ethnicity': 'B',
             'minority': True,
             'didPrep': False,
             'prepEligible': True,
             'didTprep': False,
             'tprepEligible': False,
-            'probation': False,
             'sat1read': 510,
             'sat2read': 520,
             'sat2math': 620,
@@ -786,10 +781,10 @@ class TestAlerts:
 class TestNotes:
     """Advising Notes API."""
 
-    def test_advising_note(self, client, fake_auth):
+    def test_advising_note(self, client, coe_advising_note_with_attachment, fake_auth):
         """Returns a BOAC-created note."""
-        coe_advisor_uid = '1133399'
-        fake_auth.login(coe_advisor_uid)
+        author_uid = coe_advising_note_with_attachment.author_uid
+        fake_auth.login(author_uid)
         response = client.get('/api/student/61889')
         assert response.status_code == 200
         notes = response.json.get('notifications', {}).get('note')
@@ -800,9 +795,9 @@ class TestNotes:
         author = note['author']
         assert author['name'] == 'Joni Mitchell'
         assert author['role'] == 'Director'
-        assert author['depts'][0] == 'Athletic Study Center'
+        assert author['departments'][0]['name'] == 'Athletic Study Center'
         # This note was not authored by coe_advisor_uid
-        assert author['uid'] == '6446'
+        assert author['uid'] == author_uid
 
     def test_legacy_advising_note(self, client, fake_auth):
         """Returns a legacy note."""
@@ -819,7 +814,7 @@ class TestNotes:
         author = note['author']
         assert not author['name']
         assert not author['role']
-        assert not len(author['depts'])
+        assert not len(author['departments'])
         advisor_sid = '800700600'
         assert author['sid'] == advisor_sid
         # Lazy-load author info, as performed on front-end
@@ -828,8 +823,8 @@ class TestNotes:
         user = response.json
         assert user['csid'] == advisor_sid
         assert user['name'] == 'Roberta Joan Anderson'
-        assert user['deptCode'] == 'QCADV'
-        assert user['depts'] == ['L&S Undergraduate Advising']
+        assert user['departments'][0]['code'] == 'QCADV'
+        assert user['departments'][0]['name'] == 'L&S Undergraduate Advising'
 
 
 class TestStudentPhoto:
@@ -856,6 +851,58 @@ class TestStudentPhoto:
         response = client.get('/api/student/242881/photo')
         assert response.status_code == 204
         assert response.headers.get('Content-Length') == '0'
+
+
+class TestValidateSids:
+    """Student API."""
+
+    @staticmethod
+    def _api_validate_sids(client, sids=(), expected_status_code=200):
+        response = client.post(
+            '/api/students/validate_sids',
+            content_type='application/json',
+            data=json.dumps({
+                'sids': sids,
+            }),
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_validate_sids_not_authenticated(self, client):
+        """Requires authentication."""
+        self._api_validate_sids(client, expected_status_code=401)
+
+    def test_validate_sids_with_invalid_sid(self, client, coe_advisor):
+        """Complains about non-numeric SID."""
+        self._api_validate_sids(client, sids=['7890123456', 'ABC'], expected_status_code=400)
+
+    def test_validate_sids_with_some_invalid(self, client, coe_advisor):
+        """SID status is 401 if advisor is not authorized to view student's profile."""
+        api_json = self._api_validate_sids(
+            client,
+            sids=['7890123456', '9999999999', '2345678901'],
+            expected_status_code=200,
+        )
+        assert len(api_json) == 3
+        assert api_json[0]['sid'] == '7890123456'
+        assert api_json[0]['status'] == 200
+        assert api_json[1]['sid'] == '9999999999'
+        assert api_json[1]['status'] == 404
+        assert api_json[2]['sid'] == '2345678901'
+        assert api_json[2]['status'] == 401
+
+    def test_validate_sids_by_admin(self, client, admin_login):
+        """Admin has access to all students."""
+        api_json = self._api_validate_sids(
+            client,
+            sids=['11667051', '2345678901'],
+            expected_status_code=200,
+        )
+        assert len(api_json) == 2
+        assert api_json[0]['sid'] == '11667051'
+        assert api_json[0]['status'] == 200
+        assert api_json[1]['sid'] == '2345678901'
+        assert api_json[1]['status'] == 200
 
 
 def _get_common_sids(student_list_1, student_list_2):

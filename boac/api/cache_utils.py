@@ -31,6 +31,7 @@ from boac.externals import data_loch
 from boac.lib import berkeley
 from boac.models import json_cache
 from boac.models.alert import Alert
+from boac.models.curated_group import CuratedGroupStudent
 from boac.models.job_progress import JobProgress
 from boac.models.json_cache import JsonCache
 from flask import current_app as app
@@ -211,8 +212,8 @@ def load_term(term_id=berkeley.current_term_id()):
     if term_id == berkeley.current_term_id():
         JobProgress().update(f'About to load filtered cohort counts')
         load_filtered_cohort_counts()
-        JobProgress().update(f'About to update curated cohort memberships')
-        update_curated_cohort_lists()
+        JobProgress().update(f'About to update curated group memberships')
+        update_curated_group_lists()
 
 
 def refresh_alerts(term_id):
@@ -232,15 +233,14 @@ def load_filtered_cohort_counts():
         cohort.to_api_json(include_students=False, include_alerts_for_user_id=owner_id)
 
 
-def update_curated_cohort_lists():
-    """Remove no-longer-accessible students from curated cohort lists."""
-    from boac.models.curated_cohort import CuratedCohort
-    for cohort in CuratedCohort.query.all():
-        member_sids = [s.sid for s in cohort.students]
-        available_students = [s['sid'] for s in data_loch.get_student_profiles(member_sids)]
-        if len(member_sids) > len(available_students):
-            cohort_id = cohort.id
-            unavailable_sids = set(member_sids) - set(available_students)
-            app.logger.info(f'Deleting inaccessible SIDs from cohort ID {cohort_id} : {unavailable_sids}')
+def update_curated_group_lists():
+    """Remove no-longer-accessible students from curated group lists."""
+    from boac.models.curated_group import CuratedGroup
+    for curated_group in CuratedGroup.query.all():
+        all_sids = CuratedGroupStudent.get_sids(curated_group.id)
+        available_students = [s['sid'] for s in data_loch.get_student_profiles(all_sids)]
+        if len(all_sids) > len(available_students):
+            unavailable_sids = set(all_sids) - set(available_students)
+            app.logger.info(f'Deleting inaccessible SIDs from curated group {curated_group.id}: {unavailable_sids}')
             for sid in unavailable_sids:
-                CuratedCohort.remove_student(cohort_id, sid)
+                CuratedGroup.remove_student(curated_group.id, sid)

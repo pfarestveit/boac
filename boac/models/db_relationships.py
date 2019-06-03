@@ -23,7 +23,6 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from datetime import datetime
 
 from boac import db, std_commit
@@ -37,14 +36,6 @@ cohort_filter_owners = db.Table(
     db.Column('cohort_filter_id', db.Integer, db.ForeignKey('cohort_filters.id'), primary_key=True),
     db.Column('user_id', db.Integer, db.ForeignKey('authorized_users.id'), primary_key=True),
 )
-
-
-class CuratedCohortStudent(db.Model):
-    __tablename__ = 'student_group_members'
-
-    curated_cohort_id = db.Column('student_group_id', db.Integer, db.ForeignKey('student_groups.id'), primary_key=True)
-    sid = db.Column('sid', db.String(80), primary_key=True)
-    curated_cohort = db.relationship('CuratedCohort', back_populates='students')
 
 
 class UniversityDeptMember(Base):

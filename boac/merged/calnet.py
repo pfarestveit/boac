@@ -25,12 +25,20 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 from boac.externals import calnet
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
-from boac.models.json_cache import stow
+from boac.models.json_cache import fetch_bulk, insert_row, stow
 
 
 @stow('calnet_user_for_uid_{uid}')
-def get_calnet_user_for_uid(app, uid):
-    persons = calnet.client(app).search_uids([uid])
+def get_calnet_user_for_uid(app, uid, force_feed=True, skip_expired_users=False):
+    if skip_expired_users:
+        persons = calnet.client(app).search_uids([uid])
+    else:
+        for search_expired in (False, True):
+            persons = calnet.client(app).search_uids([uid], search_expired)
+            if persons:
+                break
+    if not persons and not force_feed:
+        return None
     return {
         **_calnet_user_api_feed(persons[0] if len(persons) else None),
         **{'uid': uid},
@@ -39,7 +47,10 @@ def get_calnet_user_for_uid(app, uid):
 
 @stow('calnet_user_for_csid_{csid}')
 def get_calnet_user_for_csid(app, csid):
-    persons = calnet.client(app).search_csids([csid])
+    for search_expired in (False, True):
+        persons = calnet.client(app).search_csids([csid], search_expired)
+        if persons:
+            break
     return {
         **_calnet_user_api_feed(persons[0] if len(persons) else None),
         **{'csid': csid},
@@ -47,26 +58,59 @@ def get_calnet_user_for_csid(app, csid):
 
 
 def get_calnet_users_for_csids(app, csids):
-    persons = calnet.client(app).search_csids(csids)
-    return {person['csid']: _calnet_user_api_feed(person) for person in persons}
+    cached_users = fetch_bulk([f'calnet_user_for_csid_{csid}' for csid in csids])
+    users_by_csid = {k.replace('calnet_user_for_csid_', ''): v for k, v in cached_users.items()}
+    uncached_csids = [c for c in csids if c not in users_by_csid]
+    calnet_results = calnet.client(app).search_csids(uncached_csids)
+    # Cache rows individually so that an isolated conflict doesn't sink the rest of the update.
+    for csid in uncached_csids:
+        calnet_result = next((r for r in calnet_results if r['csid'] == csid), None)
+        feed = {
+            **_calnet_user_api_feed(calnet_result),
+            **{'csid': csid},
+        }
+        insert_row(f'calnet_user_for_csid_{csid}', feed)
+        users_by_csid[csid] = feed
+    return users_by_csid
+
+
+def get_uid_for_csid(app, csid):
+    user_feed = get_calnet_user_for_csid(app, csid)
+    if user_feed:
+        return user_feed.get('uid')
 
 
 def _calnet_user_api_feed(person):
     def _get(key):
         return person and person[key]
-
-    dept_names = None
-    dept_code = _get('dept_code')
-    if isinstance(dept_code, list):
-        dept_names = [BERKELEY_DEPT_CODE_TO_NAME.get(code) for code in dept_code]
-    elif dept_code:
-        dept_names = [BERKELEY_DEPT_CODE_TO_NAME.get(dept_code)]
+    # Array of departments is compatible with BOAC user schema.
+    departments = []
+    dept_code = _get_dept_code(person)
+    if dept_code:
+        departments.append({
+            'code': dept_code,
+            'name': BERKELEY_DEPT_CODE_TO_NAME.get(dept_code) if dept_code in BERKELEY_DEPT_CODE_TO_NAME else dept_code,
+        })
     return {
-        'uid': _get('uid'),
-        'csid': _get('csid'),
+        'campusEmail': _get('campus_email'),
+        'departments': departments,
+        'email': _get('email'),
         'firstName': _get('first_name'),
+        'isExpiredPerLdap': _get('expired'),
         'lastName': _get('last_name'),
         'name': _get('name'),
-        'deptCode': dept_code,
-        'depts': dept_names,
+        'csid': _get('csid'),
+        'title': _get('title'),
+        'uid': _get('uid'),
     }
+
+
+def _get_dept_code(p):
+    def dept_code_fallback():
+        dept_hierarchy = p['dept_unit_hierarchy']
+        if dept_hierarchy:
+            dept_hierarchy = dept_hierarchy[0] if isinstance(dept_hierarchy, list) else dept_hierarchy
+            return dept_hierarchy.rsplit('-', 1)[-1] if dept_hierarchy else None
+        else:
+            return None
+    return p and (p['primary_dept_code'] or p['dept_code'] or p['calnet_dept_code'] or dept_code_fallback())
