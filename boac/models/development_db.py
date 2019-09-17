@@ -23,85 +23,140 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from datetime import datetime
+import random
+import string
+
 from boac import db, std_commit
-from boac.lib.berkeley import BERKELEY_DEPT_NAME_TO_CODE
+from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 from boac.models.curated_group import CuratedGroup
+from boac.models.json_cache import insert_row as insert_in_json_cache
+from boac.models.topic import Topic
 from boac.models.university_dept import UniversityDept
+from boac.models.university_dept_member import UniversityDeptMember
 # Models below are included so that db.create_all will find them.
 from boac.models.alert import Alert # noqa
-from boac.models.db_relationships import AlertView, cohort_filter_owners, UniversityDeptMember  # noqa
+from boac.models.db_relationships import AlertView, cohort_filter_owners  # noqa
 from boac.models.job_progress import JobProgress # noqa
 from boac.models.json_cache import JsonCache # noqa
 from flask import current_app as app
 from sqlalchemy.sql import text
 
 
+no_calnet_record_for_uid = '13'
+
 _test_users = [
-    ['13', True, False],  # This user has no entry in calnet_search_entries
-    ['2040', True, True],
-    ['53791', True, False],
-    ['95509', True, False],
-    ['177473', True, False],
-    ['1133399', False, False],
-    ['211159', True, False],
-    ['242881', True, False],
-    ['1022796', False, False],
-    ['1015674', False, False],
-    ['1049291', True, False],
-    ['1081940', False, False],
-    ['90412', True, False],
-    ['6446', False, False],
+    [no_calnet_record_for_uid, None, True, False, True],  # This user has no entry in calnet_search_entries
+    ['1', '111111111', None, True, False, False],
+    ['2', '222222222', None, True, False, False],
+    ['2040', None, True, True, True],
+    ['53791', None, True, False, True],
+    ['95509', None, True, False, True],
+    ['177473', None, True, False, True],
+    ['1133399', '800700600', False, False, True],
+    ['211159', None, True, False, True],
+    ['242881', '100100600', False, False, True, 'HENGL', 'Harmless Drudge'],
+    ['1022796', '100100300', False, False, True],
+    ['1015674', None, False, False, True],
+    ['1049291', None, True, False, True],
+    ['1081940', '100200300', False, False, True],
+    ['90412', '100100100', True, False, True],
+    ['6446', None, False, False, True],
 ]
 
-_users_per_dept = {
-    'COENG': [
-        {
-            'uid': '1022796',
-            'is_advisor': False,
-            'is_director': True,
-        },
-        {
-            'uid': '90412',
-            'is_advisor': True,
-            'is_director': True,
-        },
-        {
-            'uid': '1133399',
-            'is_advisor': True,
-            'is_director': False,
-        },
-        {
-            'uid': '13',
-            'is_advisor': True,
-            'is_director': False,
-        },
-    ],
-    'PHYSI': [
-        {
-            'uid': '53791',
-            'is_advisor': False,
-            'is_director': True,
-        },
-    ],
-    'UWASC': [
-        {
-            'uid': '1081940',
-            'is_advisor': True,
-            'is_director': False,
-        },
-        {
-            'uid': '90412',
-            'is_advisor': False,
-            'is_director': True,
-        },
-        {
-            'uid': '6446',
-            'is_advisor': True,
-            'is_director': True,
-        },
-    ],
+_university_depts = {
+    'COENG': {
+        'users': [
+            {
+                'uid': '1022796',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': True,
+            },
+            {
+                'uid': '90412',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': True,
+            },
+            {
+                'uid': '1133399',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': True,
+            },
+            {
+                'uid': '13',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': True,
+            },
+        ],
+    },
+    'QCADV': {
+        'users': [
+            {
+                'uid': '53791',
+                'is_advisor': False,
+                'is_director': True,
+                'automate_membership': False,
+            },
+        ],
+    },
+    'QCADVMAJ': {
+        'users': [
+            {
+                'uid': '242881',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': True,
+            },
+        ],
+    },
+    'UWASC': {
+        'users': [
+            {
+                'uid': '1081940',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': False,
+            },
+            {
+                'uid': '90412',
+                'is_advisor': False,
+                'is_director': True,
+                'automate_membership': False,
+            },
+            {
+                'uid': '6446',
+                'is_advisor': True,
+                'is_director': True,
+                'automate_membership': False,
+            },
+        ],
+    },
+    'ZZZZZ': {
+        'users': [
+            {
+                'uid': '1',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': True,
+            },
+        ],
+    },
+    'GUEST': {
+        'users': [
+            {
+                'uid': '2',
+                'is_advisor': True,
+                'is_director': False,
+                'automate_membership': False,
+            },
+        ],
+    },
 }
 
 
@@ -116,6 +171,7 @@ def load(cohort_test_data=False):
     load_schemas()
     load_development_data()
     if cohort_test_data:
+        create_advising_note_topics()
         create_curated_groups()
         create_cohorts()
     return db
@@ -130,24 +186,63 @@ def load_schemas():
 
 
 def load_development_data():
-    for name, code in BERKELEY_DEPT_NAME_TO_CODE.items():
+    for code, name in BERKELEY_DEPT_CODE_TO_NAME.items():
         UniversityDept.create(code, name)
     for test_user in _test_users:
         # This script can be run more than once. Do not create user if s/he exists in BOAC db.
-        user = AuthorizedUser.find_by_uid(uid=test_user[0])
+        uid = test_user[0]
+        csid = test_user[1]
+        user = AuthorizedUser.find_by_uid(uid=uid)
+        if uid != no_calnet_record_for_uid:
+            # Put mock CalNet data in our json_cache for all users EXCEPT the test "no_calnet_record" user.
+            first_name = ''.join(random.choices(string.ascii_uppercase, k=6))
+            last_name = ''.join(random.choices(string.ascii_uppercase, k=6))
+            calnet_feed = {
+                'uid': uid,
+                # Mock CSIDs are random unless we need them to correspond to test data elsewhere.
+                'csid': csid or datetime.now().strftime('%H%M%S%f'),
+                'firstName': first_name,
+                'lastName': last_name,
+                'name': f'{first_name} {last_name}',
+            }
+            if len(test_user) > 5:
+                calnet_feed['departments'] = [
+                    {
+                        'code': test_user[5],
+                        'name': BERKELEY_DEPT_CODE_TO_NAME.get(test_user[5]),
+                    },
+                ]
+            if len(test_user) > 6:
+                calnet_feed['title'] = test_user[6]
+            insert_in_json_cache(f'calnet_user_for_uid_{uid}', calnet_feed)
         if not user:
-            user = AuthorizedUser(uid=test_user[0], is_admin=test_user[1], in_demo_mode=test_user[2])
+            user = AuthorizedUser(
+                uid=uid,
+                is_admin=test_user[2],
+                in_demo_mode=test_user[3],
+                can_access_canvas_data=test_user[4],
+            )
             db.session.add(user)
-    for dept_code, users in _users_per_dept.items():
+    for dept_code, dept_membership in _university_depts.items():
         university_dept = UniversityDept.find_by_dept_code(dept_code)
-        for user in users:
+        db.session.add(university_dept)
+        for user in dept_membership['users']:
             authorized_user = AuthorizedUser.find_by_uid(user['uid'])
             UniversityDeptMember.create_membership(
                 university_dept,
                 authorized_user,
                 user['is_advisor'],
                 user['is_director'],
+                user['automate_membership'],
             )
+    std_commit(allow_test_environment=True)
+
+
+def create_advising_note_topics():
+    for i in range(5):
+        Topic.create_topic(f'Topic {i}')
+    delete_me = Topic.create_topic('I am a deleted topic')
+    Topic.delete(delete_me.id)
     std_commit(allow_test_environment=True)
 
 
@@ -239,7 +334,7 @@ def create_cohorts():
         uid=coe_advisor_uid,
         name='Roberta\'s Students',
         filter_criteria={
-            'advisorLdapUids': [coe_advisor_uid],
+            'coeAdvisorLdapUids': [coe_advisor_uid],
         },
     )
     CohortFilter.create(

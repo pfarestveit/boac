@@ -23,12 +23,14 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+import json
+import time
 
 from boac import db, std_commit
-from boac.lib.util import titleize, utc_now, vacuum_whitespace
-from boac.merged.calnet import get_uid_for_csid
+from boac.lib.util import put_attachment_to_s3, titleize, utc_now, vacuum_whitespace
 from boac.models.base import Base
 from boac.models.note_attachment import NoteAttachment
+from boac.models.note_template_attachment import NoteTemplateAttachment
 from boac.models.note_topic import NoteTopic
 from flask import current_app as app
 from sqlalchemy import and_
@@ -75,18 +77,38 @@ class Note(Base):
         return cls.query.filter(and_(cls.id == note_id, cls.deleted_at == None)).first()  # noqa: E711
 
     @classmethod
-    def create(cls, author_uid, author_name, author_role, author_dept_codes, sid, subject, body, topics=(), attachments=()):
+    def create(
+            cls,
+            author_uid,
+            author_name,
+            author_role,
+            author_dept_codes,
+            sid,
+            subject,
+            body,
+            topics=(),
+            attachments=(),
+            template_attachment_ids=(),
+    ):
         note = cls(author_uid, author_name, author_role, author_dept_codes, sid, subject, body)
         for topic in topics:
             note.topics.append(
-                NoteTopic.create_note_topic(note, titleize(vacuum_whitespace(topic)), author_uid),
+                NoteTopic.create(note, titleize(vacuum_whitespace(topic)), author_uid),
             )
         for byte_stream_bundle in attachments:
             note.attachments.append(
-                NoteAttachment.create_attachment(
-                    note=note,
+                NoteAttachment.create(
+                    note_id=note.id,
                     name=byte_stream_bundle['name'],
                     byte_stream=byte_stream_bundle['byte_stream'],
+                    uploaded_by=author_uid,
+                ),
+            )
+        for template_attachment in NoteTemplateAttachment.get_attachments(template_attachment_ids):
+            note.attachments.append(
+                NoteAttachment.create_using_template_attachment(
+                    note_id=note.id,
+                    template_attachment=template_attachment,
                     uploaded_by=author_uid,
                 ),
             )
@@ -96,18 +118,75 @@ class Note(Base):
         return note
 
     @classmethod
-    def search(cls, search_phrase, sid_filter, author_csid, topic):
-        params = {
-            'search_phrase': search_phrase,
-            'sid_filter': sid_filter,
-        }
-        author_uid = get_uid_for_csid(app, author_csid) if author_csid else None
+    def create_batch(
+            cls,
+            author_id,
+            author_uid,
+            author_name,
+            author_role,
+            author_dept_codes,
+            sids,
+            subject,
+            body,
+            topics=(),
+            attachments=(),
+            template_attachment_ids=(),
+    ):
+        t = time.time()
+        note_ids_per_sid = _create_notes(
+            author_id=author_id,
+            author_uid=author_uid,
+            author_name=author_name,
+            author_role=author_role,
+            author_dept_codes=author_dept_codes,
+            body=body,
+            sids=sids,
+            subject=subject,
+        )
+        note_ids = list(note_ids_per_sid.values())
+        _add_topics_to_notes(author_uid=author_uid, note_ids=note_ids, topics=topics)
+        _add_attachments_to_notes(
+            attachments=attachments,
+            template_attachment_ids=template_attachment_ids,
+            author_uid=author_uid,
+            note_ids=note_ids,
+        )
+        cls.refresh_search_index()
+        app.logger.info(f'Batch note creation: {len(sids)} records inserted in {str(time.time() - t)} seconds')
+        return note_ids_per_sid
+
+    @classmethod
+    def search(cls, search_phrase, author_uid, student_csid, topic, datetime_from, datetime_to):
+        if search_phrase:
+            fts_selector = """SELECT id, ts_rank(fts_index, plainto_tsquery('english', :search_phrase)) AS rank
+                FROM notes_fts_index
+                WHERE fts_index @@ plainto_tsquery('english', :search_phrase)"""
+            params = {
+                'search_phrase': search_phrase,
+            }
+        else:
+            fts_selector = 'SELECT id, 0 AS rank FROM notes WHERE deleted_at IS NULL'
+            params = {}
+
         if author_uid:
             author_filter = 'AND notes.author_uid = :author_uid'
             params.update({'author_uid': author_uid})
         else:
             author_filter = ''
 
+        if student_csid:
+            student_filter = 'AND notes.sid = :student_csid'
+            params.update({'student_csid': student_csid})
+        else:
+            student_filter = ''
+
+        date_filter = ''
+        if datetime_from:
+            date_filter += ' AND updated_at >= :datetime_from'
+            params.update({'datetime_from': datetime_from})
+        if datetime_to:
+            date_filter += ' AND updated_at < :datetime_to'
+            params.update({'datetime_to': datetime_to})
         if topic:
             topic_join = 'JOIN note_topics nt on nt.topic = :topic AND nt.note_id = notes.id'
             params.update({'topic': topic})
@@ -115,15 +194,12 @@ class Note(Base):
             topic_join = ''
 
         query = text(f"""
-            SELECT notes.* FROM (
-                SELECT id, ts_rank(fts_index, plainto_tsquery('english', :search_phrase)) AS rank
-                FROM notes_fts_index
-                WHERE fts_index @@ plainto_tsquery('english', :search_phrase)
-            ) AS fts
+            SELECT notes.* FROM ({fts_selector}) AS fts
             JOIN notes
                 ON fts.id = notes.id
-                AND notes.sid = ANY(:sid_filter)
                 {author_filter}
+                {student_filter}
+                {date_filter}
             {topic_join}
             ORDER BY fts.rank DESC, notes.id
         """).bindparams(**params)
@@ -137,16 +213,12 @@ class Note(Base):
         std_commit()
 
     @classmethod
-    def update(cls, note_id, subject, body, topics=(), attachments=(), delete_attachment_ids=()):
+    def update(cls, note_id, subject, body=None, topics=()):
         note = cls.find_by_id(note_id=note_id)
         if note:
             note.subject = subject
             note.body = body
-            cls._update_topics(note, topics)
-            if delete_attachment_ids:
-                cls._delete_attachments(note, delete_attachment_ids)
-            for byte_stream_bundle in attachments:
-                cls._add_attachment(note, byte_stream_bundle)
+            cls._update_note_topics(note, topics)
             std_commit()
             db.session.refresh(note)
             cls.refresh_search_index()
@@ -175,7 +247,7 @@ class Note(Base):
             return None
 
     @classmethod
-    def _update_topics(cls, note, topics):
+    def _update_note_topics(cls, note, topics):
         modified = False
         now = utc_now()
         topics = set([titleize(vacuum_whitespace(topic)) for topic in topics])
@@ -189,7 +261,7 @@ class Note(Base):
                 modified = True
         for topic in topics_to_add:
             note.topics.append(
-                NoteTopic.create_note_topic(note, topic, note.author_uid),
+                NoteTopic.create(note, topic, note.author_uid),
             )
             modified = True
         if modified:
@@ -198,8 +270,8 @@ class Note(Base):
     @classmethod
     def _add_attachment(cls, note, attachment):
         note.attachments.append(
-            NoteAttachment.create_attachment(
-                note=note,
+            NoteAttachment.create(
+                note_id=note.id,
                 name=attachment['name'],
                 byte_stream=attachment['byte_stream'],
                 uploaded_by=note.author_uid,
@@ -253,3 +325,102 @@ class Note(Base):
             'createdAt': self.created_at,
             'updatedAt': self.updated_at,
         }
+
+
+def _create_notes(author_id, author_uid, author_name, author_role, author_dept_codes, body, sids, subject):
+    note_ids_per_sid = {}
+    now = utc_now().strftime('%Y-%m-%dT%H:%M:%S+00')
+    # The syntax of the following is what Postgres expects in json_populate_recordset(...)
+    joined_author_dept_codes = '{' + ','.join(author_dept_codes) + '}'
+    count_per_chunk = 10000
+    for chunk in range(0, len(sids), count_per_chunk):
+        sids_subset = sids[chunk:chunk + count_per_chunk]
+        query = """
+            INSERT INTO notes (author_dept_codes, author_name, author_role, author_uid, body, sid, subject, created_at, updated_at)
+            SELECT author_dept_codes, author_name, author_role, author_uid, body, sid, subject, created_at, updated_at
+            FROM json_populate_recordset(null::notes, :json_dumps)
+            RETURNING id, sid;
+        """
+        data = [
+            {
+                'author_uid': author_uid,
+                'author_name': author_name,
+                'author_role': author_role,
+                'author_dept_codes': joined_author_dept_codes,
+                'sid': sid,
+                'subject': subject,
+                'body': body,
+                'created_at': now,
+                'updated_at': now,
+            } for sid in sids_subset
+        ]
+        results_of_chunk_query = {}
+        for row in db.session.execute(query, {'json_dumps': json.dumps(data)}):
+            sid = row['sid']
+            results_of_chunk_query[sid] = row['id']
+        # Yes, the note author has read the note.
+        notes_read_query = """
+            INSERT INTO notes_read (note_id, viewer_id, created_at)
+            SELECT note_id, viewer_id, created_at
+            FROM json_populate_recordset(null::notes_read, :json_dumps)
+        """
+        notes_read_data = [
+            {
+                'note_id': note_id,
+                'viewer_id': author_id,
+                'created_at': now,
+            } for note_id in results_of_chunk_query.values()
+        ]
+        db.session.execute(notes_read_query, {'json_dumps': json.dumps(notes_read_data)})
+        note_ids_per_sid.update(results_of_chunk_query)
+    return note_ids_per_sid
+
+
+def _add_topics_to_notes(author_uid, note_ids, topics):
+    for prepared_topic in [titleize(vacuum_whitespace(topic)) for topic in topics]:
+        count_per_chunk = 10000
+        for chunk in range(0, len(note_ids), count_per_chunk):
+            query = """
+                INSERT INTO note_topics (author_uid, note_id, topic)
+                SELECT author_uid, note_id, topic
+                FROM json_populate_recordset(null::note_topics, :json_dumps);
+            """
+            note_ids_subset = note_ids[chunk:chunk + count_per_chunk]
+            data = [
+                {
+                    'author_uid': author_uid,
+                    'note_id': note_id,
+                    'topic': prepared_topic,
+                } for note_id in note_ids_subset
+            ]
+            db.session.execute(query, {'json_dumps': json.dumps(data)})
+
+
+def _add_attachments_to_notes(attachments, template_attachment_ids, author_uid, note_ids):
+    now = utc_now().strftime('%Y-%m-%d %H:%M:%S')
+
+    def _add_attachment(_s3_path):
+        count_per_chunk = 10000
+        for chunk in range(0, len(note_ids), count_per_chunk):
+            query = """
+                INSERT INTO note_attachments (created_at, note_id, path_to_attachment, uploaded_by_uid)
+                SELECT created_at, note_id, path_to_attachment, uploaded_by_uid
+                FROM json_populate_recordset(null::note_attachments, :json_dumps);
+            """
+            note_ids_subset = note_ids[chunk:chunk + count_per_chunk]
+            data = [
+                {
+                    'created_at': now,
+                    'note_id': note_id,
+                    'path_to_attachment': _s3_path,
+                    'uploaded_by_uid': author_uid,
+                } for note_id in note_ids_subset
+            ]
+            db.session.execute(query, {'json_dumps': json.dumps(data)})
+
+    for byte_stream_bundle in attachments:
+        s3_path = put_attachment_to_s3(name=byte_stream_bundle['name'], byte_stream=byte_stream_bundle['byte_stream'])
+        _add_attachment(s3_path)
+    if template_attachment_ids:
+        for template_attachment in NoteTemplateAttachment.get_attachments(template_attachment_ids):
+            _add_attachment(template_attachment.path_to_attachment)

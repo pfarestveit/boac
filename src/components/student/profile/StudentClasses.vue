@@ -1,13 +1,6 @@
 <template>
   <div id="student-terms-container" class="m-3">
     <h2 class="student-section-header">Classes</h2>
-    <div v-if="student.sisProfile.withdrawalCancel">
-      <span class="red-flag-small">
-        {{ student.sisProfile.withdrawalCancel.description }}
-        ({{ student.sisProfile.withdrawalCancel.reason }})
-        {{ student.sisProfile.withdrawalCancel.date | moment('MMM DD, YYYY') }}
-      </span>
-    </div>
     <div
       v-for="(term, index) in (showAllTerms ? student.enrollmentTerms : relevantTerms)"
       :key="index"
@@ -17,8 +10,16 @@
         class="term-no-enrollments">
         <h3 class="student-term-header">{{ currentEnrollmentTerm }}</h3>
         <div class="term-no-enrollments-description">No enrollments</div>
+        <StudentWithdrawalCancel
+          v-if="student.sisProfile.withdrawalCancel"
+          :withdrawal="student.sisProfile.withdrawalCancel"
+          :term-id="currentEnrollmentTermId" />
       </div>
       <h3 :id="`term-header-${index}`" tabindex="0" class="student-term-header">{{ term.termName }}</h3>
+      <StudentWithdrawalCancel
+        v-if="student.sisProfile.withdrawalCancel"
+        :withdrawal="student.sisProfile.withdrawalCancel"
+        :term-id="term.termId" />
       <div v-for="(course, courseIndex) in term.enrollments" :key="courseIndex" class="student-course">
         <div class="student-course-heading">
           <div class="student-course-heading-start">
@@ -29,13 +30,14 @@
                   <h4 class="student-course-title">{{ course.displayName }}</h4>
                 </div>
                 <b-btn
+                  v-if="user.canAccessCanvasData && !student.fullProfilePending"
                   :id="`term-${term.termId}-course-${courseIndex}-toggle`"
                   v-b-toggle="`course-canvas-data-${term.termId}-${courseIndex}`"
                   class="student-course-collapse-button"
                   variant="link">
-                  <i class="when-course-closed fas fa-caret-right"></i>
+                  <font-awesome icon="caret-right" class="when-course-closed" />
                   <span class="when-course-closed sr-only">Show course details</span>
-                  <i class="when-course-open fas fa-caret-down"></i>
+                  <font-awesome icon="caret-down" class="when-course-open" />
                   <span class="when-course-open sr-only">Hide course details</span>
                 </b-btn>
               </div>
@@ -50,14 +52,16 @@
 v-if="section.isViewableOnCoursePage"
                            :id="`term-${term.termId}-section-${section.ccn}`"
                       :to="`/course/${term.termId}/${section.ccn}?u=${student.uid}`">{{ section.displayName }}</router-link><!--
-                        --><span v-if="!section.isViewableOnCoursePage">
-                      {{ section.displayName }}</span><!--
+                        --><span v-if="!section.isViewableOnCoursePage">{{ section.displayName }}</span><!--
                         --><span v-if="sectionIndex < course.sections.length - 1"> | </span><!--
                         --><span v-if="sectionIndex === course.sections.length - 1">)</span>
                     </span>
                   </span>
                 </div>
-                <span v-if="course.waitlisted" class="pl-1 red-flag-status">WAITLISTED</span>
+                <span
+                  v-if="course.waitlisted"
+                  :id="`student-${student.uid}-waitlisted-for-${term.termId}-${course.sections.length ? course.sections[0].ccn : course.displayName}`"
+                  class="pl-1 red-flag-status">WAITLISTED</span>
               </div>
             </div>
             <div class="student-course-name">{{ course.title }}</div>
@@ -93,7 +97,10 @@ v-if="section.isViewableOnCoursePage"
             </div>
           </div>
         </div>
-        <b-collapse :id="`course-canvas-data-${term.termId}-${courseIndex}`" class="panel-body">
+        <b-collapse
+          v-if="user.canAccessCanvasData && !student.fullProfilePending"
+          :id="`course-canvas-data-${term.termId}-${courseIndex}`"
+          class="panel-body">
           <div v-for="(canvasSite, csIndex) in course.canvasSites" :key="csIndex" class="student-bcourses-wrapper">
             <h5 class="student-bcourses-site-code">
               <span class="sr-only">Course Site</span>
@@ -114,19 +121,33 @@ v-if="section.isViewableOnCoursePage"
                     No Assignments
                   </span>
                 </td>
-                <td>
-                  <span v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
-                    Score:
-                    <strong>{{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</strong>
-                    <span class="text-muted">
-                      (Maximum: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }})
+                <td class="profile-boxplot-container">
+                  <StudentBoxplot
+                    v-if="canvasSite.analytics.assignmentsSubmitted.boxPlottable"
+                    :dataset="canvasSite.analytics.assignmentsSubmitted"
+                    :numeric-id="canvasSite.canvasCourseId.toString()" />
+                  <div v-if="canvasSite.analytics.assignmentsSubmitted.boxPlottable" class="sr-only">
+                    <div>User score: {{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</div>
+                    <div>Maximum: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }}</div>
+                    <div>70th Percentile: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[7] }}</div>
+                    <div>50th Percentile: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[5] }}</div>
+                    <div>30th Percentile: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[3] }}</div>
+                    <div>Minimum: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[0] }}</div>
+                  </div>
+                  <div v-if="!canvasSite.analytics.assignmentsSubmitted.boxPlottable">
+                    <span v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
+                      Score:
+                      <strong>{{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</strong>
+                      <span class="text-muted">
+                        (Maximum: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }})
+                      </span>
                     </span>
-                  </span>
-                  <span
-                    v-if="!canvasSite.analytics.assignmentsSubmitted.courseDeciles"
-                    class="font-italic text-muted">
-                    No Data
-                  </span>
+                    <span
+                      v-if="!canvasSite.analytics.assignmentsSubmitted.courseDeciles"
+                      class="font-italic text-muted">
+                      No Data
+                    </span>
+                  </div>
                 </td>
               </tr>
               <tr>
@@ -146,7 +167,7 @@ v-if="section.isViewableOnCoursePage"
                 <td class="profile-boxplot-container">
                   <StudentBoxplot
                     v-if="canvasSite.analytics.currentScore.boxPlottable"
-                    :dataset="canvasSite.analytics"
+                    :dataset="canvasSite.analytics.currentScore"
                     :numeric-id="canvasSite.canvasCourseId.toString()" />
                   <div v-if="canvasSite.analytics.currentScore.boxPlottable" class="sr-only">
                     <div>User score: {{ canvasSite.analytics.currentScore.student.raw }}</div>
@@ -223,7 +244,7 @@ v-if="section.isViewableOnCoursePage"
           <div class="font-weight-bold">
             {{ droppedSection.displayName }} - {{ droppedSection.component }} {{ droppedSection.sectionNumber }}
             <div class="student-course-notation">
-              <i class="fas fa-exclamation-triangle student-course-dropped-icon"></i> Dropped
+              <font-awesome icon="exclamation-triangle" class="student-course-dropped-icon" /> Dropped
             </div>
           </div>
         </div>
@@ -234,21 +255,13 @@ v-if="section.isViewableOnCoursePage"
         id="toggle-show-all-terms"
         variant="link"
         @click.prevent="toggleShowAllTerms()">
-        <i
-          :class="{
-            'fas fa-caret-right': !showAllTerms,
-            'fas fa-caret-up': showAllTerms
-          }"></i>
+        <font-awesome :icon="showAllTerms ? 'caret-up' : 'caret-right'" />
         <span class="no-wrap pl-1">{{ showAllTerms ? 'Hide' : 'Show' }} Previous Semesters</span>
       </b-btn>
     </div>
     <div v-if="isEmpty(student.enrollmentTerms)">
       No courses
-      <div v-if="student.sisProfile.withdrawalCancel">
-        <span class="red-flag-small">
-          {{ student.sisProfile.withdrawalCancel.description }} ({{ student.sisProfile.withdrawalCancel.reason }}) {{ student.sisProfile.withdrawalCancel.date | moment('MMM DD, YYYY') }}
-        </span>
-      </div>
+      <StudentWithdrawalCancel v-if="student.sisProfile.withdrawalCancel" :withdrawal="student.sisProfile.withdrawalCancel" />
     </div>
   </div>
 </template>
@@ -259,10 +272,12 @@ import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentBoxplot from '@/components/student/StudentBoxplot';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
+import StudentWithdrawalCancel from "@/components/student/profile/StudentWithdrawalCancel";
 
 export default {
   name: 'StudentClasses',
   components: {
+    StudentWithdrawalCancel,
     StudentBoxplot
   },
   mixins: [Context, StudentAnalytics, UserMetadata, Util],
@@ -270,25 +285,18 @@ export default {
     student: Object
   },
   data: () => ({
-    currentEnrollmentTerm: undefined,
     showAllTerms: false
   }),
   computed: {
     relevantTerms() {
       var currentTermIndex = this.findIndex(this.student.enrollmentTerms, term => {
-        return term.termId === this.currentEnrollmentTermId.toString()
+        return term.termId === this.toString(this.currentEnrollmentTermId)
       });
       var index = currentTermIndex < 0 ? 0 : currentTermIndex;
       return this.student.enrollmentTerms.slice(0, index + 1);
     }
   },
   created() {
-    this.currentEnrollmentTerm = this.find(
-      this.get(this.student, 'enrollmentTerms'),
-      {
-        termId: this.currentEnrollmentTermId.toString()
-      }
-    );
   },
   methods: {
     toggleShowAllTerms() {
@@ -311,7 +319,6 @@ export default {
   line-height: 1.4em;
   min-width: 200px;
   padding: 0;
-  z-index: 1;
 }
 .profile-boxplot-container .highcharts-tooltip::after {
   background: #fff;

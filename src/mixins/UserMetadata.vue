@@ -6,16 +6,25 @@ export default {
   computed: {
     ...mapGetters('user', [
       'preferences',
-      'user',
-      'userAuthStatus'
+      'user'
     ]),
     ...mapGetters('cohort', ['myCohorts']),
-    ...mapGetters('curated', ['myCuratedGroups'])
+    ...mapGetters('curated', ['myCuratedGroups']),
+    ...mapGetters('note', [
+      'noteTemplates',
+      'suggestedNoteTopics'
+    ])
   },
   methods: {
     ...mapActions('user', [
-      'setUserPreference',
-      'loadCalnetUserByCsid'
+      'gaCohortEvent',
+      'gaCourseEvent',
+      'gaCuratedEvent',
+      'gaNoteEvent',
+      'gaSearchEvent',
+      'gaStudentAlert',
+      'loadCalnetUserByCsid',
+      'setUserPreference'
     ])
   }
 };

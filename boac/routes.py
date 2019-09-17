@@ -23,29 +23,22 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-from boac.merged import calnet
-from boac.models.authorized_user import AuthorizedUser
-from flask import jsonify, make_response, redirect, request
+import datetime
+
+from boac.merged.user_session import UserSession
+from flask import jsonify, make_response, redirect, request, session
 from flask_login import LoginManager
 
 
 def register_routes(app):
     """Register app routes."""
-    # Register authentication modules. This should be done before
-    # any authentication-protected routes are registered.
-    def _user_loader(uid):
-        user = AuthorizedUser.find_by_uid(uid)
-        calnet_profile = None if not user else calnet.get_calnet_user_for_uid(
-            app,
-            uid,
-            force_feed=False,
-            skip_expired_users=True,
-        )
-        return user if calnet_profile and not calnet_profile.get('isExpiredPerLdap') else None
+    def _user_loader(user_id=None, flush_cached=False):
+        return UserSession(user_id, flush_cached)
 
     login_manager = LoginManager()
-    login_manager.user_loader(_user_loader)
     login_manager.init_app(app)
+    login_manager.user_loader(_user_loader)
+    login_manager.anonymous_user = _user_loader
 
     # Register API routes.
     import boac.api.admin_controller
@@ -55,7 +48,7 @@ def register_routes(app):
     import boac.api.config_controller
     import boac.api.course_controller
     import boac.api.curated_group_controller
-    import boac.api.menu_controller
+    import boac.api.note_templates_controller
     import boac.api.notes_controller
     import boac.api.search_controller
     import boac.api.student_controller
@@ -64,6 +57,8 @@ def register_routes(app):
 
     # Register error handlers.
     import boac.api.error_handlers
+
+    index_html = open(app.config['INDEX_HTML']).read()
 
     @app.login_manager.unauthorized_handler
     def unauthorized_handler():
@@ -80,13 +75,13 @@ def register_routes(app):
     @app.route('/<path:path>')
     def front_end_route(**kwargs):
         vue_base_url = app.config['VUE_LOCALHOST_BASE_URL']
-        if vue_base_url:
-            app.logger.debug(f'Redirecting to {vue_base_url}{request.full_path}')
-            return redirect(vue_base_url + request.full_path)
-        else:
-            index_html = app.config['INDEX_HTML']
-            app.logger.debug(f'The page at {request.full_path} will be served with INDEX_HTML={index_html}')
-            return make_response(open(index_html).read())
+        return redirect(vue_base_url + request.full_path) if vue_base_url else make_response(index_html)
+
+    @app.before_request
+    def before_request():
+        session.permanent = True
+        app.permanent_session_lifetime = datetime.timedelta(minutes=app.config['INACTIVE_SESSION_LIFETIME'])
+        session.modified = True
 
     @app.after_request
     def after_api_request(response):

@@ -24,6 +24,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.models.authorized_user import AuthorizedUser
+from boac.models.university_dept import UniversityDept
 import simplejson as json
 from tests.util import override_config
 
@@ -32,78 +33,61 @@ asc_advisor_uid = '1081940'
 coe_advisor_uid = '1133399'
 
 
-class TestUserStatusController:
-    """Status API."""
-
-    def test_anonymous_status(self, client):
-        """Returns a well-formed response."""
-        response = client.get('/api/user/status')
-        assert response.status_code == 200
-        assert response.json['isAuthenticated'] is False
-
-    def test_when_authenticated(self, client, fake_auth):
-        fake_auth.login(coe_advisor_uid)
-        response = client.get('/api/user/status')
-        assert response.status_code == 200
-        assert response.json['isAuthenticated'] is True
-        assert response.json['uid'] == coe_advisor_uid
-        assert isinstance(response.json['inDemoMode'], bool)
-
-
 class TestUserProfile:
     """User Profile API."""
 
+    @staticmethod
+    def _api_my_profile(client, expected_status_code=200):
+        response = client.get('/api/profile/my')
+        assert response.status_code == expected_status_code
+        return response.json
+
     def test_profile_not_authenticated(self, client):
         """Returns a well-formed response."""
-        response = client.get('/api/profile/my')
-        assert response.status_code == 200
-        assert response.json['isAuthenticated'] is False
-        assert not response.json['uid']
+        api_json = self._api_my_profile(client)
+        assert api_json['isAuthenticated'] is False
+        assert not api_json['uid']
 
     def test_includes_canvas_profile_if_available(self, client, fake_auth):
         """Includes user profile info from Canvas."""
         fake_auth.login(admin_uid)
-        response = client.get('/api/profile/my')
-        assert response.json['isAuthenticated'] is True
-        assert response.json['uid'] == admin_uid
-        assert 'csid' in response.json
-        assert 'firstName' in response.json
-        assert 'lastName' in response.json
+        api_json = self._api_my_profile(client)
+        assert api_json['isAuthenticated'] is True
+        assert api_json['uid'] == admin_uid
+        assert 'csid' in api_json
+        assert 'firstName' in api_json
+        assert 'lastName' in api_json
 
     def test_user_with_no_dept_membership(self, client, fake_auth):
         """Returns zero or more departments."""
         fake_auth.login(admin_uid)
-        response = client.get('/api/profile/my')
-        assert response.status_code == 200
-        user = response.json
-        assert user['isAdmin'] is True
-        assert user['isAsc'] is False
-        assert user['isCoe'] is False
-        assert not len(user['departments'])
+        api_json = self._api_my_profile(client)
+        assert api_json['isAdmin'] is True
+        assert api_json['isAsc'] is False
+        assert api_json['isCoe'] is False
+        assert not len(api_json['departments'])
 
     def test_department_beyond_asc(self, client, fake_auth):
-        """Returns COENG director."""
+        """Returns COENG advisor."""
         fake_auth.login('1022796')
-        response = client.get('/api/profile/my')
-        assert response.status_code == 200
-        user = response.json
-        assert user['isAdmin'] is False
-        assert user['isCoe'] is True
-        departments = user['departments']
+        api_json = self._api_my_profile(client)
+        assert api_json['isAdmin'] is False
+        assert api_json['isCoe'] is True
+        assert api_json['canAccessCanvasData'] is True
+        departments = api_json['departments']
         assert len(departments) == 1
         assert departments[0]['code'] == 'COENG'
         assert departments[0]['name'] == 'College of Engineering'
-        assert departments[0]['isAdvisor'] is False
-        assert departments[0]['isDirector'] is True
+        assert departments[0]['isAdvisor'] is True
+        assert departments[0]['isDirector'] is False
 
     def test_asc_advisor_exclude_cohorts(self, client, fake_auth):
         """Returns Athletic Study Center advisor."""
         fake_auth.login(asc_advisor_uid)
-        response = client.get('/api/profile/my')
-        assert response.status_code == 200
-        user = response.json
-        assert user['isAsc'] is True
-        departments = user['departments']
+        api_json = self._api_my_profile(client)
+        assert api_json['isAsc'] is True
+        assert api_json['canAccessCanvasData'] is True
+        departments = api_json['departments']
         assert len(departments) == 1
         assert departments[0]['code'] == 'UWASC'
         assert departments[0]['name'] == 'Athletic Study Center'
@@ -153,6 +137,83 @@ class TestUserById:
         assert response.json['csid'] == '81067873'
 
 
+class TestUniversityDeptMember:
+    """University Dept Member API."""
+
+    @classmethod
+    def _api_add(cls, client, expected_status_code=200):
+        dept_code = 'ZZZZZ'
+        automate_membership = False
+        params = {
+            'deptCode': dept_code,
+            'uid': coe_advisor_uid,
+            'isAdvisor': True,
+            'isDirector': False,
+            'automateMembership': automate_membership,
+        }
+        response = response = client.post(
+            f'/api/user/dept_membership/add',
+            data=json.dumps(params),
+            content_type='application/json',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    @classmethod
+    def _api_delete(cls, client, expected_status_code=200):
+        university_dept_id = UniversityDept.find_by_dept_code('ZZZZZ').id
+        authorized_user_id = AuthorizedUser.find_by_uid(coe_advisor_uid).id
+        response = response = client.delete(
+            f'/api/user/dept_membership/delete/{university_dept_id}/{authorized_user_id}',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_add_university_dept_membership_not_authenticated(self, client):
+        """Returns 401 when not authenticated."""
+        self._api_add(client, 401)
+
+    def test_add_university_dept_membership_not_authorized(self, client, fake_auth):
+        """Returns 401 for non-admin."""
+        fake_auth.login(asc_advisor_uid)
+        self._api_add(client, 401)
+
+    def test_add_university_dept_membership(self, client, fake_auth):
+        """Creates a UniversityDeptMember record."""
+        fake_auth.login(admin_uid)
+        membership = self._api_add(client)
+        assert membership['universityDeptId'] == UniversityDept.find_by_dept_code('ZZZZZ').id
+        assert membership['authorizedUserId'] == AuthorizedUser.find_by_uid(coe_advisor_uid).id
+        assert membership['isAdvisor'] is True
+        assert membership['isDirector'] is False
+        assert membership['automateMembership'] is False
+
+    def test_delete_university_dept_membership_not_authenticated(self, client):
+        """Returns 401 when not authenticated."""
+        self._api_delete(client, 401)
+
+    def test_delete_university_dept_membership_not_authorized(self, client, fake_auth):
+        """Returns 401 for non-admin."""
+        fake_auth.login(asc_advisor_uid)
+        self._api_delete(client, 401)
+
+    def test_delete_nonexistant_university_dept_membership(self, client, fake_auth):
+        """Returns 404 when attempting to delete a nonexistant UniversityDeptMember record."""
+        fake_auth.login(admin_uid)
+        self._api_delete(client, 404)
+
+    def test_delete_university_dept_membership(self, client, fake_auth):
+        """Deletes a UniversityDeptMember record."""
+        fake_auth.login(admin_uid)
+        membership = self._api_add(client)
+        university_dept_id = membership['universityDeptId']
+        authorized_user_id = membership['authorizedUserId']
+        response = self._api_delete(client)
+        assert response.get('message') == (
+            f'University dept membership deleted: university_dept_id={university_dept_id} authorized_user_id={authorized_user_id}'
+        )
+
+
 class TestUserGroups:
     """User API."""
 
@@ -168,20 +229,24 @@ class TestUserGroups:
         assert response.status_code == 401
 
     def test_authorized(self, client, fake_auth):
-        """Returns a well-formed response."""
+        """Returns a well-formed response including cached and uncached users."""
         fake_auth.login(admin_uid)
         response = client.get('/api/users/authorized_groups')
         assert response.status_code == 200
-        user_groups = sorted(response.json, key=lambda g: g['code'])
-        assert len(user_groups) == 4
+        user_groups = response.json
+        assert len(user_groups) == 6
         assert user_groups[0]['name'] == 'Admins'
         assert len(user_groups[0]['users']) == 8
-        assert user_groups[1]['name'] == 'College of Engineering'
+        assert user_groups[1]['name'] == 'Athletic Study Center'
         assert len(user_groups[1]['users']) == 3
-        assert user_groups[2]['name'] == 'Department of Physics'
-        assert len(user_groups[2]['users']) == 1
-        assert user_groups[3]['name'] == 'Athletic Study Center'
-        assert len(user_groups[3]['users']) == 2
+        assert user_groups[2]['name'] == 'College of Engineering'
+        assert len(user_groups[2]['users']) == 4
+        assert user_groups[3]['name'] == 'L&S College Advising'
+        assert len(user_groups[3]['users']) == 1
+        assert user_groups[4]['name'] == 'L&S Major Advising'
+        assert len(user_groups[5]['users']) == 2
+        assert user_groups[5]['name'] == 'Notes Only'
+        assert len(user_groups[5]['users']) == 2
 
 
 class TestDemoMode:
@@ -216,3 +281,25 @@ class TestDemoMode:
                         assert response.json['inDemoMode'] is in_demo_mode
                         user = AuthorizedUser.find_by_uid(uid)
                         assert user.in_demo_mode is in_demo_mode
+
+
+class TestDownloadUsers:
+
+    def test_not_authenticated(self, client):
+        """Returns 'unauthorized' response status if user is not authenticated."""
+        response = client.get('/api/users/csv')
+        assert response.status_code == 401
+
+    def test_unauthorized(self, client, fake_auth):
+        """Returns 'unauthorized' response status if user is not admin."""
+        fake_auth.login(coe_advisor_uid)
+        response = client.get('/api/users/csv')
+        assert response.status_code == 401
+
+    def test_authorized(self, client, fake_auth):
+        """Returns a well-formed response."""
+        fake_auth.login(admin_uid)
+        response = client.get('/api/users/csv')
+        assert response.status_code == 200
+        assert 'csv' in response.content_type
+        assert 'College of Engineering' in str(response.data)

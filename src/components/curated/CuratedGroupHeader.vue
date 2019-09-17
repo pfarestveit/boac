@@ -113,6 +113,17 @@
             </div>
           </b-modal>
         </div>
+        <div class="faint-text">|</div>
+        <div>
+          <b-btn
+            id="export-student-list-button"
+            variant="link"
+            :disabled="!exportEnabled || !curatedGroup.studentCount"
+            aria-label="Download CSV file containing all students"
+            @click="downloadCsv()">
+            Export List
+          </b-btn>
+        </div>
       </div>
     </div>
   </div>
@@ -123,7 +134,7 @@ import Loading from '@/mixins/Loading.vue';
 import router from '@/router';
 import Util from '@/mixins/Util';
 import Validator from '@/mixins/Validator.vue';
-import { deleteCuratedGroup, renameCuratedGroup } from '@/api/curated';
+import { deleteCuratedGroup, downloadCuratedGroupCsv, renameCuratedGroup } from '@/api/curated';
 
 export default {
   name: 'CuratedGroupHeader',
@@ -134,6 +145,7 @@ export default {
     'setMode': Function
   },
   data: () => ({
+    exportEnabled: true,
     isModalOpen: false,
     renameError: undefined,
     renameInput: undefined
@@ -170,6 +182,12 @@ export default {
         .catch(error => {
           this.error = error;
         });
+    },
+    downloadCsv() {
+      this.exportEnabled = false;
+      downloadCuratedGroupCsv(this.curatedGroup.id, this.curatedGroup.name).then(() => {
+        this.exportEnabled = true;
+      });
     },
     rename() {
       this.renameError = this.validateCohortName({

@@ -24,8 +24,10 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac import db, std_commit
-from boac.merged.student import get_api_json, query_students
+from boac.externals.data_loch import query_historical_sids
+from boac.merged.student import query_students
 from boac.models.base import Base
+from boac.models.manually_added_advisee import ManuallyAddedAdvisee
 from sqlalchemy import text
 
 
@@ -33,7 +35,7 @@ class CuratedGroup(Base):
     __tablename__ = 'student_groups'
 
     id = db.Column(db.Integer, nullable=False, primary_key=True)  # noqa: A003
-    owner_id = db.Column(db.String(80), db.ForeignKey('authorized_users.id'), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey('authorized_users.id'), nullable=False)
     name = db.Column(db.String(255), nullable=False)
 
     __table_args__ = (db.UniqueConstraint(
@@ -73,10 +75,7 @@ class CuratedGroup(Base):
 
     @classmethod
     def get_all_sids(cls, curated_group_id):
-        # TODO: When the BOA business rules change and all advisors have access to all students
-        #  then remove this filtering of SIDs. See BOAC-2130
-        unfiltered_sids = CuratedGroupStudent.get_sids(curated_group_id=curated_group_id)
-        return query_students(sids=unfiltered_sids, sids_only=True)['sids'] if unfiltered_sids else []
+        return CuratedGroupStudent.get_sids(curated_group_id=curated_group_id)
 
     @classmethod
     def add_student(cls, curated_group_id, sid):
@@ -109,24 +108,32 @@ class CuratedGroup(Base):
             db.session.delete(curated_group)
             std_commit()
 
-    def to_api_json(self, order_by='last_name', offset=0, limit=50):
-        # TODO: When the BOA business rules change and all advisors have access to all students
-        #  then remove this filtering of SIDs based on current user dept_code. See BOAC-2130
-        unfiltered_sids = CuratedGroupStudent.get_sids(curated_group_id=self.id)
-        if unfiltered_sids:
-            results = query_students(sids=unfiltered_sids, order_by=order_by, offset=offset, limit=limit)
-            students = get_api_json([student['sid'] for student in results['students']])
-            total_student_count = results['totalStudentCount']
-        else:
-            students = []
-            total_student_count = 0
-        return {
+    def to_api_json(self, order_by='last_name', offset=0, limit=50, include_students=True):
+        feed = {
             'id': self.id,
             'ownerId': self.owner_id,
             'name': self.name,
-            'students': students,
-            'studentCount': total_student_count,
         }
+        if include_students:
+            sids = CuratedGroupStudent.get_sids(curated_group_id=self.id)
+            if sids:
+                result = query_students(sids=sids, order_by=order_by, offset=offset, limit=limit, include_profiles=False)
+                feed['students'] = result['students']
+                feed['studentCount'] = result['totalStudentCount']
+                # Attempt to supplement with historical student rows if we seem to be missing something.
+                if result['totalStudentCount'] < len(sids):
+                    remaining_sids = list(set(sids) - set(result['sids']))
+                    historical_sid_rows = query_historical_sids(remaining_sids)
+                    if len(historical_sid_rows):
+                        for row in historical_sid_rows:
+                            ManuallyAddedAdvisee.find_or_create(row['sid'])
+                        feed['studentCount'] += len(historical_sid_rows)
+                        page_shortfall = max(0, limit - len(result['students']))
+                        feed['students'] += historical_sid_rows[:page_shortfall]
+            else:
+                feed['students'] = []
+                feed['studentCount'] = 0
+        return feed
 
 
 class CuratedGroupStudent(db.Model):

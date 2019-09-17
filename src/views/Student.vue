@@ -37,15 +37,15 @@ import AcademicTimeline from '@/components/student/profile/AcademicTimeline';
 import AreYouSureModal from '@/components/util/AreYouSureModal';
 import Context from '@/mixins/Context';
 import Loading from '@/mixins/Loading';
-import NoteEditSession from '@/mixins/NoteEditSession';
 import Scrollable from '@/mixins/Scrollable';
 import Spinner from '@/components/util/Spinner';
 import StudentClasses from '@/components/student/profile/StudentClasses';
+import NoteEditSession from '@/mixins/NoteEditSession';
 import StudentProfileGPA from '@/components/student/profile/StudentProfileGPA';
 import StudentProfileHeader from '@/components/student/profile/StudentProfileHeader';
 import StudentProfileUnits from '@/components/student/profile/StudentProfileUnits';
 import Util from '@/mixins/Util';
-import { getStudent } from '@/api/student';
+import { getStudentByUid } from '@/api/student';
 
 export default {
   name: 'Student',
@@ -58,7 +58,7 @@ export default {
     StudentProfileHeader,
     StudentProfileUnits
   },
-  mixins: [Context, Loading, NoteEditSession, Scrollable, Util],
+  mixins: [Context, Loading, Scrollable, NoteEditSession, Util],
   data: () => ({
     cancelTheCancel: undefined,
     cancelConfirmed: undefined,
@@ -72,34 +72,25 @@ export default {
     anchor: () => location.hash
   },
   beforeRouteLeave(to, from, next) {
-    if (this.newNoteMode || this.editingNoteId) {
-      this.alertScreenReader("Are you sure you want to discard unsaved changes?");
-      this.cancelConfirmed = () => {
-        this.editExistingNoteId(null);
-        next();
-      };
-      this.cancelTheCancel = () => {
-        this.alertScreenReader("Please save changes before exiting the page.");
-        this.showAreYouSureModal = false;
-        next(false);
-      };
-      this.showAreYouSureModal = true;
-    } else {
-      next();
-    }
+    this.confirmExitAndEndSession(next);
   },
   created() {
-    const uid = this.get(this.$route, 'params.uid');
-    getStudent(uid).then(data => {
-      if (data) {
-        this.setPageTitle(this.user.inDemoMode ? 'Student' : data.name);
-        this.assign(this.student, data);
+    let uid = this.get(this.$route, 'params.uid');
+    if (this.user.inDemoMode) {
+      // In demo-mode we do not want to expose SID in browser location bar.
+      uid = window.atob(uid);
+    }
+    getStudentByUid(uid).then(student => {
+      if (student) {
+        this.setPageTitle(this.user.inDemoMode ? 'Student' : student.name);
+        this.assign(this.student, student);
         this.each(this.student.enrollmentTerms, this.parseEnrollmentTerm);
         this.loaded();
       } else {
         this.$router.push({ path: '/404' });
       }
     });
+
   },
   mounted() {
     if (!this.anchor) {
@@ -107,6 +98,24 @@ export default {
     }
   },
   methods: {
+    confirmExitAndEndSession(next) {
+      if (this.noteMode) {
+        this.alertScreenReader("Are you sure you want to discard unsaved changes?");
+        this.cancelConfirmed = () => {
+          this.exitSession();
+          next();
+        };
+        this.cancelTheCancel = () => {
+          this.alertScreenReader("Please save changes before exiting the page.");
+          this.showAreYouSureModal = false;
+          next(false);
+        };
+        this.showAreYouSureModal = true;
+      } else {
+        this.exitSession();
+        next();
+      }
+    },
     decorateCourse(course) {
       // course_code is often valuable (eg, 'ECON 1 - LEC 001'), occasionally not (eg, CCN). Use it per strict criteria:
       const useCourseCode = /^[A-Z].*[A-Za-z]{3} \d/.test(course.courseCode);
@@ -132,12 +141,14 @@ export default {
       }
     },
     parseCourse(course) {
+      const canAccessCanvasData = this.user.canAccessCanvasData;
+      const fullProfileAvailable = !this.student.fullProfilePending;
       this.each(course.sections, function(section) {
         course.waitlisted =
           course.waitlisted || section.enrollmentStatus === 'W';
         course.isOpen = false;
         section.displayName = section.component + ' ' + section.sectionNumber;
-        section.isViewableOnCoursePage = section.primary;
+        section.isViewableOnCoursePage = section.primary && canAccessCanvasData && fullProfileAvailable;
       });
     }
   }
@@ -162,10 +173,6 @@ export default {
   font-size: 11px;
   font-weight: bold;
   margin: 5px 0;
-}
-.student-teams {
-  color: #000;
-  font-size: 13px;
 }
 .student-teams-container {
   margin-top: 5px;

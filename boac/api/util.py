@@ -26,13 +26,14 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from functools import wraps
 import json
 
-from boac.api.errors import ResourceNotFoundError
-from boac.externals.data_loch import get_sis_holds
-from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, get_dept_codes
+from boac.api.errors import BadRequestError
+from boac.externals.data_loch import get_sis_holds, get_student_profiles
+from boac.externals.google_calendar_client import get_calendar_events
+from boac.lib.http import response_with_csv_download
+from boac.lib.util import join_if_present
 from boac.merged import calnet
 from boac.merged.advising_note import get_advising_notes
 from boac.models.alert import Alert
-from boac.models.cohort_filter import CohortFilter
 from boac.models.curated_group import CuratedGroup
 from flask import current_app as app, request
 from flask_login import current_user
@@ -54,16 +55,6 @@ def admin_required(func):
     return _admin_required
 
 
-def feature_flag_edit_notes(func):
-    @wraps(func)
-    def _feature_flag_edit_notes(*args, **kw):
-        if app.config['FEATURE_FLAG_EDIT_NOTES']:
-            return func(*args, **kw)
-        else:
-            raise ResourceNotFoundError('API path not found')
-    return _feature_flag_edit_notes
-
-
 def add_alert_counts(alert_counts, students):
     students_by_sid = {student['sid']: student for student in students}
     for alert_count in alert_counts:
@@ -78,9 +69,10 @@ def add_alert_counts(alert_counts, students):
 def authorized_users_api_feed(users, sort_by='lastName'):
     if not users:
         return ()
+    calnet_users = calnet.get_calnet_users_for_uids(app, [u.uid for u in users])
     profiles = []
     for user in users:
-        profile = calnet.get_calnet_user_for_uid(app, user.uid, force_feed=False)
+        profile = calnet_users[user.uid]
         if not profile:
             continue
         profile['name'] = ((profile.get('firstName') or '') + ' ' + (profile.get('lastName') or '')).strip()
@@ -113,41 +105,6 @@ def canvas_courses_api_feed(courses):
     if not courses:
         return []
     return [canvas_course_api_feed(course) for course in courses]
-
-
-def current_user_profile():
-    profile = get_current_user_status()
-    if current_user.is_authenticated:
-        profile['id'] = current_user.id
-        uid = current_user.get_id()
-        profile.update(calnet.get_calnet_user_for_uid(app, uid))
-        if current_user.is_active:
-            departments = []
-            for m in current_user.department_memberships:
-                dept_code = m.university_dept.dept_code
-                departments.append(
-                    {
-                        'code': dept_code,
-                        'name': BERKELEY_DEPT_CODE_TO_NAME[dept_code] or dept_code,
-                        'role': get_dept_role(m),
-                        'isAdvisor': m.is_advisor,
-                        'isDirector': m.is_director,
-                    })
-            dept_codes = get_dept_codes(current_user)
-            profile['isAsc'] = 'UWASC' in dept_codes
-            profile['canViewAsc'] = profile['isAsc'] or current_user.is_admin
-            profile['isCoe'] = 'COENG' in dept_codes
-            profile['canViewCoe'] = profile['isCoe'] or current_user.is_admin
-            profile.update({
-                'isAdmin': current_user.is_admin,
-                'inDemoMode': current_user.in_demo_mode if hasattr(current_user, 'in_demo_mode') else False,
-                'departments': departments,
-            })
-    return profile
-
-
-def get_dept_role(department_membership):
-    return 'Director' if department_membership.is_director else ('Advisor' if department_membership.is_advisor else None)
 
 
 def sis_enrollment_class_feed(enrollment):
@@ -183,6 +140,17 @@ def put_notifications(student):
         'hold': [],
         'requirement': [],
     }
+    if app.config['FEATURE_FLAG_ADVISOR_APPOINTMENTS']:
+        student['notifications']['appointment'] = []
+        for event in get_calendar_events():
+            student['notifications']['appointment'].append({
+                **event,
+                **{
+                    'message': event.get('summary'),
+                    'type': 'appointment',
+                },
+            })
+
     # The front-end requires 'type', 'message' and 'read'. Optional fields: id, status, createdAt, updatedAt.
     for note in get_advising_notes(student['sid']) or []:
         message = note['body']
@@ -193,7 +161,7 @@ def put_notifications(student):
                 'type': 'note',
             },
         })
-    for alert in Alert.current_alerts_for_sid(viewer_id=current_user.id, sid=student['sid']):
+    for alert in Alert.current_alerts_for_sid(viewer_id=current_user.get_id(), sid=student['sid']):
         student['notifications']['alert'].append({
             **alert,
             **{
@@ -209,7 +177,7 @@ def put_notifications(student):
             **hold,
             **{
                 'createdAt': hold.get('fromDate'),
-                'message': reason.get('description') + '. ' + reason.get('formalDescription'),
+                'message': join_if_present('. ', [reason.get('description'), reason.get('formalDescription')]),
                 'read': True,
                 'type': 'hold',
             },
@@ -227,6 +195,40 @@ def put_notifications(student):
             })
 
 
+def get_note_attachments_from_http_post(tolerate_none=False):
+    request_files = request.files
+    attachments = []
+    for index in range(app.config['NOTES_ATTACHMENTS_MAX_PER_NOTE']):
+        attachment = request_files.get(f'attachment[{index}]')
+        if attachment:
+            attachments.append(attachment)
+        else:
+            break
+    if not tolerate_none and not len(attachments):
+        raise BadRequestError('request.files is empty')
+    byte_stream_bundle = []
+    for attachment in attachments:
+        filename = attachment.filename and attachment.filename.strip()
+        if not filename:
+            raise BadRequestError(f'Invalid file in request form data: {attachment}')
+        else:
+            byte_stream_bundle.append({
+                'name': filename.rsplit('/', 1)[-1],
+                'byte_stream': attachment.read(),
+            })
+    return byte_stream_bundle
+
+
+def get_template_attachment_ids_from_http_post():
+    ids = request.form.get('templateAttachmentIds', [])
+    return ids if isinstance(ids, list) else list(filter(None, str(ids).split(',')))
+
+
+def get_note_topics_from_http_post():
+    topics = request.form.get('topics', ())
+    return topics if isinstance(topics, list) else list(filter(None, str(topics).split(',')))
+
+
 def translate_grading_basis(code):
     bases = {
         'CNC': 'C/NC',
@@ -240,58 +242,63 @@ def translate_grading_basis(code):
     return bases.get(code) or code
 
 
-def get_current_user_status():
-    return {
-        'isActive': current_user.is_active,
-        'isAdmin': current_user.is_admin if hasattr(current_user, 'is_admin') else False,
-        'isAnonymous': current_user.is_anonymous,
-        'isAuthenticated': current_user.is_authenticated,
-        # TODO: remove the following line; 'inDemoMode' is served by /api/profile/my
-        'inDemoMode': current_user.in_demo_mode if hasattr(current_user, 'in_demo_mode') else False,
-        'uid': current_user.get_id(),
-    }
-
-
 def get_my_curated_groups():
     curated_groups = []
-    user_id = current_user.id
+    user_id = current_user.get_id()
     for curated_group in CuratedGroup.get_curated_groups_by_owner_id(user_id):
-        api_json = curated_group.to_api_json()
+        api_json = curated_group.to_api_json(include_students=False)
         students = [{'sid': sid} for sid in CuratedGroup.get_all_sids(curated_group.id)]
         students_with_alerts = Alert.include_alert_counts_for_students(
             viewer_user_id=user_id,
             group={'students': students},
+            count_only=True,
         )
         api_json['alertCount'] = sum(s['alertCount'] for s in students_with_alerts)
+        api_json['studentCount'] = len(students)
         curated_groups.append(api_json)
     return curated_groups
 
 
-def get_my_cohorts():
-    uid = current_user.get_id()
-    cohorts = []
-    for cohort in CohortFilter.summarize_alert_counts_in_all_owned_by(uid):
-        cohort['isOwnedByCurrentUser'] = True
-        cohorts.append(cohort)
-    return cohorts
-
-
-def is_asc_authorized():
-    return current_user.is_admin or 'UWASC' in get_dept_codes(current_user)
-
-
-def is_coe_authorized():
-    return current_user.is_admin or 'COENG' in get_dept_codes(current_user)
-
-
-def is_unauthorized_search(filter_keys, order_by):
+def is_unauthorized_search(filter_keys, order_by=None):
     filter_key_set = set(filter_keys)
     asc_keys = {'inIntensiveCohort', 'isInactiveAsc', 'groupCodes'}
     if list(filter_key_set & asc_keys) or order_by in ['group_name']:
-        if not is_asc_authorized():
+        if not current_user.is_asc_authorized:
             return True
-    coe_keys = {'advisorLdapUids', 'coePrepStatuses', 'coeProbation', 'ethnicities', 'genders', 'isInactiveCoe'}
+    coe_keys = {
+        'coeAdvisorLdapUids',
+        'coeEthnicities',
+        'coeGenders',
+        'coePrepStatuses',
+        'coeProbation',
+        'coeUnderrepresented',
+        'isInactiveCoe',
+    }
     if list(filter_key_set & coe_keys):
-        if not is_coe_authorized():
+        if not current_user.is_coe_authorized:
             return True
     return False
+
+
+def response_with_students_csv_download(sids, benchmark):
+    rows = []
+    for student in get_student_profiles(sids=sids):
+        profile = student.get('profile')
+        profile = profile and json.loads(profile)
+        rows.append({
+            'first_name': profile.get('firstName'),
+            'last_name': profile.get('lastName'),
+            'sid': profile.get('sid'),
+            'email': profile.get('sisProfile', {}).get('emailAddress'),
+            'phone': profile.get('sisProfile', {}).get('phoneNumber'),
+        })
+    benchmark('end')
+
+    def _norm(row, key):
+        value = row.get(key)
+        return value and value.upper()
+    return response_with_csv_download(
+        rows=sorted(rows, key=lambda r: (_norm(r, 'last_name'), _norm(r, 'first_name'), _norm(r, 'sid'))),
+        filename_prefix='cohort',
+        fieldnames=['first_name', 'last_name', 'sid', 'email', 'phone'],
+    )

@@ -15,14 +15,8 @@
         <div class="accordion-heading">
           <div class="accordion-heading-name">
             <div class="accordion-heading-caret">
-              <i
-                :id="`home-cohort-${cohort.id}-caret`"
-                :aria-label="isFetching ? 'Loading cohort details' : ''"
-                :class="{
-                  'fas fa-spinner fa-spin': isFetching,
-                  'fas fa-caret-right': !isOpen,
-                  'fas fa-caret-down': isOpen
-                }"></i>
+              <font-awesome v-if="isFetching" icon="spinner" spin />
+              <font-awesome v-if="!isFetching" :icon="isOpen ? 'caret-down' : 'caret-right'" />
             </div>
             <h2 class="page-section-header-sub accordion-header">
               <span class="sr-only">{{ `${isOpen ? 'Hide' : 'Show'} details for cohort ` }}</span>
@@ -50,10 +44,16 @@
     <b-collapse
       :id="`home-cohort-${cohort.id}`"
       :aria-expanded="isOpen"
-      class="panel-body"
+      class="panel-body pr-3"
       :class="{'panel-open': isOpen}">
       <div v-if="cohort.studentsWithAlerts && size(cohort.studentsWithAlerts)">
-        <SortableStudents :students="cohort.studentsWithAlerts" />
+        <div v-if="size(cohort.studentsWithAlerts) === 50" :id="`home-cohort-${cohort.id}-alert-limited`" class="m-3">
+          Showing 50 students with a high number of alerts.
+          <router-link :id="`home-cohort-${cohort.id}-alert-limited-view-all`" :to="`/cohort/${cohort.id}`">
+            View all {{ cohort.totalStudentCount }} students in "{{ cohort.name }}"
+          </router-link>
+        </div>
+        <SortableStudents :students="cohort.studentsWithAlerts" :options="getSortOptions(cohort)" />
       </div>
       <div>
         <router-link :id="`home-cohort-${cohort.id}-view-all`" :to="`/cohort/${cohort.id}`">
@@ -73,9 +73,11 @@
 </template>
 
 <script>
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
+import Context from '@/mixins/Context';
+import HomeUtil from '@/components/home/HomeUtil';
 import SortableStudents from '@/components/search/SortableStudents';
 import store from '@/store';
+import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
@@ -83,7 +85,7 @@ export default {
   components: {
     SortableStudents
   },
-  mixins: [GoogleAnalytics, Util],
+  mixins: [Context, HomeUtil, UserMetadata, Util],
   props: {
     cohort: Object
   },
@@ -101,73 +103,18 @@ export default {
           .then(cohort => {
             this.cohort = cohort;
             this.isFetching = false;
-            this.gaEvent(
-              'Home',
-              'Fetch students with alerts',
-              `Cohort: ${this.cohort.name}`,
-              this.cohort.id
-            );
+            this.alertScreenReader(`Loaded students with alerts who are in cohort ${this.cohort.name}`);
+            this.gaCohortEvent({
+              id: this.cohort.id,
+              name: this.cohort.name,
+              action: 'Fetch students with alerts'
+            });
           });
       }
     }
   }
 };
 </script>
-
-<style>
-.accordion-header {
-  margin: 0;
-}
-.accordion-heading-caret {
-  color: #337ab7;
-  margin-right: 15px;
-  width: 10px;
-}
-.accordion-heading {
-  background: #ecf5fb;
-  display: flex;
-  justify-content: space-between;
-}
-.accordion-heading-count {
-  align-items: center;
-  display: flex;
-  margin: 10px 15px;
-  min-width: 130px;
-}
-.accordion-heading-count-label {
-  margin: 0 5px;
-}
-.accordion-heading-name {
-  align-items: center;
-  display: flex;
-  margin: 10px 15px;
-}
-.accordion .panel-title a:focus,
-.accordion .panel-title a:hover {
-  text-decoration: none;
-}
-.home-inactive-info-icon {
-  color: #d0021b;
-  font-size: 16px;
-}
-.home-issues-pill {
-  border-radius: 10px;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 800;
-  height: 20px;
-  line-height: 20px;
-  margin: 0 auto;
-  text-align: center;
-  width: 30px;
-}
-.home-issues-pill-nonzero {
-  background-color: #f0ad4e;
-}
-.home-issues-pill-zero {
-  background-color: #ccc;
-}
-</style>
 
 <style scoped>
 .panel-group .panel + .panel {

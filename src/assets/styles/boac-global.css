@@ -1,3 +1,6 @@
+.align-items-center {
+  align-items: center;
+}
 .avatar {
   background-image: url('~@/assets/avatar-50.png');
   background-size: cover;
@@ -9,6 +12,41 @@
 }
 .boac-exclamation {
   color: #f0ad4e;
+}
+.btn-file-upload {
+  border-color: grey;
+  color: grey;
+}
+.btn-file-upload:hover,
+.btn-file-upload:focus,
+.btn-file-upload:active
+{
+  color: #333;
+  background-color: #aaa;
+}
+.choose-attachment-file-wrapper {
+  position: relative;
+  align-items: center;
+  overflow: hidden;
+  display: inline-block;
+  background-color: #f7f7f7;
+  border: 1px solid #E0E0E0;
+  border-radius: 4px;
+  text-align: center;
+}
+.choose-attachment-file-wrapper input[type=file] {
+  font-size: 100px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+}
+.choose-attachment-file-wrapper:hover,
+.choose-attachment-file-wrapper:focus,
+.choose-attachment-file-wrapper:active
+{
+  color: #333;
+  background-color: #eee;
 }
 .curated-checkbox-label {
   padding: 10px;
@@ -31,6 +69,10 @@
   height: 100%;
   font-size: 14px;
 }
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
 .flex-container {
   display: flex;
   list-style: none;
@@ -40,6 +82,21 @@
 .flex-row {
   display: flex;
   flex-direction: row;
+}
+.font-size-14 {
+  font-size: 14px;
+}
+.font-size-16 {
+  font-size: 16px;
+}
+.font-size-18 {
+  font-size: 18px;
+}
+.font-size-20 {
+  font-size: 20px;
+}
+.font-size-24 {
+  font-size: 24px;
 }
 .form-control {
   height: 38px;
@@ -60,6 +117,9 @@
 }
 .no-wrap {
   white-space: nowrap;
+}
+.obfuscate-form-input {
+  -webkit-text-security: disc;
 }
 .page-section-header {
   font-size: 24px;
@@ -117,13 +177,6 @@ select.form-control {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.font-size-14 {
-  font-size: 14px;
-}
-.font-size-20 {
-  font-size: 20px;
-}
-
 #content {
   font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }

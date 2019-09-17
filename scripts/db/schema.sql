@@ -89,7 +89,9 @@ CREATE TABLE authorized_users (
     id integer NOT NULL,
     uid character varying(255) NOT NULL,
     is_admin boolean,
-    in_demo_mode boolean DEFAULT false NOT NULL
+    in_demo_mode boolean DEFAULT false NOT NULL,
+    can_access_canvas_data boolean DEFAULT true NOT NULL,
+    deleted_at timestamp with time zone
 );
 ALTER TABLE authorized_users OWNER TO boac;
 CREATE SEQUENCE authorized_users_id_seq
@@ -122,6 +124,7 @@ CREATE TABLE cohort_filters (
     id integer NOT NULL,
     name character varying(255) NOT NULL,
     filter_criteria jsonb NOT NULL,
+    sids VARCHAR(80)[],
     student_count integer,
     alert_count integer,
     created_at timestamp with time zone NOT NULL,
@@ -139,6 +142,15 @@ ALTER SEQUENCE cohort_filters_id_seq OWNED BY cohort_filters.id;
 ALTER TABLE ONLY cohort_filters ALTER COLUMN id SET DEFAULT nextval('cohort_filters_id_seq'::regclass);
 ALTER TABLE ONLY cohort_filters
     ADD CONSTRAINT cohort_filters_pkey PRIMARY KEY (id);
+
+--
+
+CREATE TABLE manually_added_advisees(
+    sid character varying NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+ALTER TABLE ONLY manually_added_advisees
+    ADD CONSTRAINT manually_added_advisees_pkey PRIMARY KEY (sid);
 
 --
 
@@ -163,7 +175,7 @@ CREATE TABLE notes (
     author_dept_codes VARCHAR[] NOT NULL,
     sid VARCHAR(80) NOT NULL,
     subject VARCHAR(255) NOT NULL,
-    body text NOT NULL,
+    body text,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
     deleted_at TIMESTAMP WITH TIME ZONE
@@ -183,7 +195,11 @@ CREATE INDEX notes_author_uid_idx ON notes USING btree (author_uid);
 CREATE INDEX notes_sid_idx ON notes USING btree (sid);
 
 CREATE MATERIALIZED VIEW notes_fts_index AS (
-  SELECT id, to_tsvector('english', subject || ' ' || body) AS fts_index
+  SELECT
+    id,
+    CASE WHEN (body IS NULL) THEN to_tsvector('english', subject)
+         ELSE to_tsvector('english', subject || ' ' || body)
+         END AS fts_index
   FROM notes
   WHERE deleted_at IS NULL
 );
@@ -217,6 +233,82 @@ ALTER TABLE ONLY note_attachments
 ALTER TABLE ONLY note_attachments
     ADD CONSTRAINT note_attachments_note_id_path_to_attachment_unique_constraint UNIQUE (note_id, path_to_attachment);
 CREATE INDEX note_attachments_note_id_idx ON note_attachments USING btree (note_id);
+
+--
+
+CREATE TABLE note_templates (
+    id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    body text,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+ALTER TABLE note_templates OWNER TO boac;
+CREATE SEQUENCE note_templates_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE note_templates_id_seq OWNER TO boac;
+ALTER SEQUENCE note_templates_id_seq OWNED BY note_templates.id;
+ALTER TABLE ONLY note_templates ALTER COLUMN id SET DEFAULT nextval('note_templates_id_seq'::regclass);
+ALTER TABLE ONLY note_templates ADD CONSTRAINT note_templates_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY note_templates
+    ADD CONSTRAINT note_templates_creator_id_title_unique_constraint UNIQUE (creator_id, title, deleted_at);
+CREATE INDEX note_templates_creator_id_idx ON note_templates USING btree (creator_id);
+
+--
+
+CREATE TABLE note_template_attachments (
+    id integer NOT NULL,
+    note_template_id INTEGER NOT NULL,
+    path_to_attachment character varying(255) NOT NULL,
+    uploaded_by_uid character varying(255) NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    deleted_at timestamp with time zone
+);
+ALTER TABLE note_template_attachments OWNER TO boac;
+CREATE SEQUENCE note_template_attachments_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE note_template_attachments_id_seq OWNER TO boac;
+ALTER SEQUENCE note_template_attachments_id_seq OWNED BY note_template_attachments.id;
+ALTER TABLE ONLY note_template_attachments ALTER COLUMN id SET DEFAULT nextval('note_template_attachments_id_seq'::regclass);
+ALTER TABLE ONLY note_template_attachments
+    ADD CONSTRAINT note_template_attachments_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY note_template_attachments
+    ADD CONSTRAINT nta_note_template_id_path_to_attachment_unique_constraint UNIQUE (note_template_id, path_to_attachment);
+CREATE INDEX note_template_attachments_note_template_id_idx ON note_template_attachments USING btree (note_template_id);
+
+--
+
+CREATE TABLE note_template_topics (
+    id INTEGER NOT NULL,
+    note_template_id INTEGER NOT NULL,
+    topic VARCHAR(50) NOT NULL
+);
+ALTER TABLE note_template_topics OWNER TO boac;
+CREATE SEQUENCE note_template_topics_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE note_template_topics_id_seq OWNER TO boac;
+ALTER SEQUENCE note_template_topics_id_seq OWNED BY note_template_topics.id;
+ALTER TABLE ONLY note_template_topics ALTER COLUMN id SET DEFAULT nextval('note_template_topics_id_seq'::regclass);
+ALTER TABLE ONLY note_template_topics
+    ADD CONSTRAINT note_template_topics_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY note_template_topics
+    ADD CONSTRAINT note_template_topics_note_template_id_topic_unique_constraint UNIQUE (note_template_id, topic);
+CREATE INDEX note_template_topics_note_template_id_idx ON note_template_topics (note_template_id);
 
 --
 
@@ -286,7 +378,8 @@ CREATE INDEX student_group_members_sid_idx ON student_group_members USING btree 
 CREATE TABLE topics (
   id INTEGER NOT NULL,
   topic VARCHAR(50) NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  deleted_at timestamp with time zone
 );
 ALTER TABLE topics OWNER TO boac;
 CREATE SEQUENCE topics_id_seq
@@ -334,6 +427,7 @@ CREATE TABLE university_dept_members (
   authorized_user_id INTEGER,
   is_advisor BOOLEAN DEFAULT false NOT NULL,
   is_director BOOLEAN DEFAULT false NOT NULL,
+  automate_membership boolean DEFAULT true NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
@@ -370,7 +464,7 @@ ALTER TABLE ONLY json_cache
 CREATE TABLE tool_settings (
     id integer NOT NULL,
     key character varying NOT NULL,
-    value character varying NOT NULL,
+    value text NOT NULL,
     created_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL
 );
@@ -392,6 +486,26 @@ CREATE INDEX tool_settings_key_idx ON tool_settings USING btree (key);
 
 --
 
+CREATE TABLE user_logins(
+    id integer NOT NULL,
+    uid character varying NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+CREATE SEQUENCE user_logins_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE user_logins_id_seq OWNER TO boac;
+ALTER SEQUENCE user_logins_id_seq OWNED BY user_logins.id;
+ALTER TABLE ONLY user_logins ALTER COLUMN id SET DEFAULT nextval('user_logins_id_seq'::regclass);
+ALTER TABLE ONLY user_logins
+    ADD CONSTRAINT user_logins_pkey PRIMARY KEY (id);
+CREATE INDEX user_logins_uid_idx ON user_logins USING btree (uid);
+
+--
+
 ALTER TABLE ONLY student_group_members
     ADD CONSTRAINT student_group_members_student_group_id_fkey FOREIGN KEY (student_group_id) REFERENCES student_groups(id) ON DELETE CASCADE;
 
@@ -399,6 +513,11 @@ ALTER TABLE ONLY student_group_members
 
 ALTER TABLE ONLY student_groups
     ADD CONSTRAINT student_groups_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES authorized_users(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY user_logins
+    ADD CONSTRAINT user_logins_uid_fkey FOREIGN KEY (uid) REFERENCES authorized_users(uid) ON DELETE CASCADE;
 
 --
 
@@ -430,6 +549,21 @@ ALTER TABLE ONLY notes_read
 
 ALTER TABLE ONLY note_attachments
     ADD CONSTRAINT note_attachments_note_id_fkey FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY note_templates
+    ADD CONSTRAINT note_templates_creator_id_fkey FOREIGN KEY (creator_id) REFERENCES authorized_users(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY note_template_attachments
+    ADD CONSTRAINT note_template_attachments_note_template_id_fkey FOREIGN KEY (note_template_id) REFERENCES note_templates(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY note_template_topics
+    ADD CONSTRAINT note_template_topics_note_template_id_fkey FOREIGN KEY (note_template_id) REFERENCES note_templates(id) ON DELETE CASCADE;
 
 --
 

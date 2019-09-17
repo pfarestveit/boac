@@ -6,22 +6,26 @@ export default {
   computed: {
     ...mapGetters('context', [
       'apiBaseUrl',
+      'currentEnrollmentTerm',
       'currentEnrollmentTermId',
       'devAuthEnabled',
       'errors',
-      'featureFlagEditNotes',
+      'featureFlagAdvisorAppointments',
       'isDemoModeAvailable',
       'maxAttachmentsPerNote',
+      'pingFrequency',
       'announcement',
       'srAlert',
       'supportEmailAddress',
       'timezone'
-    ])
+    ]),
+    ...mapGetters('noteEditSession', ['disableNewNoteButton'])
   },
   methods: {
     ...mapActions('context', [
       'clearAlertsInStore',
       'dismissError',
+      'initUserSession',
       'reportError',
       'alertScreenReader'
     ])

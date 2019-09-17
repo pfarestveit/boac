@@ -18,7 +18,7 @@ import Vue from 'vue';
 Vue.use(Router);
 
 const requiresAuth = (to: any, from: any, next: any) => {
-  store.dispatch('user/loadUserAuthStatus').then(data => {
+  store.dispatch('user/loadUser').then(data => {
     if (data.isAuthenticated) {
       next();
     } else {
@@ -34,7 +34,7 @@ const requiresAuth = (to: any, from: any, next: any) => {
 };
 
 const requiresUser = (to: any, from: any, next: any) => {
-  store.dispatch('user/loadUserAuthStatus').then(data => {
+  store.dispatch('user/loadUser').then(data => {
     if (data.isAuthenticated) {
       store.dispatch('user/loadUser').then(() => {
         next();
@@ -62,7 +62,7 @@ const router = new Router({
       path: '/login',
       component: Login,
       beforeEnter: (to: any, from: any, next: any) => {
-        store.dispatch('user/loadUserAuthStatus').then(data => {
+        store.dispatch('user/loadUser').then(data => {
           if (data.isAuthenticated) {
             next(to.query.redirect || '/home');
           } else {
@@ -170,9 +170,7 @@ const router = new Router({
 });
 
 router.beforeEach((to: any, from: any, next: any) => {
-  store.dispatch('context/loadConfig').then(() => {
-    store.dispatch('context/clearAlertsInStore').then(() => next());
-  });
+  store.dispatch('context/clearAlertsInStore').then(() => next());
 });
 
 router.afterEach((to: any) => {
@@ -183,16 +181,6 @@ router.afterEach((to: any) => {
       message: to.query.error
     });
   }
-  store.dispatch('user/loadUserAuthStatus').then(data => {
-    if (data.isAuthenticated) {
-      store.dispatch('user/loadUser').then(() => {
-        store.dispatch('cohort/loadMyCohorts');
-        store.dispatch('curated/loadMyCuratedGroups');
-        store.dispatch('context/loadServiceAnnouncement');
-        return;
-      });
-    }
-  });
 });
 
 export default router;

@@ -5,12 +5,11 @@
     :class="{'demo-mode-blur': user.inDemoMode}">
     <h3 class="advising-note-search-result-header">
       <router-link
-        :id="`advising-note-search-result-header-link-${note.id}`"
+        :id="`link-to-student-${note.studentUid}`"
         class="advising-note-search-result-header-link"
         :class="{'demo-mode-blur': user.inDemoMode}"
-        :to="`/student/${note.studentUid}#${note.id}`">
-        {{ note.studentName }}
-      </router-link>
+        :to="`${studentRoutePath(note.studentUid, user.inDemoMode)}#${note.id}`"
+        v-html="note.studentName"></router-link>
       ({{ note.studentSid }})
     </h3>
     <div
@@ -28,12 +27,13 @@
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'AdvisingNoteSnippet',
-  mixins: [UserMetadata, Util],
+  mixins: [Context, UserMetadata, Util],
   props: {
     note: Object,
   },
@@ -43,8 +43,7 @@ export default {
   created() {
     const timestamp = this.get(this.note, 'updatedAt') || this.get(this.note, 'createdAt');
     if (timestamp) {
-      const now = this.$moment();
-      this.lastModified = this.$moment(timestamp).utcOffset(now.utcOffset());
+      this.lastModified = this.$moment(timestamp).tz(this.timezone);
     }
   }
 };

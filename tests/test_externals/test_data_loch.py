@@ -23,7 +23,6 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from decimal import Decimal
 import io
 
@@ -37,50 +36,16 @@ class TestDataLoch:
 
     def test_get_student_profiles(self, app):
         import json
-        student_profiles = data_loch.get_student_profiles(['11667051'])
-
+        sid = '11667051'
+        student_profiles = data_loch.get_student_profiles([sid])
         assert len(student_profiles) == 1
 
-        student_profile = json.loads(student_profiles[0]['profile'])
-        assert student_profile['sisProfile']['academicCareer'] == 'UGRD'
-
-    def test_sis_enrollments(self, app):
-        enrollments = data_loch.get_sis_enrollments(61889, 2178)
-
-        assert len(enrollments) == 5
-
-        assert enrollments[0]['sis_course_name'] == 'BURMESE 1A'
-        assert enrollments[0]['sis_section_num'] == '001'
-        assert enrollments[0]['sis_enrollment_status'] == 'E'
-        assert enrollments[0]['units'] == 4
-        assert enrollments[0]['grading_basis'] == 'GRD'
-
-        assert enrollments[1]['sis_course_name'] == 'MED ST 205'
-        assert enrollments[1]['sis_section_num'] == '001'
-        assert enrollments[1]['sis_enrollment_status'] == 'E'
-        assert enrollments[1]['units'] == 5
-        assert enrollments[1]['grading_basis'] == 'GRD'
-
-        assert enrollments[2]['sis_course_name'] == 'NUC ENG 124'
-        assert enrollments[2]['sis_section_num'] == '201'
-        assert enrollments[2]['sis_enrollment_status'] == 'E'
-        assert enrollments[2]['units'] == 0
-        assert enrollments[2]['grading_basis'] == 'NON'
-        assert not enrollments[2]['grade']
-
-        assert enrollments[3]['sis_course_name'] == 'NUC ENG 124'
-        assert enrollments[3]['sis_section_num'] == '002'
-        assert enrollments[3]['sis_enrollment_status'] == 'E'
-        assert enrollments[3]['units'] == 3
-        assert enrollments[3]['grading_basis'] == 'PNP'
-        assert enrollments[3]['grade'] == 'P'
-
-        assert enrollments[4]['sis_course_name'] == 'PHYSED 11'
-        assert enrollments[4]['sis_section_num'] == '001'
-        assert enrollments[4]['sis_enrollment_status'] == 'E'
-        assert enrollments[4]['units'] == 0.5
-        assert enrollments[4]['grading_basis'] == 'PNP'
-        assert enrollments[4]['grade'] == 'P'
+        student = student_profiles[0]
+        assert student['sid'] == sid
+        assert student['gender'] == 'Different Identity'
+        assert student['minority'] is False
+        sis_profile = json.loads(student_profiles[0]['profile'])['sisProfile']
+        assert sis_profile['academicCareer'] == 'UGRD'
 
     def test_get_enrolled_primary_sections(self, app):
         sections = data_loch.get_enrolled_primary_sections('2178', 'MATH1')
@@ -110,6 +75,32 @@ class TestDataLoch:
         assert notes[0]['author_name'] == 'Lemmy Kilmister'
         assert notes[0]['created_at']
         assert notes[0]['updated_at']
+
+    def test_get_e_i_advising_notes(self, app):
+        """Excludes notes with author name 'Reception Front Desk'."""
+        notes = data_loch.get_e_i_advising_notes('11667051')
+        assert len(notes) == 1
+        assert notes[0]['id'] == '11667051-151620'
+        assert notes[0]['sid'] == '11667051'
+        assert notes[0]['author_uid'] == '1133398'
+        assert notes[0]['author_name'] == 'Charlie Christian'
+        assert notes[0]['created_at']
+        assert notes[0]['updated_at']
+
+    def test_get_e_i_advising_note_topics(self, app):
+        topics = data_loch.get_e_i_advising_note_topics('11667051')
+        assert len(topics) == 2
+        assert topics[0]['id'] == '11667051-151620'
+        assert topics[0]['topic'] == 'Course Planning'
+
+    def test_get_sis_advising_note_attachment(self, app):
+        attachment = data_loch.get_sis_advising_note_attachment('11667051', '11667051_00001_1.pdf')
+        assert len(attachment) == 1
+        assert attachment[0]['advising_note_id'] == '11667051-00001'
+        assert attachment[0]['created_by'] == 'UCBCONVERSION'
+        assert attachment[0]['sis_file_name'] == '11667051_00001_1.pdf'
+        assert attachment[0]['user_file_name'] == 'efac7b10-c3f2-11e4-9bbd-ab6a6597d26f.pdf'
+        assert attachment[0]['is_historical'] is True
 
     def test_override_fixture(self, app):
         mr = MockRows(io.StringIO('sid,first_name,last_name\n20000000,Martin,Van Buren'))

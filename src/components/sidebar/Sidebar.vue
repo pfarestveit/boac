@@ -1,7 +1,9 @@
 <template>
   <div>
     <div>
-      <SearchForm :domain="['students', 'courses', 'notes']" context="sidebar" />
+      <SearchForm
+        :domain="user.canAccessCanvasData ? ['students', 'courses', 'notes'] : ['students', 'notes']"
+        context="sidebar" />
     </div>
     <div v-if="myCohorts">
       <Cohorts />
@@ -12,29 +14,43 @@
       <hr class="ml-2 mr-2 section-divider" />
     </div>
     <div class="mb-2 sidebar-row-link">
-      <router-link id="cohorts-all" class="ml-2 mr-2" to="/cohorts/all">Everyone's Cohorts</router-link>
+      <div class="ml-2 mr-2">
+        <router-link id="cohorts-all" to="/cohorts/all">Everyone's Cohorts</router-link>
+      </div>
+    </div>
+    <div v-if="user && !user.isAdmin">
+      <div class="batch-note-button fixed-bottom mb-3">
+        <CreateNoteModal id="batch-note-button" />
+      </div>
     </div>
   </div>
 </template>
 
 <script>
 import Cohorts from '@/components/sidebar/Cohorts.vue';
+import Context from '@/mixins/Context';
+import CreateNoteModal from '@/components/note/create/CreateNoteModal.vue';
 import CuratedGroups from '@/components/sidebar/CuratedGroups.vue';
 import SearchForm from '@/components/sidebar/SearchForm.vue';
 import UserMetadata from '@/mixins/UserMetadata';
+import Util from '@/mixins/Util';
 
 export default {
   name: 'Sidebar',
   components: {
     Cohorts,
+    CreateNoteModal,
     CuratedGroups,
     SearchForm
   },
-  mixins: [UserMetadata]
+  mixins: [Context, UserMetadata, Util]
 };
 </script>
 
 <style>
+.batch-note-button {
+  width: 17%;
+}
 .section-divider {
   background-color: #4a90e2;
   border: none;

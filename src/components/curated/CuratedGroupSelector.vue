@@ -28,15 +28,11 @@
             class="p-3">
             <span v-if="!isSaving">
               <span class="pr-2">Add to Curated Group</span>
-              <i v-if="disableSelector" class="fas fa-spinner fa-spin"></i>
-              <i v-if="!disableSelector" class="fas fa-caret-down"></i>
+              <font-awesome v-if="disableSelector" icon="spinner" spin />
+              <font-awesome v-if="!disableSelector" icon="caret-down" />
             </span>
             <span v-if="isSaving">
-              <i class="fas fa-check"></i> Added to Curated Group
-              <span
-                role="alert"
-                aria-live="passive"
-                class="sr-only">Selected students added to the chosen curated group</span>
+              <font-awesome icon="check" /> Added to Curated Group
             </span>
           </span>
         </template>
@@ -58,7 +54,7 @@
             :for="`curated-group-${group.id}-checkbox`"
             class="curated-checkbox-label pb-0 pt-0">{{ group.name }}</label>
         </b-dropdown-item>
-        <b-dropdown-divider></b-dropdown-divider>
+        <hr role="separator" class="dropdown-divider">
         <b-dropdown-item>
           <b-btn
             id="create-curated-group"
@@ -66,7 +62,7 @@
             class="text-dark"
             variant="link"
             aria-label="Create a new curated group">
-            <i class="fas fa-plus"></i> Create New Curated Group
+            <font-awesome icon="plus" /> Create New Curated Group
           </b-btn>
         </b-dropdown-item>
       </b-dropdown>
@@ -88,8 +84,8 @@
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal';
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import { addStudents, createCuratedGroup } from '@/api/curated';
@@ -99,9 +95,10 @@ export default {
   components: {
     CreateCuratedGroupModal
   },
-  mixins: [GoogleAnalytics, UserMetadata, Util],
+  mixins: [Context, UserMetadata, Util],
   props: {
     contextDescription: String,
+    gaEventTracker: Function,
     students: Array
   },
   data: () => ({
@@ -157,11 +154,11 @@ export default {
         this.sids = [];
         this.isSelectAllChecked = this.indeterminate = false;
         this.$eventHub.$emit('curated-group-deselect-all');
-        this.gaCuratedEvent(
-          group.id,
-          group.name,
-          `${this.contextDescription}: add students`
-        );
+        this.gaEventTracker({
+          id: group.id,
+          name: group.name,
+          action: `${this.contextDescription}: add students to Curated Group`
+      });
       };
       const done = () => (this.isSaving = false);
       this.isSaving = true;
@@ -177,15 +174,20 @@ export default {
         this.refresh();
         this.toggle(false);
         this.isSaving = false;
+        this.alertScreenReader('Selected students added to curated group');
       };
       const trackEvent = group => {
         this.each(
           [
             'create',
-            `${this.contextDescription}: add students, after create group`
+            `${this.contextDescription}: add students to Curated Group`
           ],
           action => {
-            this.gaCuratedEvent(group.id, group.name, action);
+            this.gaEventTracker({
+              id: group.id,
+              name: group.name,
+              action
+            });
           }
         );
       };

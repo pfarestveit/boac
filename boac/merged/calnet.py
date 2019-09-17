@@ -23,6 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from boac.api.errors import InternalServerError
 from boac.externals import calnet
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.models.json_cache import fetch_bulk, insert_row, stow
@@ -57,21 +58,18 @@ def get_calnet_user_for_csid(app, csid):
     }
 
 
+def get_calnet_users_for_uids(app, uids):
+    return _get_calnet_users(app, 'uid', uids)
+
+
 def get_calnet_users_for_csids(app, csids):
-    cached_users = fetch_bulk([f'calnet_user_for_csid_{csid}' for csid in csids])
-    users_by_csid = {k.replace('calnet_user_for_csid_', ''): v for k, v in cached_users.items()}
-    uncached_csids = [c for c in csids if c not in users_by_csid]
-    calnet_results = calnet.client(app).search_csids(uncached_csids)
-    # Cache rows individually so that an isolated conflict doesn't sink the rest of the update.
-    for csid in uncached_csids:
-        calnet_result = next((r for r in calnet_results if r['csid'] == csid), None)
-        feed = {
-            **_calnet_user_api_feed(calnet_result),
-            **{'csid': csid},
-        }
-        insert_row(f'calnet_user_for_csid_{csid}', feed)
-        users_by_csid[csid] = feed
-    return users_by_csid
+    return _get_calnet_users(app, 'csid', csids)
+
+
+def get_csid_for_uid(app, uid):
+    user_feed = get_calnet_user_for_uid(app, uid)
+    if user_feed:
+        return user_feed.get('csid')
 
 
 def get_uid_for_csid(app, csid):
@@ -80,16 +78,39 @@ def get_uid_for_csid(app, csid):
         return user_feed.get('uid')
 
 
+def _get_calnet_users(app, id_type, ids):
+    cached_users = fetch_bulk([f'calnet_user_for_{id_type}_{_id}' for _id in ids])
+    users_by_id = {k.replace(f'calnet_user_for_{id_type}_', ''): v for k, v in cached_users.items()}
+    uncached_ids = [c for c in ids if c not in users_by_id]
+    calnet_client = calnet.client(app)
+    if id_type == 'uid':
+        calnet_results = calnet_client.search_uids(uncached_ids)
+    elif id_type == 'csid':
+        calnet_results = calnet_client.search_csids(uncached_ids)
+    else:
+        raise InternalServerError(f'get_calnet_users: {id_type} is an invalid id type')
+    # Cache rows individually so that an isolated conflict doesn't sink the rest of the update.
+    for _id in uncached_ids:
+        calnet_result = next((r for r in calnet_results if r[id_type] == _id), None)
+        feed = {
+            **_calnet_user_api_feed(calnet_result),
+            **{id_type: _id},
+        }
+        insert_row(f'calnet_user_for_{id_type}_{_id}', feed)
+        users_by_id[_id] = feed
+    return users_by_id
+
+
 def _calnet_user_api_feed(person):
     def _get(key):
-        return person and person[key]
+        return _get_attribute(person, key)
     # Array of departments is compatible with BOAC user schema.
     departments = []
     dept_code = _get_dept_code(person)
     if dept_code:
         departments.append({
             'code': dept_code,
-            'name': BERKELEY_DEPT_CODE_TO_NAME.get(dept_code) if dept_code in BERKELEY_DEPT_CODE_TO_NAME else dept_code,
+            'name': BERKELEY_DEPT_CODE_TO_NAME.get(dept_code, dept_code),
         })
     return {
         'campusEmail': _get('campus_email'),
@@ -107,10 +128,18 @@ def _calnet_user_api_feed(person):
 
 def _get_dept_code(p):
     def dept_code_fallback():
-        dept_hierarchy = p['dept_unit_hierarchy']
+        dept_hierarchy = _get_attribute(p, 'dept_unit_hierarchy')
         if dept_hierarchy:
-            dept_hierarchy = dept_hierarchy[0] if isinstance(dept_hierarchy, list) else dept_hierarchy
-            return dept_hierarchy.rsplit('-', 1)[-1] if dept_hierarchy else None
+            return dept_hierarchy.rsplit('-', 1)[-1]
         else:
             return None
     return p and (p['primary_dept_code'] or p['dept_code'] or p['calnet_dept_code'] or dept_code_fallback())
+
+
+def _get_attribute(person, key):
+    if not person:
+        return None
+    elif isinstance(person[key], list):
+        return person[key][0]
+    else:
+        return person[key]

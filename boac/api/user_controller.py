@@ -24,26 +24,27 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.api import errors
-from boac.api.util import admin_required, authorized_users_api_feed, current_user_profile, get_current_user_status
+from boac.api.util import admin_required, authorized_users_api_feed
 from boac.lib import util
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
-from boac.lib.http import tolerant_jsonify
+from boac.lib.http import response_with_csv_download, tolerant_jsonify
 from boac.merged import calnet
 from boac.models.authorized_user import AuthorizedUser
+from boac.models.university_dept import UniversityDept
+from boac.models.university_dept_member import UniversityDeptMember
 from flask import current_app as app, request
 from flask_login import current_user, login_required
 
 
 @app.route('/api/profile/my')
 def my_profile():
-    return tolerant_jsonify(current_user_profile())
+    return tolerant_jsonify(current_user.to_api_json())
 
 
 @app.route('/api/profile/<uid>')
 @login_required
 def user_profile(uid):
-    match = next((u for u in AuthorizedUser.query.all() if u.uid == uid), None)
-    if not match:
+    if not AuthorizedUser.find_by_uid(uid):
         raise errors.ResourceNotFoundError('Unknown path')
     return tolerant_jsonify(calnet.get_calnet_user_for_uid(app, uid))
 
@@ -60,31 +61,40 @@ def user_by_uid(uid):
     return tolerant_jsonify(calnet.get_calnet_user_for_uid(app, uid))
 
 
+@app.route('/api/user/dept_membership/add', methods=['POST'])
+@admin_required
+def add_university_dept_membership():
+    params = request.get_json() or {}
+    dept = UniversityDept.find_by_dept_code(params.get('deptCode', None))
+    user = AuthorizedUser.find_by_uid(params.get('uid', None))
+    membership = UniversityDeptMember.create_membership(
+        university_dept=dept,
+        authorized_user=user,
+        is_advisor=params.get('isAdvisor', None),
+        is_director=params.get('isDirector', None),
+        automate_membership=params.get('automateMembership', None),
+    )
+    return tolerant_jsonify(membership.to_api_json())
+
+
+@app.route('/api/user/dept_membership/delete/<university_dept_id>/<authorized_user_id>', methods=['DELETE'])
+@admin_required
+def delete_university_dept_membership(university_dept_id, authorized_user_id):
+    if not UniversityDeptMember.delete_membership(university_dept_id, authorized_user_id):
+        raise errors.ResourceNotFoundError(
+            f'University dept membership not found: university_dept_id={university_dept_id} authorized_user_id={authorized_user_id}',
+        )
+    return tolerant_jsonify(
+        {'message': f'University dept membership deleted: university_dept_id={university_dept_id} authorized_user_id={authorized_user_id}'},
+        status=200,
+    )
+
+
 @app.route('/api/users/authorized_groups')
 @admin_required
 def authorized_user_groups():
     sort_users_by = util.get(request.args, 'sortUsersBy', None)
-    depts = {}
-
-    def _put(_dept_code, _user):
-        if _dept_code not in depts:
-            dept_name = 'Admins' if _dept_code == 'ADMIN' else BERKELEY_DEPT_CODE_TO_NAME.get(_dept_code)
-            depts[_dept_code] = {
-                'code': _dept_code,
-                'name': dept_name,
-                'users': [],
-            }
-        depts[_dept_code]['users'].append(_user)
-    for user in AuthorizedUser.query.all():
-        if user.is_admin:
-            _put('ADMIN', user)
-        for m in user.department_memberships:
-            _put(m.university_dept.dept_code, user)
-    user_groups = []
-    for dept_code, dept in depts.items():
-        dept['users'] = authorized_users_api_feed(dept['users'], sort_users_by)
-        user_groups.append(dept)
-    return tolerant_jsonify(user_groups)
+    return tolerant_jsonify(_get_boa_user_groups(sort_users_by))
 
 
 @app.route('/api/user/demo_mode', methods=['POST'])
@@ -94,15 +104,67 @@ def set_demo_mode():
         in_demo_mode = request.get_json().get('demoMode', None)
         if in_demo_mode is None:
             raise errors.BadRequestError('Parameter \'demoMode\' not found')
-        user = AuthorizedUser.find_by_id(current_user.id)
+        user = AuthorizedUser.find_by_id(current_user.get_id())
         user.in_demo_mode = bool(in_demo_mode)
-        return tolerant_jsonify({
-            'inDemoMode': user.in_demo_mode,
-        })
+        current_user.flush_cached()
+        app.login_manager.reload_user()
+        return tolerant_jsonify(current_user.to_api_json())
     else:
         raise errors.ResourceNotFoundError('Unknown path')
 
 
-@app.route('/api/user/status')
-def user_status():
-    return tolerant_jsonify(get_current_user_status())
+@app.route('/api/users/csv')
+@admin_required
+def download_boa_users_csv():
+    rows = []
+    for dept in _get_boa_user_groups():
+        for user in dept['users']:
+            rows.append(
+                {
+                    'last_name': user.get('lastName') or '',
+                    'first_name': user.get('firstName') or '',
+                    'uid': user.get('uid'),
+                    'email': user.get('campusEmail') or user.get('email'),
+                    'dept_code': dept.get('code'),
+                    'dept_name': dept.get('name'),
+                },
+            )
+    return response_with_csv_download(
+        rows=sorted(rows, key=lambda row: row['last_name'].upper()),
+        filename_prefix='boa_users',
+        fieldnames=['last_name', 'first_name', 'uid', 'email', 'dept_code', 'dept_name'],
+    )
+
+
+def _get_boa_user_groups(sort_users_by=None):
+    depts = {}
+
+    def _put(_dept_code, _user):
+        if _dept_code not in depts:
+            if _dept_code == 'ADMIN':
+                dept_name = 'Admins'
+            elif _dept_code == 'GUEST':
+                dept_name = 'Guest Access'
+            elif _dept_code == 'NOTESONLY':
+                dept_name = 'Notes Only'
+            else:
+                dept_name = BERKELEY_DEPT_CODE_TO_NAME.get(_dept_code, _dept_code)
+            depts[_dept_code] = {
+                'code': _dept_code,
+                'name': dept_name,
+                'users': [],
+            }
+        depts[_dept_code]['users'].append(_user)
+    for user in AuthorizedUser.get_all_active_users():
+        if user.is_admin:
+            _put('ADMIN', user)
+        if user.can_access_canvas_data:
+            for m in user.department_memberships:
+                _put(m.university_dept.dept_code, user)
+        else:
+            _put('NOTESONLY', user)
+    user_groups = []
+    for dept_code, dept in depts.items():
+        dept['users'] = authorized_users_api_feed(dept['users'], sort_users_by)
+        user_groups.append(dept)
+    return sorted(user_groups, key=lambda dept: dept['name'])

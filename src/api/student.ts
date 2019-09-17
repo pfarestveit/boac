@@ -1,23 +1,32 @@
 import axios from 'axios';
-import store from '@/store';
+import utils from '@/api/api-utils';
 
 export function dismissStudentAlert(alertId: string) {
-  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .get(`${apiBaseUrl}/api/alerts/${alertId}/dismiss`)
+    .get(`${utils.apiBaseUrl()}/api/alerts/${alertId}/dismiss`)
     .then(response => response.data, () => null);
 }
 
-export function getStudent(uid: string) {
-  let apiBaseUrl = store.getters['context/apiBaseUrl'];
+export function getStudentByUid(uid: string) {
   return axios
-    .get(`${apiBaseUrl}/api/student/${uid}`)
+    .get(`${utils.apiBaseUrl()}/api/student/by_uid/${uid}`)
+    .then(response => response.data, () => null);
+}
+
+export function getStudentBySid(sid: string) {
+  return axios
+    .get(`${utils.apiBaseUrl()}/api/student/by_sid/${sid}`)
     .then(response => response.data, () => null);
 }
 
 export function validateSids(sids: string[]) {
-  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .post(`${apiBaseUrl}/api/students/validate_sids`, { sids: sids })
+    .post(`${utils.apiBaseUrl()}/api/students/validate_sids`, { sids: sids })
     .then(response => response.data, () => null);
+}
+
+export function findStudentsByNameOrSid(query: string, limit: number) {
+  return axios
+    .get(`${utils.apiBaseUrl()}/api/students/find_by_name_or_sid?q=${query}&limit=${limit}`)
+    .then(response => response.data);
 }

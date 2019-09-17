@@ -8,26 +8,16 @@
     <b-container class="pl-0 ml-0">
       <b-form-row class="pb-1">
         <b-col cols="9">
-          <b-input-group>
-            <span id="add-note-topic-instructions" class="sr-only">Use up and down arrows to review categories and enter to select.</span>
-            <b-form-select
-              id="add-topic-select-list"
-              v-model="topic"
-              :options="topicOptions"
-              role="listbox">
-            </b-form-select>
-            <b-input-group-append>
-              <b-button
-                id="add-topic-button"
-                slot="append"
-                :class="{'btn-add-topic': !isTopicEmpty, 'btn-add-topic-disabled': isTopicEmpty}"
-                aria-controls="note-topics-list"
-                :disabled="isTopicEmpty"
-                @click="addTopic">
-                <i class="fas fa-plus pr-1"></i>Add<span class="sr-only"> Topic</span>
-              </b-button>
-            </b-input-group-append>
-          </b-input-group>
+          <b-form-select
+            v-if="topicOptions.length"
+            id="add-topic-select-list"
+            :key="topics.length"
+            :disabled="disabled"
+            :options="topicOptions"
+            role="listbox"
+            aria-label="Use up and down arrows to review topics. Hit enter to select a topic."
+            @change="add">
+          </b-form-select>
         </b-col>
       </b-form-row>
       <div>
@@ -43,12 +33,13 @@
               {{ addedTopic }}
               <b-btn
                 :id="`remove-${notePrefix}-topic-${index}`"
+                :disabled="disabled"
                 variant="link"
                 class="px-0 pt-1"
                 :aria-labelledby="`remove-${notePrefix}-topic-${index}-label`"
                 tabindex="0"
-                @click.prevent="removeTopic(addedTopic)">
-                <i class="fas fa-times-circle has-error pl-2"></i>
+                @click.prevent="remove(addedTopic)">
+                <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
               </b-btn>
               <label :id="`remove-${notePrefix}-topic-${index}-label`" class="sr-only" :for="`remove-${notePrefix}-topic-${index}`">
                 remove topic {{ topics[index] }}
@@ -66,12 +57,18 @@
 
 <script>
 import Context from '@/mixins/Context';
+import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'AdvisingNoteTopics',
-  mixins: [Context, Util],
+  mixins: [Context, UserMetadata, Util],
   props: {
+    disabled: {
+      default: false,
+      required: false,
+      type: Boolean
+    },
     functionAdd: {
       type: Function,
       required: true
@@ -81,11 +78,7 @@ export default {
       required: true
     },
     noteId: {
-      type: String,
-      required: false
-    },
-    suggestedTopics: {
-      type: Array,
+      type: Number,
       required: false
     },
     topics: {
@@ -94,84 +87,42 @@ export default {
     }
   },
   data: () => ({
-    topic: null,
-    topicOptions: [
-      {text: '-- Select a category --', value: null}
-    ]
+    topicOptions: []
   }),
   computed: {
-    isTopicEmpty() {
-      return !this.trim(this.topic)
-    },
     notePrefix() {
-      return this.noteId ? 'note-' + this.noteId : 'note';
+      return this.noteId ? `note-${this.noteId}` : 'note';
     }
   },
-  created: function() {
-    this.each(this.suggestedTopics, suggestedTopic => {
+  created() {
+    this.topicOptions.push({text: '-- Select a category --', value: null});
+    this.each(this.suggestedNoteTopics, topic => {
       this.topicOptions.push({
-        text: suggestedTopic,
-        value: suggestedTopic,
-        disabled: this.includes(this.topics, suggestedTopic)
+        text: topic,
+        value: topic,
+        disabled: this.includes(this.topics, topic)
       })
     });
   },
   methods: {
-    addTopic() {
-      if (this.trim(this.topic)) {
-        this.functionAdd(this.topic);
-        this.alertScreenReader(`Topic ${this.topic} added.`);
-        this.setTopicOptionDisabled(this.topic, true);
-        this.topic = undefined;
+    add(topic) {
+      if (topic) {
+        this.setDisabled(topic, true);
+        this.functionAdd(topic);
+        this.putFocusNextTick('add-topic-select-list');
+        this.alertScreenReader(`Topic ${topic} added.`);
       }
     },
-    normalizeString(str) {
-      return str.toUpperCase().replace(/[^A-Z]/g, '');
-    },
-    removeTopic(topic) {
+    remove(topic) {
+      this.setDisabled(topic, false);
       this.functionRemove(topic);
+      this.putFocusNextTick('add-topic-select-list');
       this.alertScreenReader(`Topic ${topic} removed.`);
-      this.setTopicOptionDisabled(topic, false);
     },
-    setTopicOptionDisabled(optionValue, disable) {
-      const option = this.find(this.topicOptions, ['value', optionValue]);
+    setDisabled(topic, disable) {
+      const option = this.find(this.topicOptions, ['value', topic]);
       this.set(option, 'disabled', disable);
-    },
-    suggest() {
-      if (!this.topic || this.topic.length < 2) {
-        return false;
-      }
-      let match = this.suggestedTopics.find(t => {
-        return this.normalizeString(t).indexOf(this.normalizeString(this.topic)) !== -1;
-      });
-      if (match) {
-        this.topic = match;
-        this.alertScreenReader(`Topic autocompleted: ${this.topic}`);
-      }
     }
   }
 }
 </script>
-
-<style scoped>
-.btn-add-topic {
-  background-color: #e9ecef;
-  border-color: #ced4da;
-  color: #000;
-}
-.btn-add-topic:not(:disabled) {
-  cursor: pointer;
-}
-.btn-add-topic:hover,
-.btn-add-topic:focus,
-.btn-add-topic:active
-{
-  color: #333;
-  background-color: #aaa;
-}
-.btn-add-topic-disabled {
-  background-color: #ccc;
-  border-color: #ced4da;
-  color: #6c757d;
-}
-</style>

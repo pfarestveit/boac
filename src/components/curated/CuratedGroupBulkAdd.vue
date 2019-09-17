@@ -24,7 +24,7 @@
           :disabled="!trim(textarea) || (curatedGroupId && isUpdating)"
           @click="submitSids">
           <span v-if="curatedGroupId">
-            <span v-if="isUpdating"><i class="fas fa-spinner fa-spin"></i> <span class="pl-1">Adding</span></span>
+            <span v-if="isUpdating"><font-awesome icon="spinner" spin /> <span class="pl-1">Adding</span></span>
             <span v-if="!isUpdating">Add</span>
           </span>
           <span v-if="!curatedGroupId">Next</span>
@@ -96,12 +96,10 @@ export default {
       this.clearErrors();
       const trimmed = this.trim(this.textarea, ' ,\n\t');
       if (trimmed) {
-        const split = this.map(this.split(trimmed, ','), entry => {
-          return this.trim(entry, ' ,\n\t');
-        });
+        const split = this.split(trimmed, /[,\r\n\t ]+/);
         const notNumeric = this.partition(split, sid => /^\d+$/.test(this.trim(sid)))[1];
         if (notNumeric.length) {
-          this.error = '<strong>Error!</strong> The list provided has not been properly formatted. SIDs must be numeric and comma-separated.';
+          this.error = '<strong>Error!</strong> SIDs must be separated by commas, line breaks, or tabs.';
           this.putFocusNextTick('curated-group-bulk-add-sids');
         } else {
           this.isValidating = true;

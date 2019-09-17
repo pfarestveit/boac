@@ -14,22 +14,18 @@
           class="p-3">
           <span v-if="!isAdding && !isRemoving">
             <span class="pr-1">Add to Group</span>
-            <i v-if="disableSelector || groupsLoading" class="fas fa-spinner fa-spin caret-down-width"></i>
-            <i v-if="!disableSelector && !groupsLoading" class="fas fa-caret-down caret-down-width"></i>
+            <font-awesome
+              v-if="disableSelector || groupsLoading"
+              icon="spinner"
+              spin
+              class="caret-down-width" />
+            <font-awesome v-if="!disableSelector && !groupsLoading" icon="caret-down" class="caret-down-width" />
           </span>
           <span v-if="isRemoving">
-            <i class="fas fa-times"></i> Removed
-            <span
-              role="alert"
-              aria-live="passive"
-              class="sr-only">Student removed from the selected group</span>
+            <font-awesome icon="times" /> Removed
           </span>
           <span v-if="isAdding">
-            <i class="fas fa-check"></i> Added
-            <span
-              role="alert"
-              aria-live="passive"
-              class="sr-only">Student added to the selected group</span>
+            <font-awesome icon="check" /> Added
           </span>
         </span>
       </template>
@@ -57,7 +53,7 @@
             :aria-label="`${checkedGroups.includes(group.id) ? 'Remove student from' : 'Add student to'} group '${group.name}'`">{{ group.name }}</label>
         </b-dropdown-item>
       </div>
-      <b-dropdown-divider></b-dropdown-divider>
+      <hr role="separator" class="dropdown-divider">
       <b-dropdown-item>
         <b-btn
           id="create-curated-group"
@@ -65,7 +61,7 @@
           class="create-new-button mb-0 pl-0 text-dark"
           variant="link"
           aria-label="Create a new curated group">
-          <i class="fas fa-plus"></i> Create New Curated Group
+          <font-awesome icon="plus" /> Create New Curated Group
         </b-btn>
       </b-dropdown-item>
     </b-dropdown>
@@ -86,8 +82,8 @@
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal';
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import Scrollable from '@/mixins/Scrollable';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
@@ -103,7 +99,7 @@ export default {
   components: {
     CreateCuratedGroupModal
   },
-  mixins: [GoogleAnalytics, Scrollable, UserMetadata, Util],
+  mixins: [Context, Scrollable, UserMetadata, Util],
   props: {
     sid: {
       type: String,
@@ -143,11 +139,12 @@ export default {
           this.checkedGroups = this.without(this.checkedGroups, group.id);
           this.isRemoving = false;
           this.putFocusNextTick('curated-group-dropdown', 'button');
-          this.gaCuratedEvent(
-            group.id,
-            group.name,
-            `Student profile: Removed SID ${this.sid}`
-          );
+          this.alertScreenReader('Student removed from curated group');
+          this.gaCuratedEvent({
+            id: group.id,
+            name: group.name,
+            action: `Student profile: Removed SID ${this.sid}`
+          });
         };
         removeFromCuratedGroup(group.id, this.sid).finally(() =>
           setTimeout(done, 2000)
@@ -158,11 +155,12 @@ export default {
           this.checkedGroups.push(group.id);
           this.isAdding = false;
           this.putFocusNextTick('curated-group-dropdown', 'button');
-          this.gaCuratedEvent(
-            group.id,
-            group.name,
-            `Student profile: Added SID ${this.sid}`
-          );
+          this.alertScreenReader('Student added to curated group');
+          this.gaCuratedEvent({
+            id: group.id,
+            name: group.name,
+            action: `Student profile: Added SID ${this.sid}`
+          });
         };
         addStudents(group, [this.sid]).finally(() => setTimeout(done, 2000));
       }
@@ -179,7 +177,11 @@ export default {
               `Student profile: Added SID ${this.sid}, after create group`
             ],
             action => {
-              this.gaCuratedEvent(group.id, group.name, action);
+              this.gaCuratedEvent({
+                id: group.id,
+                name: group.name,
+                action
+              });
             }
           );
           setTimeout(() => this.isAdding = false, 2000)

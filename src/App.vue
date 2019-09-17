@@ -5,8 +5,15 @@
 </template>
 
 <script>
+import Context from '@/mixins/Context';
+import Util from '@/mixins/Util';
+
 export default {
-  name: 'App'
+  name: 'App',
+  mixins: [Context, Util],
+  mounted() {
+    this.initUserSession().then(this.noop);
+  }
 };
 </script>
 

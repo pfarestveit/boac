@@ -61,18 +61,19 @@
           </div>
         </div>
       </div>
-      <div class="course-terms">
+      <div>
         <h2 class="sr-only">Students</h2>
-        <div v-if="!section.totalStudentCount" class="course-view-controls-container">
-          <span class="has-error"><i class="fas fa-exclamation-triangle"></i></span>
+        <div v-if="!section.totalStudentCount" class="d-flex ml-3 mt-3">
+          <span class="has-error"><font-awesome icon="exclamation-triangle" /></span>
           <span class="container-error">No students advised by your department are enrolled in this section.</span>
         </div>
-        <div v-if="section.totalStudentCount" class="course-view-controls-container ml-3 mr-3">
+        <div v-if="section.totalStudentCount" class="d-flex justify-content-start align-items-baseline m-3">
           <div>
             <CuratedGroupSelector
               v-if="!isEmpty(section.students) && (tab === 'list')"
               class="mr-2"
               :context-description="`Course ${section.displayName}`"
+              :ga-event-tracker="gaCourseEvent"
               :students="section.students" />
           </div>
           <div class="course-tabs-container">
@@ -83,7 +84,7 @@
                 aria-label="Switch to list view"
                 :class="{'tab-button-selected': tab === 'list'}"
                 @click="toggleView('list')">
-                <i class="fas fa-list"></i> List
+                <font-awesome icon="list" /> List
               </button>
               <button
                 type="button"
@@ -93,7 +94,7 @@
                 :class="{'tab-button-selected': tab === 'matrix'}"
                 :disabled="matrixDisabledMessage"
                 @click="toggleView('matrix')">
-                <i class="fas fa-table"></i> Matrix
+                <font-awesome icon="table" /> Matrix
               </button>
             </div>
           </div>
@@ -106,7 +107,7 @@
               <li v-for="(option, optionIndex) in pagination.options" :key="optionIndex">
                 <a
                   href="#"
-                  :class="{'selected': option==pagination.itemsPerPage}"
+                  :class="{'selected': option === pagination.itemsPerPage}"
                   :title="`Show ${option} results per page`"
                   @click="resizePage(option)">
                   {{ option }}</a><span v-if="optionIndex + 1 < pagination.options.length">&nbsp;|&nbsp;</span>
@@ -114,9 +115,9 @@
             </ul>
           </div>
         </div>
-        <div v-if="tab === 'list' && section.totalStudentCount">
+        <div v-if="tab === 'list' && section.totalStudentCount" class="ml-2 mr-2">
           <CourseStudents :featured="featured" :section="section" />
-          <div class="mt-3">
+          <div class="m-4">
             <div v-if="section.totalStudentCount > pagination.itemsPerPage">
               <Pagination
                 :click-handler="goToPage"
@@ -372,12 +373,5 @@ export default {
 .course-term-name {
   font-size: 16px;
   font-weight: bold;
-}
-.course-view-controls-container {
-  align-items: baseline;
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-start;
-  padding: 20px 0 15px 0;
 }
 </style>

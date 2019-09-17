@@ -26,9 +26,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from datetime import datetime
 import re
 
-from boac.lib.berkeley import sis_term_id_for_name
+from boac.lib.berkeley import current_term_id, sis_term_id_for_name
 from boac.lib.mockingdata import fixture
-from boac.lib.util import tolerant_remove
+from boac.lib.util import join_if_present, tolerant_remove
 from flask import current_app as app
 import sqlalchemy
 from sqlalchemy import create_engine
@@ -36,15 +36,7 @@ from sqlalchemy.sql import text
 
 
 # Lazy init to support testing.
-data_loch_db = None
 data_loch_db_rds = None
-
-
-def safe_execute_redshift(string, **kwargs):
-    global data_loch_db
-    if data_loch_db is None:
-        data_loch_db = create_engine(app.config['DATA_LOCH_URI'])
-    return _safe_execute(string, data_loch_db, **kwargs)
 
 
 def safe_execute_rds(string, **kwargs):
@@ -73,8 +65,8 @@ def advising_notes_schema():
     return app.config['DATA_LOCH_ADVISING_NOTES_SCHEMA']
 
 
-def asc_advising_notes_schema():
-    return app.config['DATA_LOCH_ASC_ADVISING_NOTES_SCHEMA']
+def advisor_schema():
+    return app.config['DATA_LOCH_ADVISOR_SCHEMA']
 
 
 def asc_schema():
@@ -89,16 +81,12 @@ def coe_schema():
     return app.config['DATA_LOCH_COE_SCHEMA']
 
 
-def intermediate_schema():
-    return app.config['DATA_LOCH_INTERMEDIATE_SCHEMA']
+def e_i_schema():
+    return app.config['DATA_LOCH_E_I_SCHEMA']
 
 
-def l_s_schema():
-    return app.config['DATA_LOCH_L_S_SCHEMA']
-
-
-def physics_schema():
-    return app.config['DATA_LOCH_PHYSICS_SCHEMA']
+def sis_advising_notes_schema():
+    return app.config['DATA_LOCH_SIS_ADVISING_NOTES_SCHEMA']
 
 
 def sis_schema():
@@ -110,14 +98,12 @@ def student_schema():
 
 
 def earliest_term_id():
-    return sis_term_id_for_name(app.config['CANVAS_EARLIEST_TERM'])
+    return sis_term_id_for_name(app.config['LEGACY_EARLIEST_TERM'])
 
 
-def get_regular_undergraduate_session(term_id):
-    sql = f"""SELECT * FROM {sis_schema()}.sis_terms
+def get_undergraduate_term(term_id):
+    sql = f"""SELECT * FROM {sis_schema()}.term_definitions
               WHERE term_id = '{term_id}'
-              AND academic_career = 'UGRD'
-              AND session_id = '1'
            """
     return safe_execute_rds(sql)
 
@@ -150,30 +136,12 @@ def get_enrolled_primary_sections_for_parsed_code(term_id, subject_area, catalog
     return safe_execute_rds(sql, **params)
 
 
-@fixture('loch_sis_enrollments_{uid}_{term_id}.csv')
-def get_sis_enrollments(uid, term_id):
-    sql = f"""SELECT
-                  enr.grade, enr.units, enr.grading_basis, enr.sis_enrollment_status, enr.sis_term_id, enr.ldap_uid,
-                  crs.sis_course_title, crs.sis_course_name,
-                  crs.sis_section_id, crs.sis_primary, crs.sis_instruction_format, crs.sis_section_num
-              FROM {intermediate_schema()}.sis_enrollments enr
-              JOIN {intermediate_schema()}.course_sections crs
-                  ON crs.sis_section_id = enr.sis_section_id
-                  AND crs.sis_term_id = enr.sis_term_id
-              WHERE enr.ldap_uid = {uid}
-                  AND enr.sis_enrollment_status != 'D'
-                  AND enr.sis_term_id = {term_id}
-              ORDER BY crs.sis_course_name, crs.sis_primary DESC, crs.sis_instruction_format, crs.sis_section_num
-        """
-    return safe_execute_redshift(sql)
-
-
 def get_sis_holds(sid):
     sql = f"""SELECT feed
         FROM {student_schema()}.student_holds
         WHERE sid = '{sid}'
         """
-    return safe_execute_redshift(sql)
+    return safe_execute_rds(sql)
 
 
 @fixture('loch_sis_section_{term_id}_{sis_section_id}.csv')
@@ -184,40 +152,39 @@ def get_sis_section(term_id, sis_section_id):
                   sc.instructor_uid, sc.instructor_name, sc.instructor_role_code,
                   sc.meeting_location, sc.meeting_days,
                   sc.meeting_start_time, sc.meeting_end_time, sc.meeting_start_date, sc.meeting_end_date
-              FROM {intermediate_schema()}.sis_sections sc
-              WHERE sc.sis_section_id = {sis_section_id}
-                  AND sc.sis_term_id = {term_id}
+              FROM {sis_schema()}.sis_sections sc
+              WHERE sc.sis_section_id = :sis_section_id
+                  AND sc.sis_term_id = :term_id
               ORDER BY sc.meeting_days, sc.meeting_start_time, sc.meeting_end_time, sc.instructor_name
         """
-    return safe_execute_redshift(sql)
+    params = {
+        'term_id': term_id,
+        'sis_section_id': sis_section_id,
+    }
+    return safe_execute_rds(sql, **params)
 
 
-def get_sis_section_enrollment_for_uid(term_id, sis_section_id, uid, scope):
-    query_tables = _student_query_tables_for_scope(scope)
-    if not query_tables:
-        return []
+def get_sis_section_enrollment_for_uid(term_id, sis_section_id, uid):
     sql = f"""SELECT DISTINCT sas.sid
-              {query_tables}
-              JOIN {intermediate_schema()}.sis_enrollments enr
+              FROM {student_schema()}.student_academic_status sas
+              JOIN {sis_schema()}.sis_enrollments enr
                 ON sas.uid = enr.ldap_uid
                 AND enr.ldap_uid = :uid
                 AND enr.sis_term_id = :term_id
                 AND enr.sis_section_id = :sis_section_id"""
     params = {'term_id': term_id, 'sis_section_id': sis_section_id, 'uid': uid}
-    return safe_execute_redshift(sql, **params)
+    return safe_execute_rds(sql, **params)
 
 
 @fixture('loch_sis_section_enrollments_{term_id}_{sis_section_id}.csv')
-def get_sis_section_enrollments(term_id, sis_section_id, scope, offset=None, limit=None):
-    query_tables = _student_query_tables_for_scope(scope)
-    if not query_tables:
-        return []
-    sql = f"""SELECT DISTINCT sas.sid, sas.uid, sas.first_name, sas.last_name
-              {query_tables}
-              JOIN {intermediate_schema()}.sis_enrollments enr
+def get_sis_section_enrollments(term_id, sis_section_id, offset=None, limit=None):
+    sql = f"""SELECT sas.sid, sas.uid, sas.first_name, sas.last_name
+              FROM {student_schema()}.student_academic_status sas
+              JOIN {sis_schema()}.sis_enrollments enr
                 ON sas.uid = enr.ldap_uid
                 AND enr.sis_term_id = :term_id
                 AND enr.sis_section_id = :sis_section_id
+              GROUP BY sas.sid, sas.uid, sas.first_name, sas.last_name
               ORDER BY {naturalize_order('sas.last_name')}, {naturalize_order('sas.first_name')}, sas.sid"""
     params = {'term_id': term_id, 'sis_section_id': sis_section_id}
     if offset:
@@ -226,22 +193,19 @@ def get_sis_section_enrollments(term_id, sis_section_id, scope, offset=None, lim
     if limit:
         sql += ' LIMIT :limit'
         params['limit'] = limit
-    return safe_execute_redshift(sql, **params)
+    return safe_execute_rds(sql, **params)
 
 
-def get_sis_section_enrollments_count(term_id, sis_section_id, scope):
-    query_tables = _student_query_tables_for_scope(scope)
-    if not query_tables:
-        return []
+def get_sis_section_enrollments_count(term_id, sis_section_id):
     sql = f"""SELECT COUNT(DISTINCT sas.sid) as count
-              {query_tables}
-              JOIN {intermediate_schema()}.sis_enrollments enr
+              FROM {student_schema()}.student_academic_status sas
+              JOIN {sis_schema()}.sis_enrollments enr
                 ON sas.uid = enr.ldap_uid
                 AND enr.sis_term_id = :term_id
                 AND enr.sis_section_id = :sis_section_id
         """
     params = {'term_id': term_id, 'sis_section_id': sis_section_id}
-    return safe_execute_redshift(sql, **params)
+    return safe_execute_rds(sql, **params)
 
 
 def get_sis_section_mean_gpas(term_id, sis_section_id):
@@ -251,7 +215,7 @@ def get_sis_section_mean_gpas(term_id, sis_section_id):
           WHERE sis_term_id = :term_id
           AND sis_section_id = :sis_section_id
     """
-    return safe_execute_redshift(sql, **params)
+    return safe_execute_rds(sql, **params)
 
 
 def get_team_groups(group_codes=None, team_code=None):
@@ -275,7 +239,7 @@ def get_athletics_profiles(sids):
         FROM {asc_schema()}.student_profiles
         WHERE sid = ANY(:sids)
         """
-    return safe_execute_redshift(sql, sids=sids)
+    return safe_execute_rds(sql, sids=sids)
 
 
 def get_coe_profiles(sids):
@@ -283,29 +247,81 @@ def get_coe_profiles(sids):
         FROM {coe_schema()}.student_profiles
         WHERE sid = ANY(:sids)
         """
-    return safe_execute_redshift(sql, sids=sids)
+    return safe_execute_rds(sql, sids=sids)
 
 
-def get_student_for_uid_and_scope(uid, scope):
-    query_tables = _student_query_tables_for_scope(scope)
-    if not query_tables:
-        return None
+def get_student_by_sid(sid):
     sql = f"""SELECT sas.*
-        {query_tables}
+        FROM {student_schema()}.student_academic_status sas
+        WHERE sas.sid = :sid"""
+    rows = safe_execute_rds(sql, sid=sid)
+    return None if not rows or (len(rows) == 0) else rows[0]
+
+
+def get_student_by_uid(uid):
+    sql = f"""SELECT sas.*
+        FROM {student_schema()}.student_academic_status sas
         WHERE sas.uid = :uid"""
     rows = safe_execute_rds(sql, uid=uid)
     return None if not rows or (len(rows) == 0) else rows[0]
 
 
+def get_basic_student_data(sids):
+    sql = f"""SELECT sid, uid, first_name, last_name
+        FROM {student_schema()}.student_academic_status
+        WHERE sid = ANY(:sids)
+        """
+    return safe_execute_rds(sql, sids=sids)
+
+
 def get_student_profiles(sids=None):
-    sql = f"""SELECT sid, profile
-        FROM {student_schema()}.student_profiles
+    sql = f"""SELECT p.sid, p.profile, d.gender, d.minority
+        FROM {student_schema()}.student_profiles p
+        LEFT JOIN {student_schema()}.demographics d ON d.sid = p.sid
         """
     if sids is not None:
-        sql += 'WHERE sid = ANY(:sids)'
+        sql += 'WHERE p.sid = ANY(:sids)'
         return safe_execute_rds(sql, sids=sids)
     else:
         return safe_execute_rds(sql)
+
+
+def query_historical_sids(sids):
+    sql = f'SELECT sid FROM {student_schema()}.student_profiles_hist_enr WHERE sid = ANY(:sids) ORDER BY sid'
+    return safe_execute_rds(sql, sids=sids)
+
+
+def get_historical_student_profiles_for_sids(sids):
+    sql = f"""SELECT sid, uid, profile
+        FROM {student_schema()}.student_profiles_hist_enr
+        WHERE sid = ANY(:sids)"""
+    return safe_execute_rds(sql, sids=sids)
+
+
+def get_historical_student_profiles_for_uid(uid):
+    sql = f"""SELECT sid, uid, profile
+        FROM {student_schema()}.student_profiles_hist_enr
+        WHERE uid = :uid"""
+    return safe_execute_rds(sql, uid=uid)
+
+
+def get_historical_enrollments_for_sid(sid, latest_term_id=None):
+    sql = f"""SELECT term_id, enrollment_term
+        FROM {student_schema()}.student_enrollment_terms_hist_enr
+        WHERE sid = :sid
+        AND term_id >= '{earliest_term_id()}'"""
+    if latest_term_id:
+        sql += f" AND term_id <= '{latest_term_id}'"
+    sql += 'ORDER BY term_id DESC'
+    return safe_execute_rds(sql, sid=sid)
+
+
+def get_historical_enrollments_for_term(term_id, sids):
+    sql = f"""SELECT term_id, sid, enrollment_term
+        FROM {student_schema()}.student_enrollment_terms_hist_enr
+        WHERE term_id = :term_id
+        AND sid = ANY(:sids)"""
+    return safe_execute_rds(sql, term_id=term_id, sids=sids)
 
 
 def extract_valid_sids(sids):
@@ -342,23 +358,83 @@ def get_enrollments_for_term(term_id, sids=None):
     return safe_execute_rds(sql, term_id=term_id, sids=sids)
 
 
+def match_advising_note_authors_by_name(prefixes, limit=None):
+    prefix_conditions = []
+    prefix_kwargs = {}
+    for idx, prefix in enumerate(prefixes):
+        prefix_conditions.append(
+            f"""JOIN {advising_notes_schema()}.advising_note_author_names an{idx}
+            ON an{idx}.name LIKE :prefix_{idx}
+            AND an{idx}.uid = a.uid""",
+        )
+        prefix_kwargs[f'prefix_{idx}'] = f'{prefix}%'
+    sql = f"""SELECT DISTINCT a.first_name, a.last_name, a.sid, a.uid
+        FROM {advising_notes_schema()}.advising_note_authors a
+        {' '.join(prefix_conditions)}
+        ORDER BY a.first_name, a.last_name"""
+    if limit:
+        sql += f' LIMIT {limit}'
+    return safe_execute_rds(sql, **prefix_kwargs)
+
+
+def match_students_by_name_or_sid(prefixes, limit=None):
+    prefix_conditions = []
+    prefix_kwargs = {}
+    for idx, prefix in enumerate(prefixes):
+        prefix_conditions.append(
+            f"""JOIN {student_schema()}.student_names sn{idx}
+            ON (sn{idx}.name LIKE :prefix_{idx} OR sn{idx}.sid LIKE :prefix_{idx})
+            AND sn{idx}.sid = sas.sid""",
+        )
+        prefix_kwargs[f'prefix_{idx}'] = f'{prefix}%'
+    sql = f"""SELECT DISTINCT sas.first_name, sas.last_name, sas.sid, sas.uid
+        FROM {student_schema()}.student_academic_status sas
+        {' '.join(prefix_conditions)}
+        ORDER BY sas.first_name, sas.last_name"""
+    if limit:
+        sql += f' LIMIT {limit}'
+    return safe_execute_rds(sql, **prefix_kwargs)
+
+
 def get_asc_advising_notes(sid):
     sql = f"""
         SELECT
             id, sid, advisor_uid AS author_uid,
             advisor_first_name || ' ' || advisor_last_name AS author_name,
             created_at, updated_at
-        FROM {asc_advising_notes_schema()}.advising_notes
+        FROM {asc_schema()}.advising_notes
         WHERE sid=:sid
         ORDER BY created_at, updated_at, id"""
-    return safe_execute_redshift(sql, sid=sid)
+    return safe_execute_rds(sql, sid=sid)
 
 
 def get_asc_advising_note_topics(sid):
     sql = f"""SELECT id, topic
-        FROM {asc_advising_notes_schema()}.advising_note_topics
-        WHERE sid=:sid"""
-    return safe_execute_redshift(sql, sid=sid)
+        FROM {asc_schema()}.advising_note_topics
+        WHERE sid=:sid
+        ORDER BY id"""
+    return safe_execute_rds(sql, sid=sid)
+
+
+def get_e_i_advising_notes(sid):
+    sql = f"""
+        SELECT
+            id, sid, advisor_uid AS author_uid,
+            advisor_first_name || ' ' || advisor_last_name AS author_name,
+            created_at, updated_at
+        FROM {e_i_schema()}.advising_notes
+        WHERE sid=:sid
+        AND advisor_last_name <> 'Front Desk'
+        ORDER BY created_at, updated_at, id"""
+    return safe_execute_rds(sql, sid=sid)
+
+
+def get_e_i_advising_note_topics(sid):
+    sql = f"""SELECT id, topic
+        FROM {e_i_schema()}.advising_note_topics
+        WHERE sid=:sid
+        ORDER BY id"""
+    return safe_execute_rds(sql, sid=sid)
 
 
 def get_sis_advising_notes(sid):
@@ -366,96 +442,143 @@ def get_sis_advising_notes(sid):
         SELECT
             id, sid, advisor_sid, appointment_id, note_category, note_subcategory,
             created_by, updated_by, note_body, created_at, updated_at
-        FROM {advising_notes_schema()}.advising_notes
+        FROM {sis_advising_notes_schema()}.advising_notes
         WHERE sid=:sid
         ORDER BY created_at, updated_at, id"""
-    return safe_execute_redshift(sql, sid=sid)
+    return safe_execute_rds(sql, sid=sid)
 
 
 def get_sis_advising_note_topics(sid):
     sql = f"""SELECT advising_note_id, note_topic
-        FROM {advising_notes_schema()}.advising_note_topics
+        FROM {sis_advising_notes_schema()}.advising_note_topics
         WHERE sid=:sid
+        AND note_topic IS NOT NULL
         ORDER BY advising_note_id"""
-    return safe_execute_redshift(sql, sid=sid)
+    return safe_execute_rds(sql, sid=sid)
 
 
-def get_sis_advising_note_attachment(sid, filename, scope):
-    query_tables, query_filter, query_bindings = get_students_query(scope=scope)
-    if not query_tables:
-        return None
-    sql = f"""SELECT advising_note_id, created_by, sis_file_name, user_file_name
-        {query_tables}
-        JOIN {advising_notes_schema()}.advising_note_attachments ana
-        ON sas.sid = :sid
-        AND ana.sid = sas.sid
-        AND ana.sis_file_name = :filename
-        {query_filter}"""
-    return safe_execute_redshift(sql, sid=sid, filename=filename, **query_bindings)
+def get_sis_advising_note_attachment(sid, filename):
+    sql = f"""SELECT advising_note_id, created_by, sis_file_name, user_file_name, is_historical
+        FROM {sis_advising_notes_schema()}.advising_note_attachments
+        WHERE sid = :sid
+        AND sis_file_name = :filename"""
+    return safe_execute_rds(sql, sid=sid, filename=filename)
 
 
 def get_sis_advising_note_attachments(sid):
     sql = f"""SELECT advising_note_id, created_by, sis_file_name, user_file_name
-        FROM {advising_notes_schema()}.advising_note_attachments
+        FROM {sis_advising_notes_schema()}.advising_note_attachments
         WHERE sid=:sid
         ORDER BY advising_note_id"""
-    return safe_execute_redshift(sql, sid=sid)
+    return safe_execute_rds(sql, sid=sid)
 
 
-def search_advising_notes(     # noqa
-        search_phrase,
-        student_query_tables,
-        student_query_filter,
-        student_query_bindings,
-        author_csid=None,
-        topic=None,
-        offset=None,
-        limit=None,
-    ):
-    author_filter = 'AND an.advisor_sid = :author_csid' if author_csid else ''
+def search_advising_notes(
+    search_phrase,
+    author_uid=None,
+    author_csid=None,
+    student_csid=None,
+    topic=None,
+    datetime_from=None,
+    datetime_to=None,
+    offset=None,
+    limit=None,
+):
 
+    if author_uid or author_csid:
+        uid_author_filter = 'an.advisor_uid = :author_uid' if author_uid else None
+        sid_author_filter = 'an.advisor_sid = :author_csid' if author_csid else None
+        author_filter = 'AND (' + join_if_present(' OR ', [uid_author_filter, sid_author_filter]) + ')'
+    else:
+        author_filter = ''
+
+    sid_filter = 'AND an.sid = :student_csid' if student_csid else ''
+
+    # Topic search is limited to SIS notes.
     if topic:
-        topic_join = f"""JOIN {advising_notes_schema()}.advising_note_topic_mappings antm
+        topic_join = f"""JOIN {sis_advising_notes_schema()}.advising_note_topic_mappings antm
             ON antm.boa_topic = :topic
-        JOIN {advising_notes_schema()}.advising_note_topics ant
+        JOIN {sis_advising_notes_schema()}.advising_note_topics ant
             ON ant.note_topic = antm.sis_topic
             AND ant.advising_note_id = an.id"""
     else:
         topic_join = ''
 
-    sql = f"""SELECT
-        an.sid, an.id, an.note_body, an.advisor_sid, an.created_by, an.created_at, an.updated_at,
-        sas.uid, sas.first_name, sas.last_name
-        {student_query_tables}
-        JOIN {advising_notes_schema()}.advising_notes an
-            ON an.sid = sas.sid
-            {author_filter}
-        {topic_join}
-        JOIN (
-          SELECT id, ts_rank(fts_index, plainto_tsquery('english', :search_phrase)) AS rank
-          FROM {advising_notes_schema()}.advising_notes_search_index
-          WHERE fts_index @@ plainto_tsquery('english', :search_phrase)
-        )
-        AS idx
+    date_filter = ''
+    # We prefer to filter on updated_at, but that value is not meaningful for UCBCONVERSION notes.
+    if datetime_from:
+        date_filter += """ AND ((an.created_by = 'UCBCONVERSION' AND an.created_at >= :datetime_from)
+            OR ((an.created_by != 'UCBCONVERSION' OR an.created_by IS NULL) AND an.updated_at >= :datetime_from))"""
+    if datetime_to:
+        date_filter += """ AND ((an.created_by = 'UCBCONVERSION' AND an.created_at < :datetime_to)
+            OR ((an.created_by != 'UCBCONVERSION' OR an.created_by IS NULL) AND an.updated_at < :datetime_to))"""
+
+    query_columns = """an.sid, an.id, an.note_body, an.advisor_sid, an.advisor_uid,
+            an.created_by, an.created_at, an.updated_at, an.note_category, an.note_subcategory,
+            sas.uid, sas.first_name, sas.last_name, an.advisor_first_name, an.advisor_last_name"""
+
+    query_tables = f"""{advising_notes_schema()}.advising_notes an
+        JOIN {student_schema()}.student_academic_status sas ON an.sid = sas.sid"""
+
+    if search_phrase:
+        query_columns += ", ts_rank(idx.fts_index, plainto_tsquery('english', :search_phrase)) AS rank"
+        query_tables += f"""
+            JOIN {advising_notes_schema()}.advising_notes_search_index idx
             ON idx.id = an.id
-        {student_query_filter}
-        ORDER BY idx.rank DESC, an.id"""
+            AND idx.fts_index @@ plainto_tsquery('english', :search_phrase)"""
+    else:
+        query_columns += ', 0 AS rank'
+
+    sql = f"""SELECT DISTINCT {query_columns} FROM {query_tables}
+        {topic_join}
+        WHERE TRUE
+        {author_filter}
+        {sid_filter}
+        {date_filter}
+        ORDER BY rank DESC, an.id"""
+
     if offset is not None and offset > 0:
         sql += ' OFFSET :offset'
     if limit is not None and limit < 150:  # Sanity check large limits
         sql += ' LIMIT :limit'
     params = dict(
-        **student_query_bindings,
         search_phrase=search_phrase,
         author_csid=author_csid,
+        author_uid=author_uid,
+        student_csid=student_csid,
         topic=topic,
+        datetime_from=datetime_from,
+        datetime_to=datetime_to,
         offset=offset,
         limit=limit,
     )
     return safe_execute_rds(sql, **params)
 
 
-def get_ethnicity_codes(scope=()):
+def get_academic_plans_for_advisor(advisor_sid):
+    sql = f"""SELECT DISTINCT advs.academic_plan_code, advs.academic_plan
+        FROM {advisor_schema()}.advisor_students advs
+        JOIN {student_schema()}.student_academic_status sas
+        ON sas.sid = advs.student_sid
+        AND advs.advisor_sid = :advisor_sid"""
+    return safe_execute_rds(sql, advisor_sid=advisor_sid)
+
+
+def get_advisor_uids_for_affiliations(program, affiliations):
+    sql = f"""SELECT DISTINCT uid,
+        CASE WHEN advisor_type_code IS NULL THEN false ELSE true END AS can_access_canvas_data
+        FROM {advisor_schema()}.advisor_roles"""
+    if program:
+        sql += ' WHERE academic_program_code = :program'
+    else:
+        sql += " WHERE academic_program_code = '' OR academic_program_code IS NULL"
+    if affiliations:
+        sql += ' AND advisor_type_code = ANY(:affiliations)'
+    return safe_execute_rds(sql, program=program, affiliations=affiliations)
+
+
+def get_coe_ethnicity_codes(scope=()):
+    # TODO Scoping remains in place for the moment, as ethnicity is still a COE-specific category.
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
         return []
@@ -469,22 +592,39 @@ def get_ethnicity_codes(scope=()):
         """)
 
 
-def get_majors(scope=[]):
-    query_tables = _student_query_tables_for_scope(scope)
-    if not query_tables:
-        return []
+def get_distinct_genders():
+    return safe_execute_rds(f'SELECT DISTINCT gender FROM {student_schema()}.demographics ORDER BY gender')
+
+
+def get_distinct_ethnicities():
+    return safe_execute_rds(f'SELECT DISTINCT ethnicity FROM {student_schema()}.ethnicities ORDER BY ethnicity')
+
+
+def get_expected_graduation_terms():
+    sql = f"""SELECT DISTINCT expected_grad_term FROM {student_schema()}.student_academic_status
+        WHERE expected_grad_term > '0'
+        ORDER BY expected_grad_term DESC"""
+    return safe_execute_rds(sql)
+
+
+def get_majors():
     sql = f"""SELECT DISTINCT maj.major AS major
-        {query_tables}
+        FROM {student_schema()}.student_academic_status sas
         JOIN {student_schema()}.student_majors maj ON maj.sid = sas.sid
         ORDER BY major"""
     return safe_execute_rds(sql)
 
 
 def get_students_query(     # noqa
-    advisor_ldap_uids=None,
+    advisor_plan_mappings=None,
+    coe_advisor_ldap_uids=None,
+    coe_ethnicities=None,
+    coe_genders=None,
     coe_prep_statuses=None,
     coe_probation=None,
+    coe_underrepresented=None,
     ethnicities=None,
+    expected_grad_terms=None,
     genders=None,
     gpa_ranges=None,
     group_codes=None,
@@ -494,12 +634,18 @@ def get_students_query(     # noqa
     last_name_range=None,
     levels=None,
     majors=None,
+    midpoint_deficient_grade=None,
     scope=(),
     search_phrase=None,
     sids=(),
+    transfer=None,
     underrepresented=None,
     unit_ranges=None,
 ):
+
+    # If no specific scope is required by criteria, default to the admin view.
+    if not scope:
+        scope = ['ADMIN']
     query_tables = _student_query_tables_for_scope(scope)
     if not query_tables:
         return None, None, None
@@ -523,6 +669,10 @@ def get_students_query(     # noqa
                         AND n{i}.sid = sas.sid"""
                 word = ''.join(re.split('\W', word))
                 query_bindings.update({f'name_phrase_{i}': f'{word}%'})
+    if ethnicities:
+        query_tables += f""" JOIN {student_schema()}.ethnicities e ON e.sid = sas.sid"""
+    if genders or underrepresented is not None:
+        query_tables += f""" JOIN {student_schema()}.demographics d ON d.sid = sas.sid"""
     if sids:
         query_filter += f' AND sas.sid = ANY(:sids)'
         query_bindings.update({'sids': sids})
@@ -531,6 +681,18 @@ def get_students_query(     # noqa
     query_filter += _numranges_to_sql('sas.gpa', gpa_ranges) if gpa_ranges else ''
     query_filter += _numranges_to_sql('sas.units', unit_ranges) if unit_ranges else ''
     query_filter += _query_filter_last_name_range(last_name_range)
+    if ethnicities:
+        query_filter += ' AND e.ethnicity = ANY(:ethnicities)'
+        query_bindings.update({'ethnicities': ethnicities})
+    if expected_grad_terms:
+        query_filter += ' AND sas.expected_grad_term = ANY(:expected_grad_terms)'
+        query_bindings.update({'expected_grad_terms': expected_grad_terms})
+    if underrepresented is not None:
+        query_filter += ' AND d.minority IS :underrepresented'
+        query_bindings.update({'underrepresented': underrepresented})
+    if genders:
+        query_filter += ' AND d.gender = ANY(:genders)'
+        query_bindings.update({'genders': genders})
     if levels:
         query_filter += ' AND sas.level = ANY(:levels)'
         query_bindings.update({'levels': [level_to_code(l) for l in levels]})
@@ -549,6 +711,29 @@ def get_students_query(     # noqa
         query_filter += ' AND (' + ' OR '.join(major_filters) + ')'
         query_tables += f' LEFT JOIN {student_schema()}.student_majors maj ON maj.sid = sas.sid'
         query_bindings.update({'majors': _majors})
+    if midpoint_deficient_grade is True:
+        query_tables += f""" JOIN {student_schema()}.student_enrollment_terms ser
+                             ON ser.sid = sas.sid
+                             AND ser.term_id = :term_id
+                             AND ser.midpoint_deficient_grade = TRUE"""
+        query_bindings.update({'term_id': current_term_id()})
+    if transfer is True:
+        query_filter += ' AND sas.transfer = TRUE'
+    if advisor_plan_mappings:
+        advisor_plan_filters = []
+        for idx, mapping in enumerate(advisor_plan_mappings):
+            advisor_sid = mapping['advisor_sid']
+            query_bindings.update({f'advisor_sid_{idx}': advisor_sid})
+            if mapping['academic_plan_code'] == '*':
+                advisor_plan_filters.append(f'advs.advisor_sid = :advisor_sid_{idx}')
+            else:
+                academic_plan_code = mapping['academic_plan_code']
+                query_bindings.update({f'academic_plan_code_{idx}': academic_plan_code})
+                advisor_plan_filters.append(
+                    f'(advs.advisor_sid = :advisor_sid_{idx} AND advs.academic_plan_code = :academic_plan_code_{idx})',
+                )
+        query_tables += f""" JOIN {advisor_schema()}.advisor_students advs ON advs.student_sid = sas.sid"""
+        query_tables += ' AND (' + ' OR '.join(advisor_plan_filters) + ')'
 
     # ASC criteria
     query_filter += f' AND s.active IS {is_active_asc}' if is_active_asc is not None else ''
@@ -558,19 +743,21 @@ def get_students_query(     # noqa
         query_bindings.update({'group_codes': group_codes})
 
     # COE criteria
-    if advisor_ldap_uids:
-        query_filter += ' AND s.advisor_ldap_uid = ANY(:advisor_ldap_uids)'
-        query_bindings.update({'advisor_ldap_uids': advisor_ldap_uids})
+    if coe_advisor_ldap_uids:
+        query_filter += ' AND s.advisor_ldap_uid = ANY(:coe_advisor_ldap_uids)'
+        query_bindings.update({'coe_advisor_ldap_uids': coe_advisor_ldap_uids})
+    if coe_ethnicities:
+        query_filter += ' AND s.ethnicity = ANY(:coe_ethnicities)'
+        query_bindings.update({'coe_ethnicities': coe_ethnicities})
+    if coe_genders:
+        query_filter += ' AND s.gender = ANY(:coe_genders)'
+        query_bindings.update({'coe_genders': coe_genders})
     if coe_prep_statuses:
         query_filter += ' AND (' + ' OR '.join([f's.{cps} IS TRUE' for cps in coe_prep_statuses]) + ')'
-    if ethnicities:
-        query_filter += ' AND s.ethnicity = ANY(:ethnicities)'
-        query_bindings.update({'ethnicities': ethnicities})
-    if genders:
-        query_filter += ' AND s.gender = ANY(:genders)'
-        query_bindings.update({'genders': genders})
-    query_filter += f' AND s.probation IS {coe_probation}' if coe_probation is not None else ''
-    query_filter += f' AND s.minority IS {underrepresented}' if underrepresented is not None else ''
+    if coe_probation is not None:
+        query_filter += f' AND s.probation IS {coe_probation}'
+    if coe_underrepresented is not None:
+        query_filter += f' AND s.minority IS {coe_underrepresented}'
     if is_active_coe is False:
         query_filter += f" AND s.status IN ('D','P','U','W','X','Z')"
     elif is_active_coe is True:
@@ -684,8 +871,6 @@ def _student_query_tables_for_scope(scope):
         schemas_for_codes = {
             'UWASC': asc_schema(),
             'COENG': coe_schema(),
-            'PHYSI': physics_schema(),
-            'QCADV': l_s_schema(),
         }
         tables = []
         # A dictionary with key 'intersection' indicates that multiple scopes should be treated as an intersection
@@ -715,21 +900,15 @@ def _student_query_tables_for_scope(scope):
             columns_for_codes = {
                 'COENG': [
                     'advisor_ldap_uid',
+                    'coe_genders',
+                    'coe_ethnicity',
+                    'coe_underrepresented',
                     'did_prep',
                     'did_tprep',
-                    'ethnicity',
-                    'gender',
-                    'minority',
                     'prep_eligible',
                     'probation',
                     'status',
                     'tprep_eligible',
-                ],
-                'QCADV': [
-                    'acadplan_code',
-                    'acadplan_descr',
-                    'acadplan_type_code',
-                    'acadplan_ownedby_code',
                 ],
                 'UWASC': [
                     'active',

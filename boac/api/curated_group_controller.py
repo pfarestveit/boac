@@ -24,9 +24,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import get_my_curated_groups
+from boac.api.util import get_my_curated_groups, response_with_students_csv_download
 from boac.lib.http import tolerant_jsonify
-from boac.lib.util import get as get_param
+from boac.lib.util import get as get_param, get_benchmarker
 from boac.merged.student import get_summary_student_profiles
 from boac.models.alert import Alert
 from boac.models.curated_group import CuratedGroup
@@ -48,7 +48,7 @@ def create_curated_group():
     name = params.get('name', None)
     if not name:
         raise BadRequestError('Curated group creation requires \'name\'')
-    curated_group = CuratedGroup.create(current_user.id, name)
+    curated_group = CuratedGroup.create(current_user.get_id(), name)
     # Optionally, add students
     if 'sids' in params:
         sids = [sid for sid in set(params.get('sids')) if sid.isdigit()]
@@ -63,8 +63,8 @@ def delete_curated_group(curated_group_id):
     curated_group = CuratedGroup.find_by_id(curated_group_id)
     if not curated_group:
         raise ResourceNotFoundError(f'No curated group found with id: {curated_group_id}')
-    if curated_group.owner_id != current_user.id:
-        raise ForbiddenRequestError(f'Current user, {current_user.uid}, does not own curated group {curated_group.id}')
+    if curated_group.owner_id != current_user.get_id():
+        raise ForbiddenRequestError(f'Current user, {current_user.get_uid()}, does not own curated group {curated_group.id}')
     CuratedGroup.delete(curated_group_id)
     return tolerant_jsonify({'message': f'Curated group {curated_group_id} has been deleted'}), 200
 
@@ -79,33 +79,58 @@ def get_curated_group(curated_group_id):
     return tolerant_jsonify(curated_group)
 
 
+@app.route('/api/curated_group/<curated_group_id>/download_csv')
+@login_required
+def download_csv(curated_group_id):
+    benchmark = get_benchmarker(f'curated group {curated_group_id} download_csv')
+    benchmark('begin')
+    curated_group = CuratedGroup.find_by_id(curated_group_id)
+    if not curated_group:
+        raise ResourceNotFoundError(f'No curated group found with id: {curated_group_id}')
+    if curated_group.owner_id != current_user.get_id():
+        raise ForbiddenRequestError(f'Current user, {current_user.get_uid()}, does not own curated group {curated_group.id}')
+    return response_with_students_csv_download(sids=CuratedGroup.get_all_sids(curated_group_id), benchmark=benchmark)
+
+
 @app.route('/api/curated_group/<curated_group_id>/students_with_alerts')
 @login_required
 def get_students_with_alerts(curated_group_id):
+    offset = get_param(request.args, 'offset', 0)
+    limit = get_param(request.args, 'limit', 50)
+    benchmark = get_benchmarker(f'curated group {curated_group_id} students_with_alerts')
+    benchmark('begin')
     curated_group = CuratedGroup.find_by_id(curated_group_id)
     if not curated_group:
         raise ResourceNotFoundError(f'Sorry, no curated group found with id {curated_group_id}.')
-    if curated_group.owner_id != current_user.id:
-        raise ForbiddenRequestError(f'Current user, {current_user.uid}, does not own curated group {curated_group.id}')
+    if curated_group.owner_id != current_user.get_id():
+        raise ForbiddenRequestError(f'Current user, {current_user.get_uid()}, does not own curated group {curated_group.id}')
+    benchmark('begin alerts query')
     students = Alert.include_alert_counts_for_students(
-        viewer_user_id=current_user.id,
+        viewer_user_id=current_user.get_id(),
         group={'sids': CuratedGroup.get_all_sids(curated_group_id)},
+        count_only=True,
+        offset=offset,
+        limit=limit,
     )
+    benchmark('end alerts query')
     alert_count_per_sid = {}
     for s in list(filter(lambda s: s.get('alertCount') > 0, students)):
         sid = s.get('sid')
         alert_count_per_sid[sid] = s.get('alertCount')
     sids = list(alert_count_per_sid.keys())
+    benchmark('begin profile query')
     students_with_alerts = get_summary_student_profiles(sids=sids)
+    benchmark('end profile query')
     for student in students_with_alerts:
         student['alertCount'] = alert_count_per_sid[student['sid']]
+    benchmark('end')
     return tolerant_jsonify(students_with_alerts)
 
 
 @app.route('/api/curated_groups/my/<sid>')
 @login_required
 def curated_group_ids_per_sid(sid):
-    return tolerant_jsonify(CuratedGroup.curated_group_ids_per_sid(user_id=current_user.id, sid=sid))
+    return tolerant_jsonify(CuratedGroup.curated_group_ids_per_sid(user_id=current_user.get_id(), sid=sid))
 
 
 @app.route('/api/curated_group/<curated_group_id>/remove_student/<sid>', methods=['DELETE'])
@@ -115,8 +140,8 @@ def remove_student_from_curated_group(curated_group_id, sid):
     curated_group = CuratedGroup.find_by_id(curated_group_id)
     if not curated_group:
         raise ResourceNotFoundError(f'No curated group found with id: {curated_group_id}')
-    if curated_group.owner_id != current_user.id:
-        raise ForbiddenRequestError(f'Current user, {current_user.uid}, does not own curated group {curated_group.id}')
+    if curated_group.owner_id != current_user.get_id():
+        raise ForbiddenRequestError(f'Current user, {current_user.get_uid()}, does not own curated group {curated_group.id}')
     CuratedGroup.remove_student(curated_group_id, sid)
     return tolerant_jsonify(curated_group.to_api_json())
 
@@ -133,8 +158,8 @@ def add_students_to_curated_group():
     curated_group = CuratedGroup.find_by_id(curated_group_id)
     if not curated_group:
         raise ResourceNotFoundError(f'No curated group found where id={curated_group_id}')
-    if curated_group.owner_id != current_user.id:
-        raise ForbiddenRequestError(f'Current user, {current_user.uid}, does not own curated group {curated_group.id}')
+    if curated_group.owner_id != current_user.get_id():
+        raise ForbiddenRequestError(f'Current user, {current_user.get_uid()}, does not own curated group {curated_group.id}')
     CuratedGroup.add_students(curated_group_id=curated_group_id, sids=sids)
     if return_student_profiles:
         return tolerant_jsonify(_curated_group_with_complete_student_profiles(curated_group_id=curated_group_id))
@@ -152,20 +177,25 @@ def rename_curated_group():
         raise BadRequestError('Requested curated group name is empty or invalid')
     curated_group_id = params['id']
     curated_group = CuratedGroup.find_by_id(curated_group_id)
-    if not curated_group or curated_group.owner_id != current_user.id:
+    if not curated_group or curated_group.owner_id != current_user.get_id():
         raise BadRequestError('Curated group does not exist or is not available to you')
     CuratedGroup.rename(curated_group_id=curated_group.id, name=name)
     return tolerant_jsonify(CuratedGroup.find_by_id(curated_group_id).to_api_json())
 
 
 def _curated_group_with_complete_student_profiles(curated_group_id, order_by='last_name', offset=0, limit=50):
+    benchmark = get_benchmarker(f'curated group {curated_group_id} with student profiles')
+    benchmark('begin')
     curated_group = CuratedGroup.find_by_id(curated_group_id)
     if not curated_group:
         raise ResourceNotFoundError(f'Sorry, no curated group found with id {curated_group_id}.')
-    if curated_group.owner_id != current_user.id:
-        raise ForbiddenRequestError(f'Current user, {current_user.uid}, does not own curated group {curated_group.id}')
+    if curated_group.owner_id != current_user.get_id():
+        raise ForbiddenRequestError(f'Current user, {current_user.get_uid()}, does not own curated group {curated_group.id}')
     api_json = curated_group.to_api_json(order_by=order_by, offset=offset, limit=limit)
     sids = [s['sid'] for s in api_json['students']]
-    api_json['students'] = get_summary_student_profiles(sids)
-    Alert.include_alert_counts_for_students(viewer_user_id=current_user.id, group=api_json)
+    benchmark('begin profile query')
+    api_json['students'] = get_summary_student_profiles(sids, include_historical=True)
+    benchmark('begin alerts query')
+    Alert.include_alert_counts_for_students(viewer_user_id=current_user.get_id(), group=api_json)
+    benchmark('end')
     return api_json

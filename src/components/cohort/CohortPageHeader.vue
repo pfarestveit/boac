@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div v-if="!cohortId && totalStudentCount === undefined">
+    <div v-if="!cohortId && totalStudentCount === undefined" class="mb-2">
       <h1
         id="create-cohort-h1"
         class="page-section-header"
@@ -31,9 +31,8 @@
         </h1>
       </div>
       <div class="d-flex align-self-baseline mr-4">
-        <div>
+        <div v-if="cohortId && size(filters)">
           <b-btn
-            v-if="cohortId && size(filters)"
             id="show-hide-details-button"
             class="no-wrap pr-2 p-0"
             variant="link"
@@ -58,7 +57,7 @@
           <b-btn
             id="delete-button"
             v-b-modal="'confirm-delete-modal'"
-            class="pl-2 pr-0 pt-0"
+            class="pl-2 pr-2 pt-0"
             variant="link"
             aria-label="Delete this cohort">
             Delete
@@ -75,6 +74,18 @@
               :cancel-delete-modal="cancelDeleteModal"
               :delete-cohort="cohortDelete" />
           </b-modal>
+        </div>
+        <div v-if="(cohortId && isOwnedByCurrentUser) || (cohortId && size(filters))" class="faint-text">|</div>
+        <div v-if="cohortId || totalStudentCount !== undefined">
+          <b-btn
+            id="export-student-list-button"
+            class="no-wrap pl-2 pr-0 pt-0"
+            variant="link"
+            :disabled="!exportEnabled || !totalStudentCount || isModifiedSinceLastSearch"
+            aria-label="Download CSV file containing all students"
+            @click.prevent="exportCohort()">
+            Export List
+          </b-btn>
         </div>
       </div>
     </div>
@@ -136,8 +147,8 @@
 import CohortEditSession from '@/mixins/CohortEditSession';
 import Context from '@/mixins/Context';
 import DeleteCohortModal from '@/components/cohort/DeleteCohortModal';
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import router from '@/router';
+import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import Validator from '@/mixins/Validator';
 import { deleteCohort } from '@/api/cohort';
@@ -145,8 +156,9 @@ import { deleteCohort } from '@/api/cohort';
 export default {
   name: 'CohortPageHeader',
   components: { DeleteCohortModal },
-  mixins: [CohortEditSession, Context, GoogleAnalytics, Util, Validator],
+  mixins: [CohortEditSession, Context, UserMetadata, Util, Validator],
   data: () => ({
+    exportEnabled: true,
     name: undefined,
     renameError: undefined,
     showDeleteModal: false
@@ -184,8 +196,18 @@ export default {
       this.alertScreenReader(`Deleting ${this.name} cohort`);
       deleteCohort(this.cohortId).then(() => {
         this.showDeleteModal = false;
-        this.gaCohortEvent(this.cohortId, this.cohortName, 'delete');
+        this.gaCohortEvent({
+          id: this.cohortId,
+          name: this.cohortName,
+          action: 'delete'
+        });
         router.push({ path: '/' });
+      });
+    },
+    exportCohort() {
+      this.exportEnabled = false;
+      this.downloadCsvPerFilters().then(() => {
+        this.exportEnabled = true;
       });
     },
     submitRename() {
@@ -200,7 +222,11 @@ export default {
           this.alertScreenReader(`Saved new cohort name: ${this.name}`);
           this.setPageTitle(this.name);
           this.putFocusNextTick('cohort-name');
-          this.gaCohortEvent(this.cohortId, this.name, 'rename');
+          this.gaCohortEvent({
+            id: this.cohortId,
+            name: this.name,
+            action: 'rename'
+          });
         });
         this.setEditMode(null);
       }

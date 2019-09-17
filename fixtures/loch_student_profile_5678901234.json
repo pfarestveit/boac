@@ -43,12 +43,14 @@
         "plans": [
             {
                 "description": "Letters & Sci Undeclared UG",
-                "program": "Undergrad Letters & Science"
+                "program": "Undergrad Letters & Science",
+                "status": "Active"
             }
         ],
         "preferredName": "Sandeep Jayaprakash",
         "primaryName": "Sandeep Jayaprakash",
-        "termsInAttendance": 5
+        "termsInAttendance": 5,
+        "transfer": false
     },
     "uid": "9933311"
 }

@@ -24,12 +24,9 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from datetime import datetime
-import re
 
 from boac import db
-from boac.externals import s3
-from flask import current_app as app
-import pytz
+from boac.lib.util import get_attachment_filename, note_attachment_to_api_json, put_attachment_to_s3
 from sqlalchemy import and_
 
 
@@ -50,19 +47,18 @@ class NoteAttachment(db.Model):
         self.uploaded_by_uid = uploaded_by_uid
 
     @classmethod
-    def create_attachment(cls, note, name, byte_stream, uploaded_by):
-        bucket = app.config['DATA_LOCH_S3_ADVISING_NOTE_BUCKET']
-        base_path = app.config['DATA_LOCH_S3_BOA_NOTE_ATTACHMENTS_PATH']
-        key_suffix = _localize_datetime(datetime.now()).strftime(f'%Y/%m/%d/%Y%m%d_%H%M%S_{name}')
-        key = f'{base_path}/{key_suffix}'
-        s3.put_binary_data_to_s3(
-            bucket=bucket,
-            key=key,
-            binary_data=byte_stream,
-        )
+    def create(cls, note_id, name, byte_stream, uploaded_by):
         return NoteAttachment(
-            note_id=note.id,
-            path_to_attachment=key,
+            note_id=note_id,
+            path_to_attachment=put_attachment_to_s3(name=name, byte_stream=byte_stream),
+            uploaded_by_uid=uploaded_by,
+        )
+
+    @classmethod
+    def create_using_template_attachment(cls, note_id, template_attachment, uploaded_by):
+        return NoteAttachment(
+            note_id=note_id,
+            path_to_attachment=template_attachment.path_to_attachment,
             uploaded_by_uid=uploaded_by,
         )
 
@@ -70,29 +66,8 @@ class NoteAttachment(db.Model):
     def find_by_id(cls, attachment_id):
         return cls.query.filter(and_(cls.id == attachment_id, cls.deleted_at == None)).first()  # noqa: E711
 
-    @classmethod
-    def find_by_note_id(cls, note_id):
-        return cls.query.filter(and_(cls.note_id == note_id, cls.deleted_at == None)).all()  # noqa: E711
-
     def get_user_filename(self):
-        raw_filename = self.path_to_attachment.rsplit('/', 1)[-1]
-        match = re.match(r'\A\d{8}_\d{6}_(.+)\Z', raw_filename)
-        if match:
-            return match[1]
-        else:
-            app.logger.warn(f'Note attachment S3 filename did not match expected format: ID = {self.id}, filename = {raw_filename}')
-            return raw_filename
+        return get_attachment_filename(self.id, self.path_to_attachment)
 
     def to_api_json(self):
-        filename = self.get_user_filename()
-        return {
-            'id': self.id,
-            'displayName': filename,
-            'filename': filename,
-            'noteId': self.note_id,
-            'uploadedBy': self.uploaded_by_uid,
-        }
-
-
-def _localize_datetime(dt):
-    return dt.astimezone(pytz.timezone(app.config['TIMEZONE']))
+        return note_attachment_to_api_json(self)

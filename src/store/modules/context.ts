@@ -1,6 +1,9 @@
 import _ from 'lodash';
-import { getConfig, getServiceAnnouncement } from '@/api/config';
+import router from '@/router';
+import store from '@/store';
 import Vue from 'vue';
+import VueAnalytics from 'vue-analytics';
+import { getConfig, getServiceAnnouncement } from '@/api/config';
 
 const state = {
   announcement: undefined,
@@ -12,14 +15,16 @@ const state = {
 
 const getters = {
   apiBaseUrl: (): any => process.env.VUE_APP_API_BASE_URL,
+  currentEnrollmentTerm: (state: any): boolean => _.get(state.config, 'currentEnrollmentTerm'),
   currentEnrollmentTermId: (state: any): boolean => _.get(state.config, 'currentEnrollmentTermId'),
   devAuthEnabled: (state: any): boolean => _.get(state.config, 'devAuthEnabled'),
   disableMatrixViewThreshold: (state: any): string => _.get(state.config, 'disableMatrixViewThreshold'),
   errors: (state: any): any => state.errors,
-  featureFlagEditNotes: (state: any): any => _.get(state.config, 'featureFlagEditNotes'),
+  featureFlagAdvisorAppointments: (state: any): boolean => _.get(state.config, 'featureFlagAdvisorAppointments'),
   googleAnalyticsId: (state: any): string => _.get(state.config, 'googleAnalyticsId'),
   isDemoModeAvailable: (state: any): string => _.get(state.config, 'isDemoModeAvailable'),
   maxAttachmentsPerNote: (state: any): string => _.get(state.config, 'maxAttachmentsPerNote'),
+  pingFrequency: (state: any): string => _.get(state.config, 'pingFrequency'),
   loading: (state: any): boolean => state.loading,
   announcement: (state: any): string => state.announcement,
   srAlert: (state: any): string => state.screenReaderAlert,
@@ -59,6 +64,37 @@ const actions = {
   },
   clearAlertsInStore: ({ commit }) => commit('clearAlertsInStore'),
   dismissError: ({ commit }, id) => commit('dismissError', id),
+  async initUserSession() {
+    store.dispatch('context/loadConfig').then(config => {
+      store.dispatch('user/loadUser').then(user => {
+        if (user.isAuthenticated) {
+          store.dispatch('cohort/loadMyCohorts');
+          store.dispatch('curated/loadMyCuratedGroups');
+          store.dispatch('context/loadServiceAnnouncement');
+          store.dispatch('note/loadNoteTemplates');
+          store.dispatch('note/loadSuggestedNoteTopics')
+        }
+        let googleAnalyticsId = _.get(config, 'googleAnalyticsId');
+        if (googleAnalyticsId) {
+          let options = {
+            id: googleAnalyticsId,
+            checkDuplicatedScript: true,
+            debug: {
+              // If debug.enabled is true then browser console gets GA debug info.
+              enabled: false
+            },
+            fields: {},
+            router
+          };
+          const uid = store.getters['user/uid'];
+          if (uid) {
+            options.fields['userId'] = uid;
+          }
+          Vue.use(VueAnalytics, options);
+        }
+      });
+    });
+  },
   loadingComplete: ({ commit }) => commit('loadingComplete'),
   loadingStart: ({ commit }) => commit('loadingStart'),
   loadConfig: ({ commit, state }) => {

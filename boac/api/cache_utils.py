@@ -24,48 +24,45 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
+import re
 from threading import Thread
 
-from boac import db, std_commit
+from boac import std_commit
 from boac.externals import data_loch
 from boac.lib import berkeley
-from boac.models import json_cache
 from boac.models.alert import Alert
 from boac.models.curated_group import CuratedGroupStudent
 from boac.models.job_progress import JobProgress
-from boac.models.json_cache import JsonCache
 from flask import current_app as app
-from sqlalchemy import and_, or_
 
 
 def refresh_request_handler(term_id, load_only=False):
     """Handle a start refresh admin request by returning an error status or starting the job on a background thread."""
     job_state = JobProgress().get()
-    if job_state is None or (not job_state['start']) or job_state['end']:
-        job_type = 'Load' if load_only else 'Refresh'
-        JobProgress().start({
-            'job_type': job_type,
+
+    if job_state and job_state['start'] and not job_state['end']:
+        app.logger.error(f'Previous refresh job did not finish normally: {job_state}')
+        JobProgress().delete()
+
+    job_type = 'Load' if load_only else 'Refresh'
+    JobProgress().start({
+        'job_type': job_type,
+        'term_id': term_id,
+    })
+    app.logger.warn('About to start background thread')
+    thread = Thread(
+        target=background_thread_refresh,
+        daemon=True,
+        kwargs={
+            'app_arg': app._get_current_object(),
             'term_id': term_id,
-        })
-        app.logger.warn('About to start background thread')
-        thread = Thread(
-            target=background_thread_refresh,
-            daemon=True,
-            kwargs={
-                'app_arg': app._get_current_object(),
-                'term_id': term_id,
-                'job_type': job_type,
-            },
-        )
-        thread.start()
-        return {
-            'progress': JobProgress().get(),
-        }
-    else:
-        return {
-            'error': 'Cannot start a new refresh job',
-            'progress': job_state,
-        }
+            'job_type': job_type,
+        },
+    )
+    thread.start()
+    return {
+        'progress': JobProgress().get(),
+    }
 
 
 def continue_request_handler():
@@ -115,76 +112,7 @@ def background_thread_refresh(app_arg, term_id, job_type, continuation=False):
 
 
 def refresh_term(term_id=berkeley.current_term_id(), continuation=False):
-    if not continuation or not json_cache.staging_table_exists():
-        JobProgress().update(f'About to drop/create staging table')
-        json_cache.drop_staging_table()
-        json_cache.create_staging_table(exclusions_for_term(term_id))
-    json_cache.set_staging(True)
     load_term(term_id)
-    JobProgress().update(f'About to refresh from staging table')
-    refresh_count = json_cache.refresh_from_staging(inclusions_for_term(term_id))
-    # TODO Currently we're not looping anything into the staging table, so we expect refresh count to be zero.
-    # If a more considered set of cache entries comes back into the loop, this error message should come back
-    # too.
-    # if refresh_count == 0:
-    #     JobProgress().update('ERROR: No cache entries copied from staging')
-    JobProgress().update(f'{refresh_count} cache entries copied from staging')
-
-
-def exclusions_for_term(term_id):
-    if term_id == 'all':
-        # Start with an empty staging table.
-        return 'key IS NULL'
-
-    term_name = berkeley.term_name_for_sis_id(term_id)
-    where_clause = f'key NOT LIKE \'term_{term_name}%\''
-    # If we are refreshing current data, we only keep stowed entries which are explicitly keyed to past terms.
-    if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
-        where_clause += ' AND key LIKE \'term_%\''
-    return where_clause
-
-
-def inclusions_for_term(term_id):
-    if term_id == 'all':
-        return 'key NOT LIKE \'asc_athletes_%\' AND key NOT LIKE \'job%\''
-
-    term_name = berkeley.term_name_for_sis_id(term_id)
-    where_clause = f'key LIKE \'term_{term_name}%\''
-    if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
-        where_clause += ' OR (key NOT LIKE \'term_%\' AND key NOT LIKE \'asc_athletes_%\' AND key NOT LIKE \'job%\')'
-    return where_clause
-
-
-def clear_term(term_id):
-    """Delete term-specific cache entries.
-
-    When refreshing current term, also deletes most non-term-specific cache entries, since they hold 'current' external data.
-    Application-supporting history must be explicitly excluded.
-    """
-    term_name = berkeley.term_name_for_sis_id(term_id)
-    _filter = JsonCache.key.like(f'term_{term_name}%')
-    if term_name == app.config['CANVAS_CURRENT_ENROLLMENT_TERM']:
-        current_externals_filter = and_(
-            JsonCache.key.notlike('term_%'),
-            JsonCache.key.notlike('asc_athletes_%'),
-            JsonCache.key.notlike('job_%'),
-        )
-        _filter = or_(_filter, current_externals_filter)
-    matches = db.session.query(JsonCache).filter(_filter)
-    app.logger.info(f'Will delete {matches.count()} entries')
-    matches.delete(synchronize_session=False)
-    std_commit()
-
-
-def cancel_refresh_in_progress(term_id):
-    progress = JobProgress().get()
-    if progress and progress['job_type'] == 'Refresh':
-        # Drop the staging table.
-        json_cache.drop_staging_table()
-    progress = JobProgress().delete()
-    return {
-        'progressDeleted': progress,
-    }
 
 
 def load_all_terms():
@@ -210,6 +138,10 @@ def load_term(term_id=berkeley.current_term_id()):
     refresh_alerts(term_id)
 
     if term_id == berkeley.current_term_id():
+        JobProgress().update(f'About to refresh department memberships')
+        refresh_department_memberships()
+        JobProgress().update(f'About to refresh CalNet attributes for active users')
+        refresh_calnet_attributes()
         JobProgress().update(f'About to load filtered cohort counts')
         load_filtered_cohort_counts()
         JobProgress().update(f'About to update curated group memberships')
@@ -221,11 +153,41 @@ def refresh_alerts(term_id):
     Alert.update_all_for_term(term_id)
 
 
+def refresh_calnet_attributes():
+    from boac.merged import calnet
+    from boac.models.authorized_user import AuthorizedUser
+    from boac.models import json_cache
+    active_uids = {u.uid for u in AuthorizedUser.get_all_active_users()}
+    json_cache.clear('calnet_user_for_uid_%')
+    new_attrs = calnet.get_calnet_users_for_uids(app, active_uids)
+    app.logger.info(f'Cached {len(new_attrs)} CalNet records for {len(active_uids)} active users')
+
+
+def refresh_department_memberships():
+    from boac.models.authorized_user import AuthorizedUser
+    from boac.models.university_dept import UniversityDept
+    from boac.models.university_dept_member import UniversityDeptMember
+    depts = UniversityDept.query.all()
+    for dept in depts:
+        dept.delete_automated_members()
+    std_commit(allow_test_environment=True)
+    for dept in depts:
+        for membership in dept.memberships_from_loch():
+            # A non-numeric "uid" indicates a row from SIS advising tables best ignored.
+            if not re.match(r'^\d+$', membership['uid']):
+                continue
+            user = AuthorizedUser.create_or_restore(
+                uid=membership['uid'],
+                can_access_canvas_data=membership['can_access_canvas_data'],
+            )
+            UniversityDeptMember.create_membership(dept, user, is_advisor=True, is_director=False)
+
+
 def load_filtered_cohort_counts():
     from boac.models.cohort_filter import CohortFilter
     for cohort in CohortFilter.query.all():
         # Remove!
-        cohort.update_student_count(None)
+        cohort.update_sids_and_student_count(None, None)
         cohort.update_alert_count(None)
         # The db schema supports multiple cohort owners but in the real world it is one owner per cohort.
         owner_id = cohort.owners[0].id if len(cohort.owners) else None

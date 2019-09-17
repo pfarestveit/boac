@@ -26,7 +26,6 @@ ENHANCEMENTS, OR MODIFICATIONS.
 import re
 
 from flask import current_app as app
-import numpy as np
 
 
 """A utility module collecting logic specific to the Berkeley campus."""
@@ -192,7 +191,7 @@ BERKELEY_DEPT_CODE_TO_NAME = {
     'BUGMS': 'Center for Global Metropolitan Studies',
     'CALTEACH': 'CalTeach Program',
     'CCHEM': 'Department of Chemistry',
-    'CDCDN': 'College of Chemistry Dean',
+    'CDCDN': 'College of Chemistry',
     'CEEEG': 'Department of Chemical and Biomolecular Engineering',
     'CELTIC': 'Celtic Studies',
     'CFPPR': 'Goldman School of Public Policy',
@@ -319,7 +318,8 @@ BERKELEY_DEPT_CODE_TO_NAME = {
     'PQPAS': 'Center for Particle Astrophysics',
     'PSTAT': 'Department of Statistics',
     'QALSD': 'Letters and Science Deans',
-    'QCADV': 'L&S Undergraduate Advising',
+    'QCADV': 'L&S College Advising',
+    'QCADVMAJ': 'L&S Major Advising',
     'QHUIS': 'Office of Undergraduate and Interdisciplinary Studies',
     'QHUTL': 'UGIS Teaching Programs',
     'QIIAS': 'International and Area Studies Academic Program',
@@ -357,10 +357,48 @@ BERKELEY_DEPT_CODE_TO_NAME = {
     'UWASC': 'Athletic Study Center',
     'UXDSP': 'Disabled Students Program',
     'VREAS': 'Student Information Systems',
-    'ZCEEE': 'Center for Education, Equity, and Excellence',
+    'ZCEEE': 'Centers for Educational Equity and Excellence',
+    'GUEST': 'Guest',
+    'ZZZZZ': 'Other',
 }
 
 BERKELEY_DEPT_NAME_TO_CODE = {value: key for key, value in BERKELEY_DEPT_CODE_TO_NAME.items()}
+
+
+BERKELEY_DEPT_CODE_TO_PROGRAM_AFFILIATIONS = {
+    'BAHSB': {
+        'program': 'UBUS',
+    },
+    'CDCDN': {
+        'program': 'UCCH',
+    },
+    'COENG': {
+        'program': 'UCOE',
+    },
+    'DACED': {
+        'program': 'UCED',
+    },
+    'MANRD': {
+        'program': 'UCNR',
+    },
+    'QCADV': {
+        'program': 'UCLS',
+        # DNDS ('Dean Designate') advisors get filed with college advisors.
+        'affiliations': ['COLL', 'DNDS'],
+    },
+    'QCADVMAJ': {
+        'program': 'UCLS',
+        # ADVD ('Advisor Delegate') and minor advisors get filed with major advisors.
+        'affiliations': ['ADVD', 'MAJ', 'MIN'],
+    },
+    # Our 'Guest' and catchall 'Other' departments get stuck with empty program codes.
+    'GUEST': {
+        'program': '',
+    },
+    'ZZZZZ': {
+        'program': '',
+    },
+}
 
 
 def current_term_id():
@@ -384,6 +422,16 @@ def all_term_ids():
     return ids
 
 
+def term_ids_range(earliest_term_id, latest_term_id):
+    """Return SIS ID of each term in the range, from oldest to newest."""
+    term_id = int(earliest_term_id)
+    ids = []
+    while term_id <= int(latest_term_id):
+        ids.append(str(term_id))
+        term_id += 4 if (term_id % 10 == 8) else 3
+    return ids
+
+
 def reverse_terms_until(stop_term):
     term_name = app.config['CANVAS_CURRENT_ENROLLMENT_TERM']
     while True:
@@ -400,25 +448,27 @@ def reverse_terms_until(stop_term):
 
 def sis_term_id_for_name(term_name=None):
     if term_name:
-        match = re.match(r'\A(Spring|Summer|Fall) 20(\d{2})\Z', term_name)
+        match = re.match(r'\A(Spring|Summer|Fall) (\d)[09](\d{2})\Z', term_name)
         if match:
             season_codes = {
                 'Spring': '2',
                 'Summer': '5',
                 'Fall': '8',
             }
-            return '2' + match.group(2) + season_codes[match.group(1)]
+            return match.group(2) + match.group(3) + season_codes[match.group(1)]
 
 
 def term_name_for_sis_id(sis_id=None):
     if sis_id:
         sis_id = str(sis_id)
         season_codes = {
+            '0': 'Winter',
             '2': 'Spring',
             '5': 'Summer',
             '8': 'Fall',
         }
-        return season_codes[sis_id[3:4]] + ' 20' + sis_id[1:3]
+        year = f'19{sis_id[1:3]}' if sis_id.startswith('1') else f'20{sis_id[1:3]}'
+        return f'{season_codes[sis_id[3:4]]} {year}'
 
 
 def degree_program_url_for_major(plan_description):
@@ -432,30 +482,12 @@ def degree_program_url_for_major(plan_description):
         return None
 
 
-def is_authorized_to_use_boac(user):
-    authorized = False
-    if user.is_admin:
-        authorized = True
-    elif len(user.department_memberships):
-        for m in user.department_memberships:
-            authorized = m.is_advisor or m.is_director
-            if authorized:
-                break
-    return authorized
-
-
 def get_dept_codes(user):
     return [m.university_dept.dept_code for m in user.department_memberships] if user else None
 
 
-def can_view_cohort(user, cohort):
-    if user.is_admin:
-        return True
-    my_dept_codes = get_dept_codes(user)
-    cohort_dept_codes = []
-    if cohort.owners:
-        cohort_dept_codes = np.concatenate([get_dept_codes(o) for o in cohort.owners])
-    return np.in1d(my_dept_codes, cohort_dept_codes)
+def get_dept_role(department_membership):
+    return 'Director' if department_membership.is_director else ('Advisor' if department_membership.is_advisor else None)
 
 
 def section_is_eligible_for_alerts(enrollment, section):

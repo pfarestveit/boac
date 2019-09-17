@@ -1,6 +1,16 @@
 <script>
 import _ from 'lodash';
 
+const decodeHtml = (snippet) => {
+  if (snippet && snippet.indexOf('&') > 0) {
+    const el = document.createElement("textarea");
+    el.innerHTML = snippet;
+    return el.value;
+  } else {
+    return snippet;
+  }
+};
+
 const toInt = (value, defaultValue = null) => {
   const parsed = parseInt(value, 10);
   return Number.isInteger(parsed) ? parsed : defaultValue;
@@ -22,13 +32,14 @@ export default {
     flatten: _.flatten,
     focusModalById: id =>
       document.getElementById(id) && document.getElementById(id).focus(),
-    forceUniquePath: routePath => `${routePath}?_=${new Date().getTime()}`,
     get: _.get,
     has: _.has,
     includes: _.includes,
     inRange: _.inRange,
     isEmpty: _.isEmpty,
     isNil: _.isNil,
+    isNumber: _.isNumber,
+    isString: _.isString,
     isUndefined: _.isUndefined,
     join: _.join,
     keys: _.keys,
@@ -36,6 +47,7 @@ export default {
     mapValues: _.mapValues,
     merge: _.merge,
     multiply: _.multiply,
+    noop: _.noop,
     orderBy: _.orderBy,
     oxfordJoin: arr => {
       switch(arr.length) {
@@ -61,13 +73,14 @@ export default {
     },
     remove: _.remove,
     set: _.set,
-    setPageTitle: phrase =>
-      (document.title = `${phrase || 'UC Berkeley'} | BOA`),
+    setPageTitle: phrase => (document.title = `${phrase ? decodeHtml(phrase) : 'UC Berkeley'} | BOA`),
     size: _.size,
     slice: _.slice,
     sortComparator: (a, b) => {
       if (_.isNil(a) || _.isNil(b)) {
         return _.isNil(a) ? (_.isNil(b) ? 0 : -1) : 1;
+      } else if (_.isNumber(a) && _.isNumber(b)) {
+        return a < b ? -1 : a > b ? 1 : 0
       } else {
         const aInt = toInt(a);
         const bInt = toInt(b);
@@ -81,17 +94,22 @@ export default {
       }
     },
     split: _.split,
+    startsWith: _.startsWith,
     stripHtmlAndTrim: html => {
       let text = html && html.replace(/<([^>]+)>/ig,"");
       text = text && text.replace(/&nbsp;/g, '');
       return _.trim(text);
     },
+    studentRoutePath: (uid, inDemoMode) => inDemoMode ? `/student/${window.btoa(uid)}` : `/student/${uid}`,
     toInt,
+    toString: _.toString,
     trim: _.trim,
     truncate: _.truncate,
     union: _.union,
     uniq: _.uniq,
-    without: _.without
+    without: _.without,
+    xor: _.xor,
+    xorBy: _.xorBy
   }
 };
 </script>

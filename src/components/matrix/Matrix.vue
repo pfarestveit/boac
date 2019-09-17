@@ -37,7 +37,7 @@
         Zoom:
         <div class="btn-group">
           <button type="button" class="btn matrix-zoom-button" @click="zoomIn()">
-            <i class="fa fa-plus"></i>
+            <font-awesome icon="plus" />
             <span class="sr-only">Zoom in</span>
           </button>
           <button
@@ -45,7 +45,7 @@
             class="btn matrix-zoom-button"
             :disabled="zoom.scale === 1"
             @click="zoomOut()">
-            <i class="fa fa-minus" :class="{'matrix-zoom-disabled': zoom.scale === 1}"></i>
+            <font-awesome icon="minus" :class="{'matrix-zoom-disabled': zoom.scale === 1}" />
             <span class="sr-only">Zoom out</span>
           </button>
         </div>
@@ -75,13 +75,14 @@
               </td>
               <td class="cohort-student-bio-container">
                 <div class="flex-container">
-                  <a :href="'/student/' + student.uid">
-                    <div
-                      class="flex-container student-name"
-                      :class="{'demo-mode-blur': user.inDemoMode}">
+                  <div class="flex-container student-name">
+                    <router-link
+                      :id="`link-to-student-${student.uid}`"
+                      :class="{'demo-mode-blur': user.inDemoMode}"
+                      :to="studentRoutePath(student.uid, user.inDemoMode)">
                       {{ student.lastName + (student.firstName ? ', ' + student.firstName : '') }}
-                    </div>
-                  </a>
+                    </router-link>
+                  </div>
                 </div>
                 <div
                   v-if="student.sid"
@@ -124,6 +125,7 @@ import MatrixUtil from '@/components/matrix/MatrixUtil';
 import StudentAvatar from '@/components/student/StudentAvatar';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
+
 export default {
   name: 'Matrix',
   components: {
@@ -334,7 +336,7 @@ export default {
         } else {
           photoUri = this.user.inDemoMode
             ? avatarBackgroundPath
-            : this.apiBaseUrl + '/api/student/' + d.uid + '/photo';
+            : d.photoUrl;
         }
         var avatarImage = pattern
           .append('svg:image')
@@ -444,7 +446,7 @@ export default {
       });
       dot.on('click', d => {
         if (!d.isClassMean) {
-          this.$router.push('/student/' + d.uid);
+          this.$router.push(this.studentRoutePath(d.uid, this.user.inDemoMode));
         }
       });
 

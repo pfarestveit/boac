@@ -15,14 +15,8 @@
         <div class="accordion-heading">
           <div class="accordion-heading-name">
             <div class="accordion-heading-caret">
-              <i
-                :id="`home-curated-group-${curatedGroup.id}-caret`"
-                :aria-label="isFetching ? 'Loading curated group details. ' : ''"
-                :class="{
-                  'fas fa-spinner fa-spin': isFetching,
-                  'fas fa-caret-right': !isOpen,
-                  'fas fa-caret-down': isOpen
-                }"></i>
+              <font-awesome v-if="isFetching" icon="spinner" spin />
+              <font-awesome v-if="!isFetching" :icon="isOpen ? 'caret-down' : 'caret-right'" />
             </div>
             <h2 class="page-section-header-sub accordion-header">
               <span class="sr-only">{{ `${isOpen ? 'Hide' : 'Show'} details for curated group ` }}</span>
@@ -50,10 +44,16 @@
     <b-collapse
       :id="`home-curated-group-${curatedGroup.id}`"
       :aria-expanded="isOpen"
-      class="panel-body"
+      class="panel-body pr-3"
       :class="{'panel-open': isOpen}">
       <div v-if="curatedGroup.studentsWithAlerts && size(curatedGroup.studentsWithAlerts)">
-        <SortableStudents :students="curatedGroup.studentsWithAlerts" />
+        <div v-if="size(curatedGroup.studentsWithAlerts) === 50" :id="`home-curated-group-${curatedGroup.id}-alert-limited`" class="m-3">
+          Showing 50 students with a high number of alerts.
+          <router-link :id="`home-curated-group-${curatedGroup.id}-alert-limited-view-all`" :to="`/curated/${curatedGroup.id}`">
+            View all {{ curatedGroup.studentCount }} students in "{{ curatedGroup.name }}"
+          </router-link>
+        </div>
+        <SortableStudents :students="curatedGroup.studentsWithAlerts" :options="getSortOptions(curatedGroup)" />
       </div>
       <div>
         <router-link :id="`home-curated-group-${curatedGroup.id}-view-all`" :to="`/curated/${curatedGroup.id}`">
@@ -73,9 +73,11 @@
 </template>
 
 <script>
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
+import Context from '@/mixins/Context';
+import HomeUtil from '@/components/home/HomeUtil';
 import SortableStudents from '@/components/search/SortableStudents';
 import store from '@/store';
+import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
@@ -83,7 +85,7 @@ export default {
   components: {
     SortableStudents
   },
-  mixins: [GoogleAnalytics, Util],
+  mixins: [Context, HomeUtil, UserMetadata, Util],
   props: {
     curatedGroup: Object
   },
@@ -101,12 +103,12 @@ export default {
           .then(curatedGroup => {
             this.curatedGroup = curatedGroup;
             this.isFetching = false;
-            this.gaEvent(
-              'Home',
-              'Fetch students with alerts',
-              `Curated Group: ${this.curatedGroup.name}`,
-              this.curatedGroup.id
-            );
+            this.alertScreenReader(`Loaded students with alerts who are in curated group ${this.curatedGroup.name}`);
+            this.gaCuratedEvent({
+              id: this.curatedGroup.id,
+              name: this.curatedGroup.name,
+              action: 'Fetch students with alerts'
+            });
           });
       }
     }
@@ -115,11 +117,6 @@ export default {
 </script>
 
 <style scoped>
-.accordion-heading-link:active,
-.accordion-heading-link:focus,
-.accordion-heading-link:hover {
-  text-decoration: none;
-}
 .panel-group .panel + .panel {
   margin-top: 5px;
 }

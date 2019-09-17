@@ -43,16 +43,19 @@
         "plans": [
             {
                 "description": "English BA",
-                "program": "Undergrad Letters & Science"
+                "program": "Undergrad Letters & Science",
+                "status": "Active"
             },
             {
                 "description": "Political Economy BA",
-                "program": "Undergrad Letters & Science"
+                "program": "Undergrad Letters & Science",
+                "status": "Active"
             }
         ],
         "preferredName": "Paul Kerschen",
         "primaryName": "Paul Kerschen",
-        "termsInAttendance": 5
+        "termsInAttendance": 5,
+        "transfer": false
     },
     "uid": "242881"
 }

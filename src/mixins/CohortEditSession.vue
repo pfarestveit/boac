@@ -7,6 +7,7 @@ export default {
     ...mapGetters('cohortEditSession', [
       'cohortId',
       'cohortName',
+      'cohortOwner',
       'editMode',
       'filters',
       'isCompactView',
@@ -26,7 +27,9 @@ export default {
       'addFilter',
       'applyFilters',
       'createCohort',
+      'downloadCsvPerFilters',
       'init',
+      'onPageNumberChange',
       'removeFilter',
       'renameCohort',
       'resetFiltersToLastApply',

@@ -30,6 +30,7 @@ import string
 import time
 
 from autolink import linkify
+from boac.externals import s3
 from flask import current_app as app
 import pytz
 from titlecase import titlecase
@@ -78,18 +79,27 @@ def localize_datetime(dt):
     return dt.astimezone(pytz.timezone(app.config['TIMEZONE']))
 
 
+def localized_timestamp_to_utc(_str):
+    naive_datetime = datetime.strptime(_str, '%Y-%m-%dT%H:%M:%S')
+    localized_datetime = pytz.timezone(app.config['TIMEZONE']).localize(naive_datetime)
+    return localized_datetime.astimezone(pytz.utc)
+
+
 def process_input_from_rich_text_editor(rich_text):
-    parsed = rich_text.strip()
-    exclude_from_parse = {}
-    now = time.time()
-    for index, match in enumerate(re.findall('<a [^>]*>.*?</a>', parsed)):
-        placeholder = f'placeholder-{now}-{index}'
-        exclude_from_parse[placeholder] = match
-        parsed = parsed.replace(match, placeholder, 1)
-    parsed = linkify(parsed, {'target': '_blank'})
-    for placeholder, match in exclude_from_parse.items():
-        parsed = parsed.replace(placeholder, match, 1)
-    return parsed
+    parsed = rich_text and rich_text.strip()
+    if parsed:
+        exclude_from_parse = {}
+        now = time.time()
+        for index, match in enumerate(re.findall('<a [^>]*>.*?</a>', parsed)):
+            placeholder = f'placeholder-{now}-{index}'
+            exclude_from_parse[placeholder] = match
+            parsed = parsed.replace(match, placeholder, 1)
+        parsed = linkify(parsed, {'target': '_blank'})
+        for placeholder, match in exclude_from_parse.items():
+            parsed = parsed.replace(placeholder, match, 1)
+        return parsed
+    else:
+        return None
 
 
 def remove_none_values(_dict):
@@ -157,3 +167,46 @@ def vacuum_whitespace(_str):
     if not _str:
         return None
     return ' '.join(_str.split())
+
+
+def put_attachment_to_s3(name, byte_stream):
+    bucket = app.config['DATA_LOCH_S3_ADVISING_NOTE_BUCKET']
+    base_path = app.config['DATA_LOCH_S3_BOA_NOTE_ATTACHMENTS_PATH']
+    key_suffix = _localize_datetime(datetime.now()).strftime(f'%Y/%m/%d/%Y%m%d_%H%M%S_{name}')
+    key = f'{base_path}/{key_suffix}'
+    s3.put_binary_data_to_s3(
+        bucket=bucket,
+        key=key,
+        binary_data=byte_stream,
+    )
+    return key
+
+
+def get_attachment_filename(attachment_id, path_to_attachment):
+    raw_filename = path_to_attachment.rsplit('/', 1)[-1]
+    match = re.match(r'\A\d{8}_\d{6}_(.+)\Z', raw_filename)
+    if match:
+        return match[1]
+    else:
+        app.logger.warn(
+            f'Note attachment S3 filename did not match expected format: ID = {attachment_id}, filename = {raw_filename}')
+        return raw_filename
+
+
+def note_attachment_to_api_json(attachment):
+    filename = get_attachment_filename(attachment.id, attachment.path_to_attachment)
+    api_json = {
+        'id': attachment.id,
+        'displayName': filename,
+        'filename': filename,
+        'uploadedBy': attachment.uploaded_by_uid,
+    }
+    if hasattr(attachment, 'note_id'):
+        api_json['noteId'] = attachment.note_id
+    elif hasattr(attachment, 'note_template_id'):
+        api_json['noteTemplateId'] = attachment.note_template_id
+    return api_json
+
+
+def _localize_datetime(dt):
+    return dt.astimezone(pytz.timezone(app.config['TIMEZONE']))

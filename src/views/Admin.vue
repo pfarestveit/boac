@@ -2,10 +2,6 @@
   <div class="p-3">
     <Spinner />
     <div v-if="!loading">
-      <span
-        role="alert"
-        aria-live="passive"
-        class="sr-only">Admin page loaded</span>
       <h1>BOA Flight Deck</h1>
       <div v-if="isDemoModeAvailable" class="d-flex flex-row mt-3 mb-3">
         <div class="mr-3">
@@ -25,7 +21,10 @@
         </div>
       </div>
       <div v-if="userGroups">
-        <h2 id="dept-users-section" class="page-section-header-sub pb-2">Users</h2>
+        <h2 id="dept-users-section" class="page-section-header-sub pb-2">
+          Users
+          <span class="text-black-50 font-size-14">(<a id="download-boa-users-csv" :href="`${apiBaseUrl}/api/users/csv`">download</a>)</span>
+        </h2>
         <b-card no-body>
           <b-tabs pills card>
             <b-tab
@@ -55,7 +54,7 @@
                   <b-col v-if="devAuthEnabled">
                     <div v-if="groupUser.uid !== user.uid">
                       <div v-if="groupUser.isExpiredPerLdap">
-                        <i class="fa fa-exclamation-triangle boac-exclamation mr-1"></i>
+                        <font-awesome icon="exclamation-triangle" class="boac-exclamation mr-1"></font-awesome>
                         <span class="text-muted">Expired account (according to CalNet)</span>
                       </div>
                       <b-btn
@@ -65,7 +64,7 @@
                         :title="`Log in as ${groupUser.name}`"
                         variant="link"
                         @click="become(groupUser.uid)">
-                        <i class="fas fa-sign-in-alt"></i>
+                        <font-awesome icon="sign-in-alt" />
                       </b-btn>
                     </div>
                   </b-col>
@@ -115,7 +114,7 @@ export default {
     userGroups: null
   }),
   mounted() {
-    if (this.userAuthStatus.isAdmin) {
+    if (this.user.isAdmin) {
       store.dispatch('user/loadUserGroups').then(data => {
         this.userGroups = data;
         this.loaded();

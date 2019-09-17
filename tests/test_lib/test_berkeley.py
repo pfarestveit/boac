@@ -23,12 +23,8 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from boac.lib import berkeley
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, BERKELEY_DEPT_NAME_TO_CODE
-from boac.models.authorized_user import AuthorizedUser
-from boac.models.cohort_filter import CohortFilter
-import pytest
 
 
 class TestBerkeleySisTermIdForName:
@@ -39,6 +35,11 @@ class TestBerkeleySisTermIdForName:
         assert berkeley.sis_term_id_for_name('Spring 2015') == '2152'
         assert berkeley.sis_term_id_for_name('Summer 2016') == '2165'
         assert berkeley.sis_term_id_for_name('Fall 2017') == '2178'
+        assert berkeley.sis_term_id_for_name('Fall 1997') == '1978'
+
+    def test_term_name_for_sis_id(self):
+        assert berkeley.term_name_for_sis_id('2178') == 'Fall 2017'
+        assert berkeley.term_name_for_sis_id('1978') == 'Fall 1997'
 
     def test_unparseable_term_name(self):
         """Returns None for unparseable term names."""
@@ -49,8 +50,13 @@ class TestBerkeleySisTermIdForName:
         """Returns None for missing term names."""
         assert berkeley.sis_term_id_for_name(None) is None
 
-    def test_all_term_ids(self, app):
+    def test_all_term_ids(self):
         assert berkeley.all_term_ids() == ['2178', '2175', '2172', '2168']
+
+    def test_term_ids_range(self, app):
+        assert berkeley.term_ids_range('2158', '2208') == [
+            '2158', '2162', '2165', '2168', '2172', '2175', '2178', '2182', '2185', '2188', '2192', '2195', '2198', '2202', '2205', '2208',
+        ]
 
 
 class TestBerkeleyDegreeProgramUrl:
@@ -69,50 +75,6 @@ class TestBerkeleyDegreeProgramUrl:
         assert berkeley.degree_program_url_for_major('English for Billiards Players MS') is None
         assert berkeley.degree_program_url_for_major('Altaic Language BA') is None
         assert berkeley.degree_program_url_for_major('Entomology BS') is None
-
-
-class TestBerkeleyAuthorization:
-
-    @pytest.fixture()
-    def admin_user(self):
-        return AuthorizedUser.find_by_uid('2040')
-
-    @pytest.fixture()
-    def asc_advisor(self):
-        return AuthorizedUser.find_by_uid('1081940')
-
-    @pytest.fixture()
-    def coe_advisor(self):
-        return AuthorizedUser.find_by_uid('1133399')
-
-    @pytest.fixture()
-    def unauthorized_user(self):
-        return AuthorizedUser.find_by_uid('1015674')
-
-    def test_not_authorized_to_use_boac(self, unauthorized_user):
-        assert not berkeley.is_authorized_to_use_boac(unauthorized_user)
-
-    def test_admin_authorized_to_use_boac(self, admin_user):
-        assert berkeley.is_authorized_to_use_boac(admin_user)
-
-    def test_is_authorized_to_use_boac(self, asc_advisor):
-        assert berkeley.is_authorized_to_use_boac(asc_advisor)
-
-    def test_zero_dept_codes(self, admin_user, unauthorized_user):
-        assert berkeley.get_dept_codes(None) is None
-        assert berkeley.get_dept_codes(admin_user) == []
-        assert not berkeley.get_dept_codes(unauthorized_user)
-
-    def test_asc_dept_codes(self, asc_advisor, coe_advisor):
-        assert berkeley.get_dept_codes(asc_advisor) == ['UWASC']
-        assert berkeley.get_dept_codes(coe_advisor) == ['COENG']
-
-    def test_can_view_cohort(self, admin_user, asc_advisor, coe_advisor):
-        coe_cohorts = CohortFilter.all_owned_by('1133399')
-        assert len(coe_cohorts)
-        assert berkeley.can_view_cohort(admin_user, coe_cohorts[0])
-        assert not berkeley.can_view_cohort(asc_advisor, coe_cohorts[0])
-        assert berkeley.can_view_cohort(coe_advisor, coe_cohorts[0])
 
 
 class TestAlertRules:

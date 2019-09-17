@@ -6,12 +6,12 @@
           id="skip-to-content-link"
           href="#content"
           class="sr-only sr-only-focusable"
-          tabindex="2">Skip to main content</a>
+          tabindex="0">Skip to main content</a>
         <router-link
           id="home-header"
           class="header-text"
           to="/home"
-          tabindex="1">
+          tabindex="0">
           <span class="sr-only">Return to </span>Home
         </router-link>
       </b-col>
@@ -20,10 +20,10 @@
       </b-col>
     </b-row>
     <b-row class="row-content" no-gutters>
-      <b-col class="sidebar" sm="3">
+      <b-col class="sidebar" sm="2">
         <Sidebar />
       </b-col>
-      <b-col id="content" class="body-text h-100 pb-2" sm="9">
+      <b-col id="content" class="body-text h-100 pb-2" sm="10">
         <div
           v-if="announcement && announcement.isPublished"
           style="display: inline-block"
@@ -48,8 +48,8 @@
       </b-col>
     </b-row>
     <b-row class="row-footer" no-gutters>
-      <b-col class="sidebar" sm="3"></b-col>
-      <b-col sm="9">
+      <b-col class="sidebar" sm="2"></b-col>
+      <b-col sm="10">
         <Footer v-if="!loading" class="mb-3 ml-3 mt-5" />
       </b-col>
     </b-row>
@@ -61,6 +61,7 @@ import Context from '@/mixins/Context';
 import Footer from '@/components/Footer';
 import HeaderMenu from '@/components/HeaderMenu';
 import Loading from '@/mixins/Loading';
+import Session from '@/mixins/Session';
 import Sidebar from '@/components/sidebar/Sidebar';
 import Util from '@/mixins/Util';
 
@@ -71,7 +72,7 @@ export default {
     HeaderMenu,
     Sidebar
   },
-  mixins: [Context, Loading, Util],
+  mixins: [Context, Loading, Session, Util],
   created() {
     this.putFocusNextTick('home-header');
   },

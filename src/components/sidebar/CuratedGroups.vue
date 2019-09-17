@@ -4,29 +4,29 @@
       <div class="ml-2 sidebar-header">
         Curated Groups
       </div>
-      <div class="mr-2">
-        <router-link
+      <div class="ml-2 mr-2">
+        <NavLink
           id="create-curated-group-from-sidebar"
-          class="sidebar-create-link"
           aria-label="Create a new curated group"
-          :to="forceUniquePath('/curate')">
-          <i class="fas fa-plus sidebar-header"></i>
-        </router-link>
+          class="sidebar-create-link"
+          path="/curate">
+          <font-awesome icon="plus" class="sidebar-header" />
+        </NavLink>
       </div>
     </div>
     <div
       v-for="(group, index) in myCuratedGroups"
       :key="group.id"
       class="d-flex justify-content-between sidebar-row-link">
-      <div class="ml-2 mr-1 truncate-with-ellipsis">
-        <router-link
+      <div class="ml-2 truncate-with-ellipsis">
+        <NavLink
           :id="`sidebar-curated-group-${index}`"
           :aria-label="'Curated group ' + group.name + ' has ' + group.studentCount + ' students'"
-          :to="forceUniquePath(`/curated/${group.id}`)">
+          :path="`/curated/${group.id}`">
           {{ group.name }}
-        </router-link>
+        </NavLink>
       </div>
-      <div class="mr-2">
+      <div class="ml-2 mr-2">
         <span
           :id="`sidebar-curated-group-${index}-count`"
           class="sidebar-pill">{{ group.studentCount }}<span class="sr-only">{{ 'student' | pluralize(group.studentCount) }}</span>
@@ -37,11 +37,13 @@
 </template>
 
 <script>
+import NavLink from "@/components/util/NavLink";
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'CuratedGroups',
+  components: {NavLink},
   mixins: [UserMetadata, Util]
 };
 </script>

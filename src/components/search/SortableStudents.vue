@@ -22,18 +22,25 @@
       <template slot="lastName" slot-scope="row">
         <span class="sr-only">Student name</span>
         <router-link
+          :id="`link-to-student-${row.item.uid}`"
           :aria-label="'Go to profile page of ' + row.item.firstName + ' ' + row.item.lastName"
           class="text-nowrap"
           :class="{'demo-mode-blur': user.inDemoMode}"
-          :to="'/student/' + row.item.uid">
-          {{ `${row.item.lastName}, ${row.item.firstName}` }}
-        </router-link>
+          :to="studentRoutePath(row.item.uid, user.inDemoMode)"
+          v-html="`${row.item.lastName}, ${row.item.firstName}`"></router-link>
         <span
-          v-if="displayAsInactive(row.item)"
-          class="home-inactive-info-icon"
+          v-if="row.item.academicCareerStatus === 'Inactive' || displayAsAscInactive(row.item) || displayAsCoeInactive(row.item)"
+          class="home-inactive-info-icon sortable-students-icon"
           uib-tooltip="Inactive"
           tooltip-placement="bottom">
-          <i class="fas fa-info-circle"></i>
+          <font-awesome icon="info-circle" />
+        </span>
+        <span
+          v-if="row.item.academicCareerStatus === 'Completed'"
+          class="sortable-students-icon"
+          uib-tooltip="Graduated"
+          tooltip-placement="bottom">
+          <font-awesome icon="graduation-cap" />
         </span>
       </template>
 
@@ -122,11 +129,13 @@ export default {
       })
     }
   },
-  data: () => ({
-    fields: undefined,
-    sortBy: 'name',
-    sortDescending: false
-  }),
+  data() {
+    return {
+      fields: undefined,
+      sortBy: this.options.sortBy,
+      sortDescending: this.options.reverse
+    }
+  },
   watch: {
     sortBy() {
       this.onChangeSortBy();
@@ -138,8 +147,8 @@ export default {
   created() {
     this.fields = this.options.includeCuratedCheckbox ? [{ key: 'curated', label: '' }] : [];
     this.fields = this.fields.concat([
-      {key: 'curated', label: '' },
-      {key: 'avatar', label: '' },
+      {key: 'curated', label: ''},
+      {key: 'avatar', label: ''},
       {key: 'lastName', label: 'Name', sortable: true},
       {key: 'sid', label: 'SID', sortable: true},
       {key: 'majors[0]', label: 'Major', sortable: true, class: 'truncate-with-ellipsis'},
@@ -147,7 +156,7 @@ export default {
       {key: 'term.enrolledUnits', label: 'Term units', sortable: true},
       {key: 'cumulativeUnits', label: 'Units completed', sortable: true},
       {key: 'cumulativeGPA', label: 'GPA', sortable: true},
-      {key: 'alertCount', label: 'Issues', sortable: true}
+      {key: 'alertCount', label: 'Issues', sortable: true, class: 'text-center'}
     ]);
   },
   methods: {
@@ -161,9 +170,30 @@ export default {
       const field = this.find(this.fields, ['key', this.sortBy]);
       this.alertScreenReader(`Sorted by ${field.label}${this.sortDescending ? ', descending' : ''}`);
     },
-    sortCompare(a, b, key) {
-      return this.sortComparator(this.get(a, key), this.get(b, key));
+    sortCompare(a, b, sortBy, sortDesc) {
+      let aValue = this.get(a, sortBy);
+      let bValue = this.get(b, sortBy);
+      // If column type is number then nil is treated as zero.
+      aValue = this.isNil(aValue) && this.isNumber(bValue) ? 0 : aValue;
+      bValue = this.isNil(bValue) && this.isNumber(aValue) ? 0 : bValue;
+      let result = this.sortComparator(aValue, bValue);
+      if (result === 0) {
+        this.each(['lastName', 'firstName', 'sid'], field => {
+          result = this.sortComparator(this.get(a, field), this.get(b, field));
+          // Secondary sort is always ascending
+          result *= sortDesc ? -1 : 1;
+          // Break from loop if comparator result is non-zero
+          return result === 0;
+        });
+      }
+      return result;
     }
    }
 };
 </script>
+
+<style scoped>
+.sortable-students-icon {
+  margin-left: 5px;
+}
+</style>

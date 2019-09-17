@@ -12,12 +12,14 @@
       <div v-if="isEditable">
         <b-btn
           v-if="user.isAdmin"
+          :id="`btn-delete-note-${note.id}`"
           class="sr-only"
           @click.stop="deleteNote(note)">
           Delete Note
         </b-btn>
         <b-btn
           v-if="user.uid === note.author.uid"
+          :id="`btn-edit-note-${note.id}`"
           class="sr-only"
           @click.stop="editNote(note)">
           Edit Note
@@ -31,11 +33,16 @@
       </div>
       <div v-if="note.author" class="mt-2">
         <div v-if="note.author.name">
+          <span class="sr-only">Note created by </span>
           <a
+            v-if="note.author.uid"
             :id="`note-${note.id}-author-name`"
             :aria-label="`Open UC Berkeley Directory page of ${note.author.name} in a new window`"
             :href="`https://www.berkeley.edu/directory/results?search-term=${note.author.name}`"
             target="_blank">{{ note.author.name }}</a>
+          <span v-if="!note.author.uid" :id="`note-${note.id}-author-name`">
+            {{ note.author.name }}
+          </span>
           <span v-if="note.author.role">
             - <span :id="`note-${note.id}-author-role`" class="text-dark">{{ note.author.role }}</span>
           </span>
@@ -79,7 +86,7 @@
               v-if="!isPreCsNote"
               :id="`note-${note.id}-attachment-${index}`"
               :href="downloadUrl(attachment)">
-              <i class="fas fa-paperclip"></i>
+              <font-awesome icon="paperclip" />
               {{ attachment.displayName }}
             </a>
             <b-btn
@@ -88,24 +95,24 @@
               variant="link"
               class="p-0"
               @click.prevent="removeAttachment(index)">
-              <i class="fas fa-times-circle has-error pl-2"></i>
-              <span class="sr-only">Delete attachment {{ attachment.displayName }}</span>
+              <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
+              <span class="sr-only">Delete attachment '{{ attachment.displayName }}'</span>
             </b-btn>
             <span
               v-if="isPreCsNote"
               :id="`note-${note.id}-attachment-${index}`">
-              <i class="fas fa-paperclip"></i> {{ attachment.displayName }}
+              <font-awesome icon="paperclip" /> {{ attachment.displayName }}
             </span>
           </span>
         </li>
       </ul>
       <div v-if="isEditable && user.uid === note.author.uid">
         <div v-if="attachmentError" class="mt-3 mb-3 w-100">
-          <i class="fa fa-exclamation-triangle text-danger pr-1"></i>
+          <font-awesome icon="exclamation-triangle" class="text-danger pr-1" />
           <span :id="`note-${note.id}-attachment-error`" aria-live="polite" role="alert">{{ attachmentError }}</span>
         </div>
         <div v-if="uploadingAttachment" class="w-100">
-          <i class="fas fa-spin fa-sync"></i> Uploading attachment...
+          <font-awesome icon="sync" spin /> Uploading attachment...
         </div>
         <div v-if="size(attachments) < maxAttachmentsPerNote && !uploadingAttachment" class="w-100">
           <label for="choose-file-for-note-attachment" class="sr-only"><span class="sr-only">Note </span>Attachments</label>
@@ -117,7 +124,7 @@
               variant="outline-primary"
               class="btn-file-upload mt-2 mb-2"
               size="sm"
-              @keydown.enter.prevent="triggerFileInput">
+              @keydown.enter.prevent="clickBrowseForAttachment">
               Browse<span class="sr-only"> for file to upload</span>
             </b-btn>
             <b-form-file
@@ -138,10 +145,10 @@
 </template>
 
 <script>
-import store from '@/store';
 import AreYouSureModal from '@/components/util/AreYouSureModal';
+import Attachments from '@/mixins/Attachments';
 import Context from '@/mixins/Context';
-import NoteUtil from '@/components/note/NoteUtil';
+import store from '@/store';
 import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import { addAttachment, removeAttachment } from '@/api/notes';
@@ -150,7 +157,7 @@ import { getUserByUid } from '@/api/user';
 export default {
   name: 'AdvisingNote',
   components: { AreYouSureModal },
-  mixins: [Context, NoteUtil, UserMetadata, Util],
+  mixins: [Attachments, Context, UserMetadata, Util],
   props: {
     afterSaved: Function,
     deleteNote: Function,
@@ -170,26 +177,33 @@ export default {
   }),
   computed: {
     isEditable() {
-      return this.featureFlagEditNotes && !this.note.isLegacy;
+      return !this.note.isLegacy;
     },
     isPreCsNote() {
       return this.get(this.note, 'createdBy') === 'UCBCONVERSION';
     }
   },
   watch: {
-    attachment() {
-      if (this.validateAttachment()) {
-        this.alertScreenReader(`Uploading attachment '${this.attachment.displayName}'`);
-        this.uploadingAttachment = true;
-        addAttachment(this.note.id, this.attachment).then(updatedNote => {
-          this.alertScreenReader(`Attachment '${this.attachment.displayName}' added`);
-          this.uploadingAttachment = false;
-          this.afterSaved(updatedNote);
-          this.resetAttachments();
+    attachment(file) {
+      if (file) {
+        this.attachmentError = this.validateAttachment(file, this.attachments);
+        if (this.attachmentError) {
+          this.attachment = null;
           this.resetFileInput();
-        });
-      } else {
-        this.resetFileInput();
+        } else {
+          this.clearErrors();
+          this.attachment = file;
+          this.attachment.displayName = file.name;
+          this.alertScreenReader(`Uploading attachment '${this.attachment.displayName}'`);
+          this.uploadingAttachment = true;
+          addAttachment(this.note.id, this.attachment).then(updatedNote => {
+            this.alertScreenReader(`Attachment '${this.attachment.displayName}' added`);
+            this.uploadingAttachment = false;
+            this.afterSaved(updatedNote);
+            this.resetAttachments();
+            this.resetFileInput();
+          });
+        }
       }
     },
     isOpen() {
@@ -202,7 +216,6 @@ export default {
   },
   created() {
     this.setAuthor();
-    this.initFileDropPrevention();
     this.resetAttachments();
   },
   methods: {
@@ -272,44 +285,6 @@ export default {
 <style scoped>
 .advising-note-outer {
   flex-basis: 100%;
-}
-.btn-file-upload {
-  border-color: grey;
-  color: grey;
-}
-.btn-file-upload:hover,
-.btn-file-upload:focus,
-.btn-file-upload:active
-{
-  color: #333;
-  background-color: #aaa;
-}
-.choose-attachment-file-wrapper {
-  position: relative;
-  align-items: center;
-  overflow: hidden;
-  display: inline-block;
-  background-color: #f7f7f7;
-  border: 1px solid #E0E0E0;
-  border-radius: 4px;
-  text-align: center;
-}
-.choose-attachment-file-wrapper input[type=file] {
-  font-size: 100px;
-  position: absolute;
-  left: 0;
-  top: 0;
-  opacity: 0;
-}
-.choose-attachment-file-wrapper:hover,
-.choose-attachment-file-wrapper:focus,
-.choose-attachment-file-wrapper:active
-{
-  color: #333;
-  background-color: #eee;
-}
-.form-control-file {
-  height: 100%;
 }
 .advisor-profile-not-found {
   color: #999;

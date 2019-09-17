@@ -28,11 +28,11 @@ from itertools import groupby
 from operator import itemgetter
 import re
 
+from boac import db
 from boac.externals import data_loch, s3
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.lib.util import camelize, get_benchmarker, join_if_present
-from boac.merged.calnet import get_calnet_users_for_csids
-from boac.merged.student import get_student_query_scope, narrow_scope_by_criteria
+from boac.merged.calnet import get_calnet_users_for_csids, get_uid_for_csid
 from boac.models.note import Note
 from boac.models.note_attachment import NoteAttachment
 from boac.models.note_read import NoteRead
@@ -40,6 +40,7 @@ from dateutil.tz import tzutc
 from flask import current_app as app
 from flask_login import current_user
 from nltk.stem.snowball import SnowballStemmer
+from sqlalchemy import text
 
 """Provide advising note data from local and external sources."""
 
@@ -47,19 +48,27 @@ NOTE_SEARCH_PATTERN = r'(\w*[.:/-@]\w+([.:/-]\w+)*)|[^\s?!(),;:.`]+'
 
 
 def get_advising_notes(sid):
+    benchmark = get_benchmarker(f'get_advising_notes {sid}')
+    benchmark('begin')
     notes_by_id = {}
+    benchmark('begin SIS advising notes query')
     notes_by_id.update(get_sis_advising_notes(sid))
+    benchmark('begin ASC advising notes query')
     notes_by_id.update(get_asc_advising_notes(sid))
+    benchmark('begin E&I advising notes query')
+    notes_by_id.update(get_e_i_advising_notes(sid))
+    benchmark('begin non legacy advising notes query')
     notes_by_id.update(get_non_legacy_advising_notes(sid))
     if not notes_by_id.values():
         return None
-    notes_read = NoteRead.get_notes_read_by_user(current_user.id, notes_by_id.keys())
+    notes_read = NoteRead.get_notes_read_by_user(current_user.get_id(), notes_by_id.keys())
     for note_read in notes_read:
         note_feed = notes_by_id.get(note_read.note_id)
         if note_feed:
             note_feed['read'] = True
         else:
             app.logger.error(f'DB query mismatch for note id {note_read.note_id}')
+    benchmark('end')
     return list(notes_by_id.values())
 
 
@@ -95,6 +104,21 @@ def get_asc_advising_notes(sid):
     return notes_by_id
 
 
+def get_e_i_advising_notes(sid):
+    notes_by_id = {}
+    legacy_topics = _get_e_i_advising_note_topics(sid)
+    for legacy_note in data_loch.get_e_i_advising_notes(sid):
+        note_id = legacy_note['id']
+        note = {camelize(key): legacy_note[key] for key in legacy_note.keys()}
+        note['deptCode'] = ['ZCEEE']
+        notes_by_id[note_id] = note_to_compatible_json(
+            note=note,
+            topics=legacy_topics.get(note_id),
+        )
+        notes_by_id[note_id]['isLegacy'] = True
+    return notes_by_id
+
+
 def get_non_legacy_advising_notes(sid):
     notes_by_id = {}
     for note in [n.to_api_json() for n in Note.get_notes_by_sid(sid)]:
@@ -107,63 +131,91 @@ def get_non_legacy_advising_notes(sid):
     return notes_by_id
 
 
-def search_advising_notes(search_phrase, author_csid=None, topic=None, offset=0, limit=20):
+def get_batch_distinct_sids(sids=(), cohort_ids=(), curated_group_ids=()):
+    all_sids = sids
+    query = text(f"""
+        SELECT c.sids
+        FROM cohort_filters c
+        JOIN cohort_filter_owners o ON o.cohort_filter_id = c.id
+        WHERE id = ANY(:cohort_ids) AND o.user_id = :current_user_id
+    """)
+    for row in db.session.execute(query, {'cohort_ids': cohort_ids, 'current_user_id': current_user.get_id()}):
+        all_sids.extend(row['sids'])
+    query = text(f"""
+        SELECT distinct(m.sid)
+        FROM student_group_members m
+        JOIN student_groups g ON g.id = m.student_group_id
+        WHERE m.student_group_id = ANY(:curated_group_ids) AND g.owner_id = :current_user_id
+    """)
+    rows = db.session.execute(
+        query,
+        {
+            'curated_group_ids': curated_group_ids,
+            'current_user_id': current_user.get_id(),
+        },
+    )
+    curated_group_sids = [row['sid'] for row in rows]
+    all_sids.extend(curated_group_sids)
+    return set(all_sids)
+
+
+def search_advising_notes(
+    search_phrase,
+    author_csid=None,
+    student_csid=None,
+    topic=None,
+    datetime_from=None,
+    datetime_to=None,
+    offset=0,
+    limit=20,
+):
 
     benchmark = get_benchmarker('search_advising_notes')
     benchmark('begin')
 
-    scope = narrow_scope_by_criteria(get_student_query_scope())
-
-    # In the interest of keeping our search implementation flexible, we mimic a join by first querying RDS
-    # for all student rows matching user scope, then incorporating SIDs into the notes query as a very large
-    # array filter. If it looks like notes search is going to live in RDS for the long haul, this could be
-    # rewritten with a proper join; but this will require student profile data (which lives in Nessie RDS) to
-    # somehow join up with advising note data (which lives in BOA RDS).
-
-    student_query_tables, student_query_filter, student_query_bindings = data_loch.get_students_query(scope=scope)
-    if not student_query_tables:
-        return []
-
-    benchmark('begin sids query')
-    sids_result = data_loch.safe_execute_rds(
-        f'SELECT sas.sid, sas.uid, sas.first_name, sas.last_name {student_query_tables} {student_query_filter}',
-        **student_query_bindings,
-    )
-    benchmark('end sids query')
-    if not sids_result:
-        return []
-    student_rows_by_sid = {row['sid']: row for row in sids_result}
-    sid_filter = '{' + ','.join(student_rows_by_sid.keys()) + '}'
-
-    search_terms = [t.group(0) for t in list(re.finditer(NOTE_SEARCH_PATTERN, search_phrase)) if t]
-    search_phrase = ' & '.join(search_terms)
+    if search_phrase:
+        search_terms = [t.group(0) for t in list(re.finditer(NOTE_SEARCH_PATTERN, search_phrase)) if t]
+        search_phrase = ' & '.join(search_terms)
+    else:
+        search_terms = []
 
     # TODO We're currently retrieving all results for the sake of subsequent offset calculations. As the number of notes in
     # BOA grows (and possibly requires us to use some kind of staging table for search indexing), we'll need to revisit.
     benchmark('begin local notes query')
-    local_results = Note.search(search_phrase=search_phrase, sid_filter=sid_filter, author_csid=author_csid, topic=topic)
+    author_uid = get_uid_for_csid(app, author_csid) if author_csid else None
+    local_results = Note.search(
+        search_phrase=search_phrase,
+        author_uid=author_uid,
+        student_csid=student_csid,
+        topic=topic,
+        datetime_from=datetime_from,
+        datetime_to=datetime_to,
+    )
     benchmark('end local notes query')
-    local_notes_count = len(local_results)
-    cutoff = min(local_notes_count, offset + limit)
 
     benchmark('begin local notes parsing')
-    notes_feed = _get_local_notes_search_results(local_results[offset:cutoff], student_rows_by_sid, search_terms)
+    # Our offset calculations are unforuntately fussy because note parsing might reveal notes associated with students no
+    # longer in BOA, which we won't include in the feed; so we don't actually know the length of our result set until parsing
+    # is complete.
+    cutoff = min(len(local_results), offset + limit)
+    notes_feed = _get_local_notes_search_results(local_results, cutoff, search_terms)
+    local_notes_count = len(notes_feed)
+    notes_feed = notes_feed[offset:]
+
     benchmark('end local notes parsing')
 
     if len(notes_feed) == limit:
         return notes_feed
 
-    # When querying the loch for notes, we use an actual join rather than the cumbersome SID list since everything lives in
-    # Nessie RDS.
-
     benchmark('begin loch notes query')
     loch_results = data_loch.search_advising_notes(
         search_phrase=search_phrase,
-        student_query_tables=student_query_tables,
-        student_query_filter=student_query_filter,
-        student_query_bindings=student_query_bindings,
+        author_uid=author_uid,
         author_csid=author_csid,
+        student_csid=student_csid,
         topic=topic,
+        datetime_from=datetime_from,
+        datetime_to=datetime_to,
         offset=max(0, offset - local_notes_count),
         limit=(limit - len(notes_feed)),
     )
@@ -176,39 +228,50 @@ def search_advising_notes(search_phrase, author_csid=None, topic=None, offset=0,
     return notes_feed
 
 
-def _get_local_notes_search_results(local_results, student_rows_by_sid, search_terms):
+def _get_local_notes_search_results(local_results, cutoff, search_terms):
     results = []
+    student_rows = data_loch.get_basic_student_data([row.get('sid') for row in local_results])
+    students_by_sid = {r.get('sid'): r for r in student_rows}
     for row in local_results:
         note = {camelize(key): row[key] for key in row.keys()}
-        student_row = student_rows_by_sid[note.get('sid')]
-        results.append({
-            'id': note.get('id'),
-            'studentSid': note.get('sid'),
-            'studentUid': student_row.get('uid'),
-            'studentName': join_if_present(' ', [student_row.get('first_name'), student_row.get('last_name')]),
-            'advisorUid': note.get('authorUid'),
-            'advisorName': note.get('authorName'),
-            'noteSnippet': _notes_text_snippet(join_if_present(' - ', [note.get('subject'), note.get('body')]), search_terms),
-            'createdAt': _isoformat(note, 'createdAt'),
-            'updatedAt': _isoformat(note, 'updatedAt'),
-        })
+        sid = note.get('sid')
+        student_row = students_by_sid.get(sid, {})
+        if student_row:
+            results.append({
+                'id': note.get('id'),
+                'studentSid': sid,
+                'studentUid': student_row.get('uid'),
+                'studentName': join_if_present(' ', [student_row.get('first_name'), student_row.get('last_name')]),
+                'advisorUid': note.get('authorUid'),
+                'advisorName': note.get('authorName'),
+                'noteSnippet': _notes_text_snippet(join_if_present(' - ', [note.get('subject'), note.get('body')]), search_terms),
+                'createdAt': _isoformat(note, 'createdAt'),
+                'updatedAt': _isoformat(note, 'updatedAt'),
+            })
+        if len(results) == cutoff:
+            break
     return results
 
 
 def _get_loch_notes_search_results(loch_results, search_terms):
     results = []
-    calnet_advisor_feeds = get_calnet_users_for_csids(app, [row.get('advisor_sid') for row in loch_results])
+    calnet_advisor_feeds = get_calnet_users_for_csids(
+        app,
+        list(set([row.get('advisor_sid') for row in loch_results if row.get('advisor_sid') is not None])),
+    )
     for row in loch_results:
         note = {camelize(key): row[key] for key in row.keys()}
         advisor_feed = calnet_advisor_feeds.get(note.get('advisorSid'))
+        advisor_name = join_if_present(' ', [advisor_feed.get('firstName'), advisor_feed.get('lastName')]) if advisor_feed else None
+        note_body = (note.get('noteBody') or '').strip() or join_if_present(', ', [note.get('noteCategory'), note.get('noteSubcategory')])
         results.append({
             'id': note.get('id'),
             'studentSid': note.get('sid'),
             'studentUid': note.get('uid'),
             'studentName': join_if_present(' ', [note.get('firstName'), note.get('lastName')]),
             'advisorSid': note.get('advisorSid'),
-            'advisorName': join_if_present(' ', [advisor_feed.get('firstName'), advisor_feed.get('lastName')]) if advisor_feed else None,
-            'noteSnippet': _notes_text_snippet(note.get('noteBody'), search_terms),
+            'advisorName': advisor_name or join_if_present(' ', [note.get('advisorFirstName'), note.get('advisorLastName')]),
+            'noteSnippet': _notes_text_snippet(note_body, search_terms),
             'createdAt': _resolve_created_at(note),
             'updatedAt': _resolve_updated_at(note),
         })
@@ -235,8 +298,8 @@ def get_legacy_attachment_stream(filename):
     sid = filename[:i]
     if not sid:
         return None
-    # Ensure that the file exists and the user has permission to see it.
-    attachment_result = data_loch.get_sis_advising_note_attachment(sid, filename, scope=get_student_query_scope())
+    # Ensure that the file exists.
+    attachment_result = data_loch.get_sis_advising_note_attachment(sid, filename)
     if not attachment_result or not attachment_result[0]:
         return None
     if attachment_result[0].get('created_by') == 'UCBCONVERSION':
@@ -257,7 +320,7 @@ def note_to_compatible_json(note, topics=(), attachments=None, note_read=False):
     for dept_code in dept_codes:
         departments.append({
             'code': dept_code,
-            'name': BERKELEY_DEPT_CODE_TO_NAME.get(dept_code) or dept_code,
+            'name': BERKELEY_DEPT_CODE_TO_NAME.get(dept_code, dept_code),
         })
     return {
         'id': note.get('id'),
@@ -292,7 +355,15 @@ def _resolve_created_at(note):
 def _resolve_updated_at(note):
     # Notes converted from pre-CS legacy systems have an updated_at value indicating (probably)
     # time of conversion rather than an update by a human.
-    return None if note.get('createdBy') == 'UCBCONVERSION' else _isoformat(note, 'updatedAt')
+    if note.get('createdBy') == 'UCBCONVERSION':
+        return None
+    else:
+        updated_at = note.get('updatedAt')
+        created_at = note.get('createdAt')
+        if created_at and updated_at and _tzinfo(updated_at) == _tzinfo(created_at):
+            return _isoformat(note, 'updatedAt') if (updated_at - created_at).seconds else None
+        else:
+            return _isoformat(note, 'updatedAt')
 
 
 def _get_sis_advising_note_topics(sid):
@@ -321,6 +392,14 @@ def _get_advising_note_attachments(sid):
 
 def _get_asc_advising_note_topics(sid):
     topics = data_loch.get_asc_advising_note_topics(sid)
+    topics_by_id = {}
+    for advising_note_id, topics in groupby(topics, key=itemgetter('id')):
+        topics_by_id[advising_note_id] = [topic['topic'] for topic in topics]
+    return topics_by_id
+
+
+def _get_e_i_advising_note_topics(sid):
+    topics = data_loch.get_e_i_advising_note_topics(sid)
     topics_by_id = {}
     for advising_note_id, topics in groupby(topics, key=itemgetter('id')):
         topics_by_id[advising_note_id] = [topic['topic'] for topic in topics]
@@ -400,3 +479,7 @@ def _notes_text_snippet(note_body, search_terms):
             return tag_stripped_body[0:end_position] + '...'
         else:
             return tag_stripped_body
+
+
+def _tzinfo(_datetime):
+    return _datetime and _datetime.tzinfo

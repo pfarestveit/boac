@@ -6,7 +6,7 @@
     :small="true"
     stacked="md"
     :tbody-tr-class="rowClass"
-    thead-class="sortable-table-header">
+    thead-class="sortable-table-header border-bottom">
     <template slot="curated" slot-scope="row">
       <div>
         <CuratedStudentCheckbox :student="row.item" class="curated-checkbox" />
@@ -19,28 +19,59 @@
 
     <template slot="profile" slot-scope="row">
       <div>
-        <router-link :id="row.item.uid" :to="`/student/${row.item.uid}`">
+        <router-link :id="`link-to-student-${row.item.uid}`" :to="studentRoutePath(row.item.uid, user.inDemoMode)">
           <h3
             class="student-name m-0 p-0"
             :class="{'demo-mode-blur': user.inDemoMode}">
-            {{ row.item.lastName }}<span v-if="row.item.firstName">, {{ row.item.firstName }}</span>
+            <span v-if="row.item.firstName" v-html="`${row.item.lastName}, ${row.item.firstName}`"></span>
+            <span v-if="!row.item.firstName" v-html="row.item.lastName"></span>
           </h3>
         </router-link>
       </div>
       <div :id="`row-${row.index}-student-sid`" class="student-sid" :class="{'demo-mode-blur': user.inDemoMode}">
         {{ row.item.sid }}
-        <span v-if="row.item.enrollment.enrollmentStatus === 'W'" class="red-flag-status">WAITLISTED</span>
-        <span v-if="displayAsInactive(row.item)" class="red-flag-status">INACTIVE</span>
+        <span
+          v-if="row.item.enrollment.enrollmentStatus === 'W'"
+          :id="`student-${row.item.uid}-waitlisted-for-${section.termId}-${section.sectionId}`"
+          class="red-flag-status">WAITLISTED</span>
+        <span
+          v-if="row.item.academicCareerStatus === 'Inactive'"
+          :id="`student-${row.item.uid}-inactive-for-${section.termId}-${section.sectionId}`"
+          class="red-flag-status">INACTIVE</span>
+      </div>
+      <div
+        v-if="displayAsAscInactive(row.item)"
+        :id="`student-${row.item.uid}-asc-inactive-for-${section.termId}-${section.sectionId}`"
+        class="student-sid red-flag-status">
+        ASC INACTIVE
+      </div>
+      <div
+        v-if="displayAsCoeInactive(row.item)"
+        :id="`student-${row.item.uid}-coe-inactive-for-${section.termId}-${section.sectionId}`"
+        class="student-sid red-flag-status">
+        CoE INACTIVE
+      </div>
+      <div v-if="row.item.academicCareerStatus !== 'Completed'">
+        <div :id="`student-${row.item.uid}-level`">
+          <span class="student-text">{{ row.item.level }}</span>
+        </div>
+        <div :id="`student-${row.item.uid}-majors`">
+          <div v-for="major in row.item.majors" :key="major" class="student-text">{{ major }}</div>
+        </div>
+      </div>
+      <div v-if="row.item.academicCareerStatus === 'Completed'">
+        <div v-if="get(row.item, 'degree.dateAwarded')" :id="`student-${row.item.uid}-graduated-date`">
+          <span class="student-text">Graduated {{ row.item.degree.dateAwarded | moment('MMM DD, YYYY') }}</span>
+        </div>
+        <div :id="`student-${row.item.uid}-graduated-colleges`">
+          <div v-for="owner in degreePlanOwners(row.item)" :key="owner" class="student-text">
+            {{ owner }}
+          </div>
+        </div>
       </div>
       <div>
-        <span class="student-text">{{ row.item.level }}</span>
-      </div>
-      <div>
-        <div v-for="major in row.item.majors" :key="major" class="student-text">{{ major }}</div>
-      </div>
-      <div>
-        <div v-if="row.item.athleticsProfile" class="student-teams-container">
-          <div v-for="membership in row.item.athleticsProfile.athletics" :key="membership.groupName" class="student-teams">
+        <div v-if="row.item.athleticsProfile" :id="`student-${row.item.uid}-teams`" class="student-teams-container">
+          <div v-for="membership in row.item.athleticsProfile.athletics" :key="membership.groupName" class="student-text">
             {{ membership.groupName }}
           </div>
         </div>
@@ -48,7 +79,7 @@
     </template>
 
     <template slot="courseSites" slot-scope="row">
-      <div class="course-sites font-size-14 pl-2">
+      <div class="course-sites flex-col font-size-14 pl-2">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
           :key="canvasSite.courseCode">
@@ -61,21 +92,35 @@
     </template>
 
     <template slot="assignmentsSubmitted" slot-scope="row">
-      <div v-if="row.item.enrollment.canvasSites.length">
+      <div v-if="row.item.enrollment.canvasSites.length" class="flex-col">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
           :key="canvasSite.canvasCourseId">
           <span v-if="row.item.enrollment.canvasSites.length > 1" class="sr-only">
             {{ canvasSite.courseCode }}
           </span>
-          <div v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles" class="font-size-14 text-nowrap">
-            <strong>{{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</strong>
-            <span class="faint-text">
-              (Max: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }})
-            </span>
+          <StudentBoxplot
+            v-if="canvasSite.analytics.assignmentsSubmitted.boxPlottable"
+            :dataset="canvasSite.analytics.assignmentsSubmitted"
+            :numeric-id="`${row.item.uid}-${canvasSite.canvasCourseId.toString()}-assignments`"></StudentBoxplot>
+          <div v-if="canvasSite.analytics.assignmentsSubmitted.boxPlottable" class="sr-only">
+            <div>User score: {{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</div>
+            <div>Maximum:  {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }}</div>
+            <div>70th Percentile: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[7] }}</div>
+            <div>50th Percentile: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[5] }}</div>
+            <div>30th Percentile: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[3] }}</div>
+            <div>Minimum: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[0] }}</div>
           </div>
-          <div v-if="!canvasSite.analytics.assignmentsSubmitted.courseDeciles" class="font-size-14">
-            No Data
+          <div v-if="!canvasSite.analytics.assignmentsSubmitted.boxPlottable" class="font-size-14 text-nowrap">
+            <div v-if="canvasSite.analytics.assignmentsSubmitted.courseDeciles">
+              <strong>{{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</strong>
+              <span class="faint-text">
+                (Max: {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }})
+              </span>
+            </div>
+            <div v-if="!canvasSite.analytics.assignmentsSubmitted.courseDeciles">
+              No Data
+            </div>
           </div>
         </div>
       </div>
@@ -84,7 +129,7 @@
     </template>
 
     <template slot="assignmentGrades" slot-scope="row">
-      <div>
+      <div class="flex-col">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
           :key="canvasSite.canvasCourseId"
@@ -94,7 +139,7 @@
           </span>
           <StudentBoxplot
             v-if="canvasSite.analytics.currentScore.boxPlottable"
-            :dataset="canvasSite.analytics"
+            :dataset="canvasSite.analytics.currentScore"
             :numeric-id="row.item.uid + '-' + canvasSite.canvasCourseId.toString()"></StudentBoxplot>
           <div v-if="canvasSite.analytics.currentScore.boxPlottable" class="sr-only">
             <div>User score: {{ canvasSite.analytics.currentScore.student.raw }}</div>
@@ -121,7 +166,7 @@
     </template>
 
     <template slot="bCourses" slot-scope="row">
-      <div class="font-size-14">
+      <div class="flex-col font-size-14">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
           :key="canvasSite.canvasCourseId"
@@ -137,17 +182,13 @@
 
     <template slot="midtermGrade" slot-scope="row">
       <span v-if="row.item.enrollment.midtermGrade" v-accessible-grade="row.item.enrollment.midtermGrade" class="font-weight-bold font-size-14"></span>
-      <i
-        v-if="isAlertGrade(row.item.enrollment.midtermGrade)"
-        class="fas fa-exclamation-triangle boac-exclamation"></i>
+      <font-awesome v-if="isAlertGrade(row.item.enrollment.midtermGrade)" icon="exclamation-triangle" class="boac-exclamation" />
       <span v-if="!row.item.enrollment.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
     </template>
 
     <template slot="finalGrade" slot-scope="row">
       <span v-if="row.item.enrollment.grade" v-accessible-grade="row.item.enrollment.grade" class="font-weight-bold font-size-14"></span>
-      <i
-        v-if="isAlertGrade(row.item.enrollment.grade)"
-        class="fas fa-exclamation-triangle boac-exclamation"></i>
+      <font-awesome v-if="isAlertGrade(row.item.enrollment.grade)" icon="exclamation-triangle" class="boac-exclamation" />
       <span v-if="!row.item.enrollment.grade" class="cohort-grading-basis">
         {{ row.item.enrollment.gradingBasis }}
       </span>
@@ -156,12 +197,14 @@
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import CuratedStudentCheckbox from '@/components/curated/CuratedStudentCheckbox';
 import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
 import StudentBoxplot from '@/components/student/StudentBoxplot';
 import StudentMetadata from '@/mixins/StudentMetadata';
 import UserMetadata from '@/mixins/UserMetadata';
+import Util from '@/mixins/Util';
 
 export default {
   name: "CourseStudents",
@@ -171,30 +214,51 @@ export default {
     StudentBoxplot
   },
   mixins: [
+    Context,
     StudentAnalytics,
     StudentMetadata,
-    UserMetadata
+    UserMetadata,
+    Util
   ],
   props: {
     featured: String,
     section: Object
   },
   data: () => ({
-    fields: [
+    fields: undefined
+  }),
+  created() {
+    let cols = [
       {key: 'curated', label: '', class: 'pl-3'},
       {key: 'avatar', label: ''},
       {key: 'profile', label: ''},
       {key: 'courseSites', label: 'Course Site(s)'},
       {key: 'assignmentsSubmitted', label: 'Assignments Submitted'},
-      {key: 'assignmentGrades', label: 'Assignment Grades'},
-      {key: 'bCourses', label: 'bCourses Activity'},
-      {key: 'midtermGrade', label: 'Mid'},
-      {key: 'finalGrade', label: 'Final', class: 'pr-3'}
-    ]
-  }),
+      {key: 'assignmentGrades', label: 'Assignment Grades'}
+    ];
+    if (this.currentEnrollmentTermId === parseInt(this.section.termId)) {
+      cols.push(
+        {key: 'bCourses', label: 'bCourses Activity'}
+      );
+    }
+    cols = cols.concat([
+          {key: 'midtermGrade', label: 'Mid'},
+          {key: 'finalGrade', label: 'Final', class: 'pr-3'}
+        ]);
+    this.fields = cols;
+  },
   methods: {
+    degreePlanOwners(student) {
+      const plans = this.get(student, 'degree.plans');
+      if (plans) {
+        return this.uniq(this.map(plans, 'group'));
+      } else {
+        return [];
+      }
+    },
     rowClass(item) {
-      return this.featured === item.uid ? 'list-group-item-info row-border pb-2 pt-2' : 'row-border pb-2 pt-2';
+      const clazz = 'border-bottom pb-3 pt-3';
+      return this.featured === item.uid ? `${clazz} list-group-item-info` : clazz;
     }
   }
 }
@@ -209,6 +273,10 @@ export default {
 }
 .course-list-view-column-profile button {
   padding: 2px 0 0 5px;
+}
+.flex-col > div {
+  align-items: flex-start;
+  flex: 0 0 50px;
 }
 .student-name {
   color: #49b;

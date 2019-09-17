@@ -8,7 +8,7 @@
         :id="`row-${rowIndex}-remove-student-from-curated-group`"
         class="btn btn-link"
         @click="removeFromCuratedGroup">
-        <i class="fas fa-times-circle"></i>
+        <font-awesome icon="times-circle" class="font-size-24" />
       </button>
       <div v-if="listType !== 'curatedGroup'">
         <CuratedStudentCheckbox :student="student" />
@@ -23,14 +23,13 @@
     <div class="cohort-student-bio-container mb-1">
       <div class="cohort-student-name-container">
         <div>
-          <router-link :id="`row-${rowIndex}-student-href`" :to="`/student/${student.uid}`">
+          <router-link :id="`link-to-student-${student.uid}`" :to="studentRoutePath(student.uid, user.inDemoMode)">
             <h3
               v-if="sortedBy !== 'first_name'"
               :id="`row-${rowIndex}-student-name`"
               class="student-name"
-              :class="{'demo-mode-blur' : user.inDemoMode}">
-              {{ student.lastName }}, {{ student.firstName }}
-            </h3>
+              :class="{'demo-mode-blur' : user.inDemoMode}"
+              v-html="`${student.lastName}, ${student.firstName}`"></h3>
             <h3
               v-if="sortedBy === 'first_name'"
               :id="`row-${rowIndex}-student-name`"
@@ -43,36 +42,63 @@
       </div>
       <div class="d-flex student-sid" :class="{'demo-mode-blur' : user.inDemoMode}">
         <div :id="`row-${rowIndex}-student-sid`">{{ student.sid }}</div>
-        <div v-if="displayAsInactive(student)" class="red-flag-status ml-1">INACTIVE</div>
+        <div
+          v-if="student.academicCareerStatus === 'Inactive'"
+          :id="`row-${rowIndex}-inactive`"
+          class="red-flag-status ml-1">
+          INACTIVE
+        </div>
       </div>
-      <div v-if="student.withdrawalCancel">
+      <div
+        v-if="displayAsAscInactive(student)"
+        :id="`row-${rowIndex}-inactive-asc`"
+        class="d-flex student-sid red-flag-status">
+        ASC INACTIVE
+      </div>
+      <div
+        v-if="displayAsCoeInactive(student)"
+        :id="`row-${rowIndex}-inactive-coe`"
+        class="d-flex student-sid red-flag-status">
+        CoE INACTIVE
+      </div>
+      <div v-if="student.withdrawalCancel" :id="`row-${rowIndex}-withdrawal-cancel`">
         <span class="red-flag-small">
           {{ student.withdrawalCancel.description }} {{ student.withdrawalCancel.date | moment('MMM DD, YYYY') }}
         </span>
       </div>
-      <div
-        :id="`row-${rowIndex}-student-level`"
-        class="student-text">
-        {{ student.level }}
+      <div v-if="student.academicCareerStatus !== 'Completed'">
+        <div
+          :id="`row-${rowIndex}-student-level`"
+          class="student-text">
+          {{ student.level }}
+        </div>
+        <div
+          v-if="student.expectedGraduationTerm"
+          :id="`row-${rowIndex}-student-grad-term`"
+          class="student-text"
+          aria-label="Expected graduation term">
+          Grad:&nbsp;{{ student.expectedGraduationTerm.name }}
+        </div>
+        <div
+          v-for="(major, index) in student.majors"
+          :key="index"
+          class="student-text">
+          <span :id="`row-${rowIndex}-student-major-${index}`">{{ major }}</span>
+        </div>
       </div>
-      <div
-        v-if="student.expectedGraduationTerm"
-        :id="`row-${rowIndex}-student-grad-term`"
-        class="student-text"
-        aria-label="Expected graduation term">
-        Grad:&nbsp;{{ student.expectedGraduationTerm.name }}
-      </div>
-      <div
-        v-for="(major, index) in student.majors"
-        :key="index"
-        class="student-text">
-        <span :id="`row-${rowIndex}-student-major-${index}`">{{ major }}</span>
+      <div v-if="student.academicCareerStatus === 'Completed'">
+        <div v-if="get(student, 'degree.dateAwarded')">
+          <span class="student-text">Graduated {{ student.degree.dateAwarded | moment('MMM DD, YYYY') }}</span>
+        </div>
+        <div v-for="owner in degreePlanOwners" :key="owner" class="student-text">
+          <span class="student-text">{{ owner }}</span>
+        </div>
       </div>
       <div v-if="student.athleticsProfile" class="student-teams-container">
         <div
           v-for="(team, index) in student.athleticsProfile.athletics"
           :key="index"
-          class="student-teams">
+          class="student-text">
           <span :id="`row-${rowIndex}-student-team-${index}`">{{ team.groupName }}</span>
         </div>
       </div>
@@ -96,9 +122,10 @@
       <div
         v-if="size(student.termGpa)"
         class="student-bio-status-legend profile-last-term-gpa-outer pl-0">
-        <i
+        <font-awesome
           v-if="student.termGpa[0].gpa < 2"
-          class="fa fa-exclamation-triangle boac-exclamation mr-1"></i>
+          icon="exclamation-triangle"
+          class="boac-exclamation mr-1" />
         <span :id="`row-${rowIndex}-student-gpa-term-name`">{{ student.termGpa[0].termName }}</span> GPA:
         <strong
           :id="`row-${rowIndex}-student-term-gpa`"
@@ -134,7 +161,7 @@
       <table class="cohort-course-activity-table">
         <tr>
           <th class="cohort-course-activity-header cohort-course-activity-course-name">CLASS</th>
-          <th class="cohort-course-activity-header">BCOURSES ACTIVITY</th>
+          <th v-if="user.canAccessCanvasData" class="cohort-course-activity-header">BCOURSES ACTIVITY</th>
           <th class="cohort-course-activity-header">MID</th>
           <th class="cohort-course-activity-header">FINAL</th>
         </tr>
@@ -142,7 +169,7 @@
           <td class="cohort-course-activity-data cohort-course-activity-course-name">
             <div :id="`row-${rowIndex}-student-enrollment-name-${index}`">{{ enrollment.displayName }}</div>
           </td>
-          <td class="cohort-course-activity-data">
+          <td v-if="user.canAccessCanvasData" class="cohort-course-activity-data">
             <div
               v-for="(canvasSite, cIndex) in enrollment.canvasSites"
               :id="`row-${rowIndex}-student-canvas-site-${cIndex}`"
@@ -163,7 +190,7 @@
           </td>
           <td class="cohort-course-activity-data">
             <span v-if="enrollment.midtermGrade" v-accessible-grade="enrollment.midtermGrade" class="font-weight-bold"></span>
-            <i v-if="isAlertGrade(enrollment.midtermGrade)" class="fas fa-exclamation-triangle boac-exclamation"></i>
+            <font-awesome v-if="isAlertGrade(enrollment.midtermGrade)" icon="exclamation-triangle" class="boac-exclamation" />
             <span v-if="!enrollment.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
           </td>
           <td class="cohort-course-activity-data">
@@ -171,7 +198,7 @@
               v-if="enrollment.grade"
               v-accessible-grade="enrollment.grade"
               class="font-weight-bold"></span>
-            <i v-if="isAlertGrade(enrollment.grade)" class="fas fa-exclamation-triangle boac-exclamation"></i>
+            <font-awesome v-if="isAlertGrade(enrollment.grade)" icon="exclamation-triangle" class="boac-exclamation" />
             <span
               v-if="!enrollment.grade"
               class="cohort-grading-basis">{{ enrollment.gradingBasis }}</span>
@@ -182,7 +209,7 @@
           <td class="cohort-course-activity-data cohort-course-activity-course-name faint-text">
             No {{ termNameForSisId(currentEnrollmentTermId) }} enrollments
           </td>
-          <td class="cohort-course-activity-data">
+          <td v-if="user.canAccessCanvasData" class="cohort-course-activity-data">
             <span class="sr-only">No data</span>&mdash;
           </td>
           <td class="cohort-course-activity-data">
@@ -228,6 +255,16 @@ export default {
     rowIndex: Number,
     student: Object,
     sortedBy: String
+  },
+  computed: {
+    degreePlanOwners() {
+      const plans = this.get(this.student, 'degree.plans');
+      if (plans) {
+        return this.uniq(this.map(plans, 'group'));
+      } else {
+        return [];
+      }
+    }
   },
   methods: {
     removeFromCuratedGroup: function() {

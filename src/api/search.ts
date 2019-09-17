@@ -1,6 +1,6 @@
 import axios from 'axios';
 import store from '@/store';
-import { event } from 'vue-analytics';
+import utils from '@/api/api-utils';
 
 export function search(
   phrase: string,
@@ -8,26 +8,26 @@ export function search(
   includeNotes: boolean,
   includeStudents: boolean,
   noteOptions: object,
-  authorCsid: string,
   orderBy: string,
   offset: number,
   limit: number
 ) {
-  let apiBaseUrl = store.getters['context/apiBaseUrl'];
   return axios
-    .post(`${apiBaseUrl}/api/search`, {
+    .post(`${utils.apiBaseUrl()}/api/search`, {
       searchPhrase: phrase,
       students: includeStudents,
       courses: includeCourses,
       notes: includeNotes,
       noteOptions: noteOptions || {},
-      authorCsid: authorCsid,
       orderBy: orderBy || 'first_name',
       offset: offset || 0,
       limit: limit || 50
     })
     .then(response => {
-      event('Students', 'search', phrase, store.getters['user/user'].uid);
+      store.dispatch('user/gaSearchEvent', {
+        action: 'search',
+        name: `Search phrase: ${phrase}`
+      });
       return response;
     })
     .then(response => response.data, () => null);

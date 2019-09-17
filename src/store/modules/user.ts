@@ -1,7 +1,10 @@
 import _ from 'lodash';
 import Vue from 'vue';
-import { getUserByCsid, getUserGroups, getUserProfile, getUserStatus } from '@/api/user';
+import { event } from 'vue-analytics';
+import { getUserByCsid, getUserGroups, getUserProfile } from '@/api/user';
 import { gaTrackUserSessionStart } from '@/api/ga';
+
+const gaEvent = (category, action, label, value) => event(category, action, label, value);
 
 const state = {
   calnetUsersByCsid: {},
@@ -9,40 +12,46 @@ const state = {
     sortBy: 'last_name'
   },
   user: undefined,
-  userAuthStatus: undefined,
   userGroups: undefined
 };
 
 const getters = {
-  userAuthStatus: (state: any): boolean => state.userAuthStatus,
   preferences: (state: any): any => state.preferences,
+  uid: (state: any): string => state.user && state.user.uid,
   user: (state: any): any => state.user
 };
 
 const mutations = {
+  putCalnetUserByCsid: (state: any, {csid, calnetUser}: any) =>
+    (state.calnetUsersByCsid[csid] = calnetUser),
   registerUser: (state: any, user: any) => {
     if (user.uid) {
       state.user = user;
+      Vue.prototype.$eventHub.$emit('user-profile-loaded');
     }
   },
-  putCalnetUserByCsid: (state: any, { csid, calnetUser }: any) =>
-    (state.calnetUsersByCsid[csid] = calnetUser),
-  setUserGroups: (state: any, userGroups: any[]) => (state.userGroups = userGroups),
   setDemoMode: (state: any, demoMode: boolean) =>
     (state.user.inDemoMode = demoMode),
-  setUserPreference: (state: any, { key, value }) => {
+  setUserGroups: (state: any, userGroups: any[]) => (state.userGroups = userGroups),
+  setUserPreference: (state: any, {key, value}) => {
     if (_.has(state.preferences, key)) {
       state.preferences[key] = value;
       Vue.prototype.$eventHub.$emit(`${key}-user-preference-change`, value);
     } else {
       throw new TypeError('Invalid user preference type: ' + key);
     }
-  },
-  setUserAuthStatus: (state: any, userAuthStatus: any) => (state.userAuthStatus = userAuthStatus)
+  }
 };
 
 const actions = {
-  loadCalnetUserByCsid: ({ commit, state }, csid) => {
+  gaCohortEvent: (state: any, {id, name, action}) => gaEvent('Cohort', action, name, id),
+  gaCourseEvent: (state: any, {id, name, action}) => gaEvent('Course', action, name, id),
+  gaCuratedEvent: (state: any, {id, name, action}) => gaEvent('Curated Group', action, name, id),
+  gaNoteEvent: (state: any, {id, label, action}) => gaEvent('Advising Note', action, label, id),
+  gaNoteTemplateEvent: (state: any, {id, label, action}) => gaEvent('Advising Note Template', action, label, id),
+  gaSearchEvent: (state: any, action: string) => gaEvent('Search', action, null, null),
+  gaStudentAlert: (state: any, action: string) => gaEvent('Student Alert', action, null, null),
+  loadCalnetUserByCsid: ({commit, state}, csid) => {
     return new Promise(resolve => {
       if (state.calnetUsersByCsid[csid]) {
         resolve(state.calnetUsersByCsid[csid]);
@@ -55,7 +64,7 @@ const actions = {
       }
     });
   },
-  loadUserGroups: ({ commit, state }) => {
+  loadUserGroups: ({commit, state}) => {
     return new Promise(resolve => {
       if (state.userGroups) {
         resolve(state.userGroups);
@@ -68,22 +77,7 @@ const actions = {
       }
     });
   },
-  loadUserAuthStatus: ({ commit, state }) => {
-    return new Promise(resolve => {
-      if (_.get(state.userAuthStatus, 'isAuthenticated')) {
-        resolve(state.userAuthStatus);
-      } else {
-        getUserStatus()
-          .then(data => {
-            commit('setUserAuthStatus', data);
-          })
-          .then(() => {
-            resolve(state.userAuthStatus);
-          });
-      }
-    });
-  },
-  loadUser: ({ commit, state }) => {
+  loadUser: ({commit, state}) => {
     return new Promise(resolve => {
       if (state.user) {
         resolve(state.user);
@@ -91,15 +85,15 @@ const actions = {
         getUserProfile().then(user => {
           gaTrackUserSessionStart(user);
           commit('registerUser', user);
-          Vue.prototype.$eventHub.$emit('user-profile-loaded');
           resolve(user);
         });
       }
     });
   },
   logout: ({ commit }) => commit('logout'),
+  registerUser: ({ commit }, user) => commit('registerUser', user),
   setDemoMode: ({ commit }, demoMode) => commit('setDemoMode', demoMode),
-  setUserPreference: ({ commit }, { key, value }) => commit('setUserPreference', { key, value })
+  setUserPreference: ({ commit }, {key, value}) => commit('setUserPreference', { key, value })
 };
 
 export default {

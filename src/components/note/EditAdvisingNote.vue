@@ -6,12 +6,13 @@
     <div>
       <input
         id="edit-note-subject"
-        v-model="subject"
+        :value="model.subject"
         aria-labelledby="edit-note-subject-label"
         class="cohort-create-input-name"
         type="text"
         maxlength="255"
-        @keydown.esc="cancel()">
+        @input="setSubjectPerEvent"
+        @keydown.esc="cancelRequested()">
     </div>
     <div>
       <label class="font-weight-bold mt-2" for="edit-note-details">
@@ -20,18 +21,18 @@
     </div>
     <div>
       <span id="edit-note-details" class="bg-transparent note-details-editor">
-        <ckeditor
-          v-model="body"
-          :editor="editor"
-          :config="editorConfig"></ckeditor>
+        <RichTextEditor
+          :initial-value="model.body || ''"
+          :on-value-update="setBody" />
       </span>
     </div>
-    <AdvisingNoteTopics
-      :function-add="addTopic"
-      :function-remove="removeTopic"
-      :note-id="String(note.id)"
-      :suggested-topics="suggestedTopics"
-      :topics="topics" />
+    <div>
+      <AdvisingNoteTopics
+        :function-add="addTopic"
+        :function-remove="removeTopic"
+        :note-id="model.id"
+        :topics="model.topics" />
+    </div>
     <div class="d-flex mt-2 mb-2">
       <div>
         <b-btn
@@ -46,8 +47,8 @@
         <b-btn
           id="cancel-edit-note-button"
           variant="link"
-          @click.stop="cancel()"
-          @keypress.enter.stop="cancel()">
+          @click.stop="cancelRequested()"
+          @keypress.enter.stop="cancelRequested()">
           Cancel
         </b-btn>
       </div>
@@ -58,17 +59,17 @@
       :function-confirm="cancelConfirmed"
       modal-header="Discard unsaved changes?"
       :show-modal="showAreYouSureModal" />
-    <div v-if="size(note.attachments)">
-      <div class="pill-list-header mt-3 mb-1">{{ size(note.attachments) === 1 ? 'Attachment' : 'Attachments' }}</div>
+    <div v-if="size(model.attachments)">
+      <div class="pill-list-header mt-3 mb-1">{{ size(model.attachments) === 1 ? 'Attachment' : 'Attachments' }}</div>
       <ul class="pill-list pl-0">
         <li
-          v-for="(attachment, index) in note.attachments"
-          :id="`note-${note.id}-attachment-${index}`"
+          v-for="(attachment, index) in model.attachments"
+          :id="`note-${model.id}-attachment-${index}`"
           :key="attachment.id"
           class="mt-2"
           @click.stop>
           <span class="pill pill-attachment text-nowrap">
-            <i class="fas fa-paperclip pr-1 pl-1"></i>
+            <font-awesome icon="paperclip" class="pr-1 pl-1" />
             {{ attachment.displayName }}
           </span>
         </li>
@@ -88,58 +89,54 @@
 <script>
 import AdvisingNoteTopics from '@/components/note/AdvisingNoteTopics';
 import AreYouSureModal from '@/components/util/AreYouSureModal';
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
 import Context from '@/mixins/Context';
+import NoteEditSession from '@/mixins/NoteEditSession';
+import RichTextEditor from '@/components/util/RichTextEditor';
 import Util from '@/mixins/Util';
-import { updateNote } from '@/api/notes';
-
-require('@/assets/styles/ckeditor-custom.css');
+import { getNote, updateNote } from '@/api/notes';
 
 export default {
   name: 'EditAdvisingNote',
-  components: { AdvisingNoteTopics, AreYouSureModal },
-  mixins: [Context, Util],
+  components: {AdvisingNoteTopics, AreYouSureModal, RichTextEditor},
+  mixins: [Context, NoteEditSession, Util],
   props: {
-    afterCancelled: Function,
+    afterCancel: Function,
     afterSaved: Function,
-    note: Object,
-    suggestedTopics: Array
+    noteId: Number
   },
   data: () => ({
-    body: undefined,
-    editor: ClassicEditor,
-    editorConfig: {
-      toolbar: ['bold', 'italic', 'bulletedList', 'numberedList', 'link'],
-    },
     error: undefined,
     showAreYouSureModal: false,
     showErrorPopover: false,
-    subject: undefined,
-    topic: undefined,
-    topics: []
+    topic: undefined
   }),
   created() {
-    this.alertScreenReader('The edit note form has loaded.');
-    this.reset();
+    getNote(this.noteId).then(note => {
+      this.resetModel();
+      this.setModel(this.cloneDeep(note));
+      this.addSid(note.sid);
+      this.setMode('edit');
+      this.putFocusNextTick('edit-note-subject');
+      this.alertScreenReader('Edit note form is open.');
+    });
   },
   methods: {
-    addTopic(topic) {
-      this.topics.push(topic);
-    },
-    cancel() {
+    cancelRequested() {
       this.clearErrors();
-      const isPristine = this.trim(this.subject) === this.note.subject
-        && this.stripHtmlAndTrim(this.body) === this.stripHtmlAndTrim(this.note.body);
-      if (isPristine) {
-        this.cancelConfirmed();
-      } else {
-        this.showAreYouSureModal = true;
-      }
+      getNote(this.noteId).then(note => {
+        const isPristine = this.trim(this.model.subject) === note.subject
+          && this.stripHtmlAndTrim(this.model.body) === this.stripHtmlAndTrim(note.body);
+        if (isPristine) {
+          this.cancelConfirmed();
+        } else {
+          this.showAreYouSureModal = true;
+        }
+      });
     },
     cancelConfirmed() {
+      this.afterCancel();
       this.alertScreenReader('Edit note form cancelled.');
-      this.afterCancelled();
-      this.reset();
+      this.exit();
     },
     cancelTheCancel() {
       this.alertScreenReader('Continue editing note.');
@@ -150,23 +147,17 @@ export default {
       this.error = null;
       this.showErrorPopover = false;
     },
-    removeTopic(topic) {
-      let index = this.topics.indexOf(topic);
-      this.topics.splice(index, 1);
-    },
-    reset() {
+    exit() {
       this.clearErrors();
-      this.subject = this.note.subject;
-      this.body = this.note.body || '';
-      this.topics = this.cloneDeep(this.note.topics) || [];
+      this.exitSession();
     },
     save() {
-      this.subject = this.trim(this.subject);
-      if (this.subject) {
-        this.body = this.trim(this.body);
-        updateNote(this.note.id, this.subject, this.body, this.topics, [], []).then(updatedNote => {
+      const trimmedSubject = this.trim(this.model.subject);
+      if (trimmedSubject) {
+        updateNote(this.model.id, trimmedSubject, this.trim(this.model.body), this.model.topics).then(updatedNote => {
           this.afterSaved(updatedNote);
           this.alertScreenReader('Changes to note have been saved');
+          this.exit();
         });
       } else {
         this.error = 'Subject is required';

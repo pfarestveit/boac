@@ -23,9 +23,12 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from datetime import datetime, timedelta
+
 from boac.merged.advising_note import get_advising_notes, get_legacy_attachment_stream, search_advising_notes
 from boac.models.note import Note
 from dateutil.parser import parse
+import pytz
 from tests.util import mock_legacy_note_attachment
 
 
@@ -36,7 +39,7 @@ coe_advisor = '1133399'
 class TestMergedAdvisingNote:
     """Advising note data, merged."""
 
-    def test_get_advising_notes(self, app, coe_advising_note_with_attachment, fake_auth):
+    def test_get_advising_notes(self, app, mock_advising_note, fake_auth):
         fake_auth.login(coe_advisor)
         notes = get_advising_notes('11667051')
 
@@ -50,7 +53,7 @@ class TestMergedAdvisingNote:
         assert notes[0]['createdBy'] is None
         assert parse(notes[0]['createdAt']) == parse('2017-10-31T12:00:00+00:00')
         assert notes[0]['updatedBy'] is None
-        assert parse(notes[0]['updatedAt']) == parse('2017-10-31T12:00:00+00:00')
+        assert notes[0]['updatedAt'] is None
         assert notes[0]['read'] is False
         assert notes[0]['topics'] == ['God Scéaw']
         assert notes[1]['id'] == '11667051-00002'
@@ -62,34 +65,45 @@ class TestMergedAdvisingNote:
         assert notes[1]['createdBy'] is None
         assert parse(notes[1]['createdAt']) == parse('2017-11-01T12:00:00+00')
         assert notes[1]['updatedBy'] is None
-        assert parse(notes[1]['updatedAt']) == parse('2017-11-01T12:00:00+00')
+        assert notes[1]['updatedAt'] is None
         assert notes[1]['read'] is False
         assert notes[1]['topics'] == ['Earg Scéaw', 'Ofscéaw']
 
         # Legacy ASC notes
-        assert notes[3]['id'] == '11667051-139362'
-        assert notes[3]['sid'] == '11667051'
-        assert notes[3]['body'] is None
-        assert notes[3]['author']['uid'] == '1133399'
-        assert notes[3]['author']['name'] == 'Lemmy Kilmister'
-        assert notes[3]['topics'] == ['Academic', 'Other']
-        assert notes[3]['createdAt']
-        assert notes[3]['updatedAt']
-        assert notes[3]['read'] is False
-        assert notes[4]['id'] == '11667051-139379'
+        assert notes[4]['id'] == '11667051-139362'
         assert notes[4]['sid'] == '11667051'
         assert notes[4]['body'] is None
-        assert notes[4]['author']['uid'] == '90412'
-        assert notes[4]['author']['name'] == 'Ginger Baker'
-        assert notes[4]['topics'] is None
+        assert notes[4]['author']['uid'] == '1133399'
+        assert notes[4]['author']['name'] == 'Lemmy Kilmister'
+        assert notes[4]['topics'] == ['Academic', 'Other']
         assert notes[4]['createdAt']
-        assert notes[4]['updatedAt']
+        assert notes[4]['updatedAt'] is None
         assert notes[4]['read'] is False
+        assert notes[5]['id'] == '11667051-139379'
+        assert notes[5]['sid'] == '11667051'
+        assert notes[5]['body'] is None
+        assert notes[5]['author']['uid'] == '90412'
+        assert notes[5]['author']['name'] == 'Ginger Baker'
+        assert notes[5]['topics'] is None
+        assert notes[5]['createdAt']
+        assert notes[5]['updatedAt'] is None
+        assert notes[5]['read'] is False
+
+        # Legacy E&I notes
+        assert notes[6]['id'] == '11667051-151620'
+        assert notes[6]['sid'] == '11667051'
+        assert notes[6]['body'] is None
+        assert notes[6]['author']['uid'] == '1133398'
+        assert notes[6]['author']['name'] == 'Charlie Christian'
+        assert notes[6]['topics'] == ['Course Planning', 'Personal']
+        assert notes[6]['createdAt']
+        assert notes[6]['updatedAt'] is None
+        assert notes[6]['read'] is False
 
         # Non-legacy note
-        boa_created_note = next((n for n in notes if n['id'] == coe_advising_note_with_attachment.id), None)
+        boa_created_note = next((n for n in notes if n['id'] == mock_advising_note.id), None)
         assert boa_created_note['id']
-        assert boa_created_note['author']['uid'] == coe_advising_note_with_attachment.author_uid
+        assert boa_created_note['author']['uid'] == mock_advising_note.author_uid
         assert boa_created_note['sid'] == '11667051'
         assert boa_created_note['subject'] == 'In France they kiss on main street'
         assert 'My darling dime store thief' in boa_created_note['body']
@@ -99,7 +113,7 @@ class TestMergedAdvisingNote:
         assert boa_created_note['createdBy'] is None
         assert boa_created_note['createdAt']
         assert boa_created_note['updatedBy'] is None
-        assert boa_created_note['updatedAt']
+        assert boa_created_note['updatedAt'] is None
         assert boa_created_note['read'] is False
         assert boa_created_note['topics'] == []
         assert len(boa_created_note['attachments']) == 1
@@ -115,7 +129,7 @@ class TestMergedAdvisingNote:
             },
         ]
 
-    def test_get_advising_notes_cs_attachment(self, app, coe_advising_note_with_attachment, fake_auth):
+    def test_get_advising_notes_cs_attachment(self, app, mock_advising_note, fake_auth):
         fake_auth.login(coe_advisor)
         notes = get_advising_notes('11667051')
         assert notes[1]['attachments'] == [
@@ -125,9 +139,9 @@ class TestMergedAdvisingNote:
                 'displayName': 'brigitte_photo.jpeg',
             },
         ]
-        boa_created_note = next((n for n in notes if n['id'] == coe_advising_note_with_attachment.id), None)
+        boa_created_note = next((n for n in notes if n['id'] == mock_advising_note.id), None)
         assert boa_created_note
-        assert boa_created_note['attachments'][0]['uploadedBy'] == coe_advising_note_with_attachment.author_uid
+        assert boa_created_note['attachments'][0]['uploadedBy'] == mock_advising_note.author_uid
 
     def test_get_advising_notes_timestamp_format(self, app, fake_auth):
         fake_auth.login(coe_advisor)
@@ -152,7 +166,29 @@ class TestMergedAdvisingNote:
         assert notes[0]['advisorSid'] == '600500400'
         assert notes[0]['id'] == '11667051-00003'
         assert parse(notes[0]['createdAt']) == parse('2017-11-05T12:00:00+00')
-        assert parse(notes[0]['updatedAt']) == parse('2017-11-06T12:00:00+00')
+        assert notes[0]['updatedAt'] is None
+
+    def test_search_advising_notes_by_category(self, app, fake_auth):
+        """Matches legacy category/subcategory for SIS advising notes only if body is blank."""
+        fake_auth.login(coe_advisor)
+        notes = search_advising_notes(search_phrase='Quick Question')
+        assert len(notes) == 1
+        assert notes[0]['noteSnippet'] == '<strong>Quick</strong> <strong>Question</strong>, Unanswered'
+
+    def test_search_for_asc_advising_notes(self, app, fake_auth):
+        fake_auth.login(asc_advisor)
+        response = search_advising_notes(search_phrase='kilmister')
+        assert len(response) == 1
+        assert response[0]['noteSnippet'] == ''
+        assert response[0]['advisorName'] == 'Lemmy Kilmister'
+        assert parse(response[0]['createdAt']) == parse('2014-01-03T20:30:00+00')
+        assert response[0]['updatedAt'] is None
+        response = search_advising_notes(search_phrase='academic')
+        assert len(response) == 1
+        assert response[0]['noteSnippet'] == ''
+        assert response[0]['advisorName'] == 'Lemmy Kilmister'
+        assert parse(response[0]['createdAt']) == parse('2014-01-03T20:30:00+00')
+        assert response[0]['updatedAt'] is None
 
     def test_search_advising_notes_stemming(self, app, fake_auth):
         fake_auth.login(coe_advisor)
@@ -222,15 +258,12 @@ class TestMergedAdvisingNote:
         cs_note = response[1]
         assert ucbconversion_note['createdAt']
         assert ucbconversion_note['updatedAt'] is None
-        assert cs_note['createdAt'] and cs_note['updatedAt']
+        assert cs_note['createdAt']
+        assert cs_note['updatedAt'] is None
 
     def test_search_advising_notes_includes_newly_created(self, app, fake_auth):
         fake_auth.login(coe_advisor)
-        Note.create(
-            author_uid=coe_advisor,
-            author_name='Balloon Man',
-            author_role='Spherical',
-            author_dept_codes='COENG',
+        _create_coe_advisor_note(
             sid='11667051',
             subject='Confound this note',
             body='and its successors and assigns',
@@ -244,11 +277,7 @@ class TestMergedAdvisingNote:
     def test_search_advising_notes_paginates_new_and_old(self, app, fake_auth):
         fake_auth.login(coe_advisor)
         for i in range(0, 5):
-            Note.create(
-                author_uid=coe_advisor,
-                author_name='Balloon Man',
-                author_role='Spherical',
-                author_dept_codes='COENG',
+            _create_coe_advisor_note(
                 sid='11667051',
                 subject='Planned redundancy',
                 body=f'Confounded note {i + 1}',
@@ -277,11 +306,9 @@ class TestMergedAdvisingNote:
             'uid': '2040',
         }
         for author in [joni, not_joni]:
-            Note.create(
+            _create_coe_advisor_note(
                 author_uid=author['uid'],
                 author_name=author['name'],
-                author_role='Advisor',
-                author_dept_codes='COENG',
                 sid='11667051',
                 subject='Futher on France',
                 body='Brigitte has been molded to middle class circumstance',
@@ -295,23 +322,99 @@ class TestMergedAdvisingNote:
         assert new_note['advisorUid'] == joni['uid']
         assert legacy_note['advisorSid'] == joni['sid']
 
+    def test_search_advising_notes_narrowed_by_student(self, app, fake_auth):
+        """Narrows results for both new and legacy advising notes by student SID."""
+        for sid in ['9000000000', '9100000000']:
+            _create_coe_advisor_note(
+                sid=sid,
+                subject='Case load',
+                body='Another day, another student',
+            )
+        fake_auth.login(coe_advisor)
+        wide_response = search_advising_notes(search_phrase='student')
+        assert len(wide_response) == 5
+        narrow_response = search_advising_notes(search_phrase='student', student_csid='9100000000')
+        assert len(narrow_response) == 2
+        new_note, legacy_note = narrow_response[0], narrow_response[1]
+        assert new_note['studentSid'] == '9100000000'
+        assert legacy_note['studentSid'] == '9100000000'
+
+    def test_search_advising_notes_restricted_to_students_in_loch(self, app, fake_auth):
+        fake_auth.login(coe_advisor)
+        _create_coe_advisor_note(
+            sid='6767676767',
+            subject='Who is this?',
+            body="Not a student in the loch, that's for sure",
+        )
+        assert len(search_advising_notes(search_phrase='loch')) == 0
+        _create_coe_advisor_note(
+            sid='11667051',
+            subject='A familiar face',
+            body='Whereas this student is a most distinguished denizen of the loch',
+        )
+        assert len(search_advising_notes(search_phrase='loch')) == 1
+
     def test_search_advising_notes_narrowed_by_topic(self, app, fake_auth):
         for topic in ['Good Show', 'Bad Show']:
-            Note.create(
-                author_uid='1133399',
-                author_name='Joni Mitchell',
-                author_role='Advisor',
-                author_dept_codes='COENG',
+            _create_coe_advisor_note(
                 sid='11667051',
                 topics=[topic],
                 subject='Brigitte',
-                body='',
             )
         fake_auth.login(coe_advisor)
         wide_response = search_advising_notes(search_phrase='Brigitte')
         assert len(wide_response) == 4
         narrow_response = search_advising_notes(search_phrase='Brigitte', topic='Good Show')
         assert len(narrow_response) == 2
+
+    def test_search_legacy_advising_notes_narrowed_by_date(self, app, fake_auth):
+        halloween_2017 = datetime(2017, 10, 31, tzinfo=pytz.timezone(app.config['TIMEZONE'])).astimezone(pytz.utc)
+        days = [
+            halloween_2017 - timedelta(days=1),
+            halloween_2017,
+            halloween_2017 + timedelta(days=1),
+            halloween_2017 + timedelta(days=2),
+            halloween_2017 + timedelta(days=3),
+        ]
+        fake_auth.login(coe_advisor)
+
+        unbounded = search_advising_notes(search_phrase='Brigitte')
+        assert len(unbounded) == 2
+        lower_bound = search_advising_notes(search_phrase='Brigitte', datetime_from=days[2])
+        assert len(lower_bound) == 1
+        upper_bound = search_advising_notes(search_phrase='Brigitte', datetime_to=days[2])
+        assert len(upper_bound) == 1
+        closed_1 = search_advising_notes(search_phrase='Brigitte', datetime_from=days[0], datetime_to=days[2])
+        assert len(closed_1) == 1
+        closed_2 = search_advising_notes(search_phrase='Brigitte', datetime_from=days[2], datetime_to=days[3])
+        assert len(closed_2) == 1
+        closed_3 = search_advising_notes(search_phrase='Brigitte', datetime_from=days[0], datetime_to=days[3])
+        assert len(closed_3) == 2
+        closed_4 = search_advising_notes(search_phrase='Brigitte', datetime_from=days[3], datetime_to=days[4])
+        assert len(closed_4) == 0
+
+    def test_search_new_advising_notes_narrowed_by_date(self, app, fake_auth):
+        today = datetime.now().replace(hour=0, minute=0, second=0, tzinfo=pytz.timezone(app.config['TIMEZONE'])).astimezone(pytz.utc)
+        yesterday = today - timedelta(days=1)
+        tomorrow = today + timedelta(days=1)
+
+        fake_auth.login(coe_advisor)
+        _create_coe_advisor_note(
+            sid='11667051',
+            subject='Bryant Park',
+            body='There were loads of them',
+        )
+        assert len(search_advising_notes(search_phrase='Bryant')) == 1
+
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_from=yesterday)) == 1
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_to=yesterday)) == 0
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_from=yesterday, datetime_to=yesterday)) == 0
+
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_from=tomorrow)) == 0
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_to=tomorrow)) == 1
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_from=tomorrow, datetime_to=tomorrow)) == 0
+
+        assert len(search_advising_notes(search_phrase='Bryant', datetime_from=yesterday, datetime_to=tomorrow)) == 1
 
     def test_stream_attachment(self, app, fake_auth):
         with mock_legacy_note_attachment(app):
@@ -321,11 +424,6 @@ class TestMergedAdvisingNote:
             for chunk in stream:
                 body += chunk
             assert body == b'When in the course of human events, it becomes necessarf arf woof woof woof'
-
-    def test_stream_attachment_respects_scope_constraints(self, app, fake_auth):
-        with mock_legacy_note_attachment(app):
-            fake_auth.login(asc_advisor)
-            assert get_legacy_attachment_stream('9000000000_00002_1.pdf') is None
 
     def test_stream_attachment_handles_malformed_filename(self, app):
         with mock_legacy_note_attachment(app):
@@ -340,4 +438,26 @@ class TestMergedAdvisingNote:
         with mock_legacy_note_attachment(app):
             fake_auth.login(coe_advisor)
             assert get_legacy_attachment_stream('11667051_00001_1.pdf')['stream'] is None
-            assert "the s3 key 'attachment-path/11667051/11667051_00001_1.pdf' does not exist, or is forbidden" in caplog.text
+            assert "the s3 key 'sis-attachment-path/11667051/11667051_00001_1.pdf' does not exist, or is forbidden" in caplog.text
+
+
+def _create_coe_advisor_note(
+    sid,
+    subject,
+    body='',
+    topics=(),
+    author_uid=coe_advisor,
+    author_name='Balloon Man',
+    author_role='Spherical',
+    author_dept_codes='COENG',
+):
+    Note.create(
+        author_uid=author_uid,
+        author_name=author_name,
+        author_role=author_role,
+        author_dept_codes=author_dept_codes,
+        topics=topics,
+        sid=sid,
+        subject=subject,
+        body=body,
+    )

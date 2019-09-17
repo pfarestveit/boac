@@ -24,31 +24,22 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 
-from boac import db
+from boac import cache, db
 from boac.configs import load_configs
 from boac.logger import initialize_logger
 from boac.routes import register_routes
 from flask import Flask
-from flask_caching import Cache
 
 
 def create_app():
     """Initialize app with configs."""
     app = Flask(__name__.split('.')[0])
-
     load_configs(app)
     initialize_logger(app)
     db.init_app(app)
-    initialize_cache(app)
+    cache.init_app(app, app.config)
 
     with app.app_context():
         register_routes(app)
 
     return app
-
-
-def initialize_cache(app):
-    """Baby's First Cache."""
-    default = app.config['CACHE_DEFAULT']
-    # 'app' is auto-configured in init_app() of this Cache instance
-    return Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': default}) if default else None

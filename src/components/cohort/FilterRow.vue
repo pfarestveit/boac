@@ -12,7 +12,7 @@
     <div
       v-if="isModifyingFilter && !isExistingFilter"
       :id="filterRowPrimaryDropdownId(filterRowIndex)"
-      class="cohort-filter-draft-column-01 pr-2">
+      class="cohort-filter-draft-column-01 mt-1 pr-2">
       <div class="sr-only" aria-live="polite">{{ screenReaderAlert }}</div>
       <b-dropdown
         id="new-filter-button"
@@ -20,15 +20,11 @@
         variant="link"
         no-caret>
         <template slot="button-content">
-          <div class="dropdown-width d-flex justify-content-between text-dark">
-            <div v-if="filter.name"><span class="sr-only">Filter:</span> {{ filter.name || 'New Filter' }}</div>
+          <div class="d-flex dropdown-width justify-content-between text-dark">
+            <div v-if="filter.name"><span class="sr-only">Filter: </span>{{ filter.name || 'New Filter' }}</div>
             <div v-if="!filter.name"><span class="sr-only">Select a </span>New Filter</div>
-            <div>
-              <i
-                :class="{
-                  'fas fa-angle-up menu-caret': isMenuOpen,
-                  'fas fa-angle-down menu-caret': !isMenuOpen
-                }"></i>
+            <div class="ml-2">
+              <font-awesome :icon="isMenuOpen ? 'angle-up' : 'angle-down'" class="menu-caret" />
             </div>
           </div>
         </template>
@@ -45,17 +41,18 @@
             :id="`dropdown-primary-menuitem-${subCategory.key}-${filterRowIndex}`"
             :key="subCategory.key"
             class="dropdown-item"
-            :class="{
-              'pointer-default text-muted font-weight-light': subCategory.disabled,
-              'text-dark': !subCategory.disabled
-            }"
             :aria-disabled="subCategory.disabled"
             :disabled="subCategory.disabled"
             @click="setFilterCategory(subCategory)"
             @mouseover.prevent.stop>
-            {{ subCategory.name }}
+            <span
+              class="font-size-16"
+              :class="{
+                'font-weight-light pointer-default text-muted': subCategory.disabled,
+                'font-weight-normal text-dark': !subCategory.disabled
+              }">{{ subCategory.name }}</span>
           </b-dropdown-item>
-          <b-dropdown-divider v-if="mIndex !== (menu.length - 1)"></b-dropdown-divider>
+          <hr v-if="mIndex !== (menu.length - 1)" role="separator" class="dropdown-divider">
         </div>
       </b-dropdown>
     </div>
@@ -64,7 +61,7 @@
     </div>
     <div
       v-if="isModifyingFilter"
-      class="cohort-filter-draft-column-02">
+      class="cohort-filter-draft-column-02 mt-1">
       <div
         v-if="filter.type === 'array'"
         :id="`filter-row-dropdown-secondary-${filterRowIndex}`">
@@ -73,33 +70,32 @@
           variant="link"
           no-caret>
           <template slot="button-content">
-            <div class="dropdown-width d-flex justify-content-between text-secondary">
+            <div class="d-flex dropdown-width justify-content-between text-secondary">
               <div v-if="valueLabel"><span class="sr-only">Selected value is </span>{{ valueLabel }}</div>
               <div v-if="!valueLabel">Choose...<span class="sr-only"> a filter value option</span></div>
-              <div>
-                <i
-                  :class="{
-                    'fas fa-angle-up menu-caret': isMenuOpen,
-                    'fas fa-angle-down menu-caret': !isMenuOpen
-                  }"></i>
+              <div class="ml-2">
+                <font-awesome :icon="isMenuOpen ? 'angle-up' : 'angle-down'" class="menu-caret" />
               </div>
             </div>
           </template>
-          <b-dropdown-item
-            v-for="option in filter.options"
-            :id="`${filter.name}-${option.value}`"
-            :key="option.key"
-            class="dropdown-item"
-            :class="{
-              'pointer-default text-muted font-weight-light': option.disabled,
-              'text-dark': !option.disabled
-            }"
-            :aria-disabled="option.disabled"
-            :disabled="option.disabled"
-            @click="typeArrayUpdateValue(option)"
-            @mouseover.prevent.stop>
-            {{ option.name }}
-          </b-dropdown-item>
+          <div v-for="option in filter.options" :key="option.key">
+            <b-dropdown-item
+              v-if="option.value !== 'divider'"
+              :id="`${filter.name}-${option.value}`"
+              class="dropdown-item"
+              :aria-disabled="option.disabled"
+              :disabled="option.disabled"
+              @click="typeArrayUpdateValue(option)"
+              @mouseover.prevent.stop>
+              <span
+                class="font-size-16"
+                :class="{
+                  'font-weight-light pointer-default text-muted': option.disabled,
+                  'font-weight-normal text-dark': !option.disabled
+                }">{{ option.name }}</span>
+            </b-dropdown-item>
+            <hr v-if="option.value === 'divider'" role="separator" class="dropdown-divider">
+          </div>
         </b-dropdown>
       </div>
       <div v-if="filter.type === 'range'" class="filter-range-container">
@@ -140,7 +136,7 @@
         </b-popover>
       </div>
     </div>
-    <div v-if="!isExistingFilter" class="cohort-filter-draft-column-03 pl-0">
+    <div v-if="!isExistingFilter" class="cohort-filter-draft-column-03 mt-1 pl-0">
       <b-btn
         v-if="showAdd"
         id="unsaved-filter-add"
@@ -212,12 +208,12 @@
 
 <script>
 import CohortEditSession from '@/mixins/CohortEditSession';
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
+import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'FilterRow',
-  mixins: [CohortEditSession, GoogleAnalytics, Util],
+  mixins: [CohortEditSession, UserMetadata, Util],
   props: {
     index: Number
   },
@@ -319,11 +315,11 @@ export default {
       this.addFilter(this.filter);
       this.reset();
       this.putFocusNewFilterDropdown();
-      this.gaCohortEvent(
-        this.cohortId,
-        this.cohortName || 'unsaved',
-        this.screenReaderAlert
-      );
+      this.gaCohortEvent({
+        id: this.cohortId,
+        name: this.cohortName || '',
+        action: this.screenReaderAlert
+      });
     },
     cancelEditExisting() {
       this.screenReaderAlert = 'Cancelled';
@@ -369,11 +365,11 @@ export default {
       this.removeFilter(this.index);
       this.setEditMode(null);
       this.putFocusNewFilterDropdown();
-      this.gaCohortEvent(
-        this.cohortId,
-        this.cohortName || 'unsaved',
-        this.screenReaderAlert
-      );
+      this.gaCohortEvent({
+        id: this.cohortId,
+        name: this.cohortName || '',
+        action: this.screenReaderAlert
+      });
     },
     reset() {
       this.showAdd = false;
@@ -424,11 +420,11 @@ export default {
         updatedFilter: this.filter
       });
       this.screenReaderAlert = `${this.filter.name} filter updated`;
-      this.gaCohortEvent(
-        this.cohortId,
-        this.cohortName,
-        this.screenReaderAlert
-      );
+      this.gaCohortEvent({
+        id: this.cohortId,
+        name: this.cohortName,
+        action: this.screenReaderAlert
+      });
       this.isModifyingFilter = false;
       this.setEditMode(null);
     },
@@ -485,10 +481,10 @@ export default {
   flex: 0 0 240px;
 }
 .cohort-filter-draft-column-01 .dropdown-item {
-  width: 260px;
+  width: 330px;
 }
 .cohort-filter-draft-column-01 .dropdown-width {
-  width: 240px;
+  width: 260px;
 }
 .cohort-filter-draft-column-02 {
   flex: 0;

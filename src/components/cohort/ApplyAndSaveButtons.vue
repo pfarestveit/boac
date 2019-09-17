@@ -32,7 +32,7 @@
         :disabled="!!editMode || showCreateModal || !!isPerforming"
         @click="save()">
         <span v-if="isPerforming === 'acknowledgeSave'">Saved</span>
-        <span v-if="isPerforming === 'save'"><i class="fas fa-spinner fa-spin"></i> Saving</span>
+        <span v-if="isPerforming === 'save'"><font-awesome icon="spinner" spin /> Saving</span>
         <span v-if="!isPerforming && cohortId">Save Cohort</span>
         <span v-if="!isPerforming && !cohortId">Save</span>
       </b-btn>
@@ -62,7 +62,6 @@
 </template>
 
 <script>
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import CohortEditSession from '@/mixins/CohortEditSession';
 import CreateCohortModal from '@/components/cohort/CreateCohortModal';
 import UserMetadata from '@/mixins/UserMetadata';
@@ -71,7 +70,7 @@ import Util from '@/mixins/Util';
 export default {
   name: 'ApplyAndSaveButtons',
   components: { CreateCohortModal },
-  mixins: [CohortEditSession, GoogleAnalytics, UserMetadata, Util],
+  mixins: [CohortEditSession, UserMetadata, Util],
   data: () => ({
     isPerforming: undefined,
     screenReaderAlert: undefined,
@@ -89,11 +88,11 @@ export default {
       this.isPerforming = 'search';
       this.applyFilters(this.preferences.sortBy).then(() => {
         this.putFocusNextTick('cohort-results-header');
-        this.gaCohortEvent(
-          this.cohortId,
-          this.cohortName || 'unsaved',
-          'search'
-        );
+        this.gaCohortEvent({
+          id: this.cohortId,
+          name: this.cohortName || '',
+          action: 'search'
+        });
         this.isPerforming = null;
       });
     },
@@ -108,7 +107,10 @@ export default {
       this.createCohort(name).then(() => {
         this.savedCohortCallback(`Cohort ${name} created`);
         this.setPageTitle(this.cohortName);
-        this.gaCohortEvent(this.cohortId, name, 'create');
+        this.gaCohortEvent({
+          id: this.cohortId,
+          name, action: 'create'
+        });
         history.pushState({}, null, `/cohort/${this.cohortId}`);
         this.isPerforming = null;
       });
@@ -130,7 +132,11 @@ export default {
         this.screenReaderAlert = `Saving changes to cohort ${this.cohortName}`;
         this.isPerforming = 'save';
         this.saveExistingCohort().then(() => {
-          this.gaCohortEvent(this.cohortId, this.cohortName, 'save');
+          this.gaCohortEvent({
+            id: this.cohortId,
+            name: this.cohortName,
+            action: 'save'
+          });
           this.savedCohortCallback(`Cohort ${this.cohortName} saved`);
         });
       } else {

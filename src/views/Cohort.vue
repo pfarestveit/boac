@@ -28,7 +28,8 @@
           <hr class="filters-section-separator mr-2" />
           <div class="d-flex justify-content-between align-items-center p-2">
             <CuratedGroupSelector
-              :context-description="`Cohort ${cohortName || 'unsaved'}`"
+              :context-description="`Cohort ${cohortName || ''}`"
+              :ga-event-tracker="gaCohortEvent"
               :students="students" />
             <SortBy v-if="showSortBy" />
           </div>
@@ -68,7 +69,6 @@ import CohortEditSession from '@/mixins/CohortEditSession';
 import CohortPageHeader from '@/components/cohort/CohortPageHeader';
 import CuratedGroupSelector from '@/components/curated/CuratedGroupSelector';
 import FilterRow from '@/components/cohort/FilterRow';
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import Loading from '@/mixins/Loading';
 import Pagination from '@/components/util/Pagination';
 import Scrollable from '@/mixins/Scrollable';
@@ -94,7 +94,6 @@ export default {
   },
   mixins: [
     CohortEditSession,
-    GoogleAnalytics,
     Loading,
     Scrollable,
     UserMetadata,
@@ -117,9 +116,10 @@ export default {
     }
   },
   mounted() {
-    const continueExistingSession =
-      this.$routerHistory.hasForward() && this.size(this.filters);
+    const forwardPath = this.$routerHistory.hasForward() && this.get(this.$routerHistory.next(), 'path');
+    const continueExistingSession = this.startsWith(forwardPath, '/student') && this.size(this.filters);
     if (continueExistingSession) {
+      this.showFilters = !this.isCompactView;
       this.pageNumber = this.pagination.currentPage;
       this.setPageTitle(this.cohortName);
       this.loaded();
@@ -136,7 +136,11 @@ export default {
         this.putFocusNextTick(
           this.cohortId ? 'cohort-name' : 'create-cohort-h1'
         );
-        this.gaCohortEvent(this.cohortId, this.cohortName || 'unsaved', 'view');
+        this.gaCohortEvent({
+          id: this.cohortId || '',
+          name: this.cohortName || '',
+          action: 'view'
+        });
       });
     }
   },
@@ -145,14 +149,14 @@ export default {
       this.setPagination(1);
     });
     this.$eventHub.$on('sortBy-user-preference-change', sortBy => {
-      if (this.loaded()) {
+      if (!this.loading) {
         this.goToPage(1);
         this.screenReaderAlert = `Sort students by ${sortBy}`;
-        this.gaCohortEvent(
-          this.cohortId,
-          this.cohortName || 'unsaved',
-          this.screenReaderAlert
-        );
+        this.gaCohortEvent({
+          id: this.cohortId || '',
+          name: this.cohortName || '',
+          action: this.screenReaderAlert
+        });
       }
     });
   },
@@ -161,16 +165,14 @@ export default {
     goToPage(page) {
       if (page > 1) {
         this.screenReaderAlert = `Go to page ${page}`;
-        this.gaCohortEvent(
-          this.cohortId,
-          this.cohortName || 'unsaved',
-          this.screenReaderAlert
-        );
+        this.gaCohortEvent({
+          id: this.cohortId || '',
+          name: this.cohortName || '',
+          action: this.screenReaderAlert
+        });
       }
       this.setPagination(page);
-      this.applyFilters(this.preferences.sortBy).then(() => {
-        this.scrollToTop();
-      });
+      this.onPageNumberChange().then(this.scrollToTop);
     },
     setPagination(page) {
       this.pageNumber = page;

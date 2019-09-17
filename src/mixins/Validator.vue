@@ -30,12 +30,33 @@ export default {
           _.each(cohorts, existing => {
             if (
               (!cohort['id'] || cohort.id !== existing.id) &&
-              name === existing.name
+              name.toUpperCase() === existing.name.toUpperCase()
             ) {
               msg = `You have an existing ${cohortType} with this name. Please choose a different name.`;
               return false;
             }
           });
+        });
+      }
+      return msg;
+    },
+    validateTemplateTitle: template => {
+      const title = _.trim(template.title);
+      let msg = null;
+      if (_.isEmpty(title)) {
+        msg = 'Required';
+      } else if (_.size(title) > 255) {
+        msg = 'Name must be 255 characters or fewer';
+      } else {
+        const myTemplates = store.getters['note/noteTemplates'];
+        _.each(myTemplates, existing => {
+          if (
+            (!template.id || template.id !== existing.id) &&
+            title.toUpperCase() === existing.title.toUpperCase()
+          ) {
+            msg = 'You have an existing template with this name. Please choose a different name.';
+            return false;
+          }
         });
       }
       return msg;

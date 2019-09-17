@@ -1,5 +1,6 @@
 import 'bootstrap-vue/dist/bootstrap-vue.min.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import 'v-calendar/lib/v-calendar.min.css';
 import _ from 'lodash';
 import App from './App.vue';
 import axios from 'axios';
@@ -11,11 +12,18 @@ import HighchartsMore from 'highcharts/highcharts-more';
 import moment from 'moment-timezone';
 import router from './router';
 import store from './store';
+import VDatePicker from 'v-calendar';
 import Vue from 'vue';
-import VueAnalytics from 'vue-analytics';
 import VueHighcharts from 'vue-highcharts';
 import VueMoment from 'vue-moment';
 import { routerHistory, writeHistory } from 'vue-router-back-button';
+import { library } from '@fortawesome/fontawesome-svg-core'
+import { fas } from '@fortawesome/free-solid-svg-icons'
+import { faSpinner } from "@fortawesome/free-solid-svg-icons/faSpinner";
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+
+library.add(fas, faSpinner);
+Vue.component('font-awesome', FontAwesomeIcon);
 
 // Allow cookies in Access-Control requests
 axios.defaults.withCredentials = true;
@@ -35,26 +43,12 @@ axios.interceptors.response.use(response => response, function(error) {
 Vue.config.productionTip = false;
 Vue.use(BootstrapVue);
 Vue.use(CKEditor);
+Vue.use(VDatePicker);
 Vue.use(require('vue-lodash'));
 Vue.use(VueMoment, { moment });
 
 HighchartsMore(Highcharts);
 Vue.use(VueHighcharts, { Highcharts });
-
-store.dispatch('context/loadConfig').then(response => {
-  let googleAnalyticsId = _.get(response, 'googleAnalyticsId');
-  if (googleAnalyticsId) {
-    Vue.use(VueAnalytics, {
-      id: googleAnalyticsId,
-      debug: {
-        // If debug.enabled is true then browser console gets GA debug info.
-        enabled: false
-      },
-      router,
-      checkDuplicatedScript: true
-    });
-  }
-});
 
 // Filters and directives
 _.each(filters, (filter, name) => Vue.filter(name, filter));

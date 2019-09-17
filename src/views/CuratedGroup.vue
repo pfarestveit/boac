@@ -4,12 +4,12 @@
     <div v-if="!loading">
       <CuratedGroupHeader :curated-group="curatedGroup" :mode="mode" :set-mode="setMode" />
       <div v-show="mode !== 'bulkAdd'">
-        <hr v-if="!error && size(curatedGroup.students)" class="filters-section-separator" />
+        <hr v-if="!error && curatedGroup.studentCount" class="filters-section-separator" />
         <div class="cohort-column-results">
-          <div v-if="size(curatedGroup.students) > 1" class="d-flex m-2">
+          <div v-if="curatedGroup.studentCount > 1" class="d-flex m-2">
             <div class="cohort-list-header-column-01"></div>
             <div class="cohort-list-header-column-02">
-              <SortBy v-if="curatedGroup.students.length > 1" />
+              <SortBy v-if="curatedGroup.studentCount > 1" />
             </div>
           </div>
           <div v-if="size(curatedGroup.students)">
@@ -51,7 +51,6 @@
 import Context from '@/mixins/Context';
 import CuratedGroupBulkAdd from '@/components/curated/CuratedGroupBulkAdd.vue'
 import CuratedGroupHeader from '@/components/curated/CuratedGroupHeader';
-import GoogleAnalytics from '@/mixins/GoogleAnalytics';
 import Loading from '@/mixins/Loading';
 import Pagination from '@/components/util/Pagination';
 import Scrollable from '@/mixins/Scrollable';
@@ -73,7 +72,7 @@ export default {
     Spinner,
     StudentRow
   },
-  mixins: [Context, GoogleAnalytics, Loading, Scrollable, UserMetadata, Util],
+  mixins: [Context, Loading, Scrollable, UserMetadata, Util],
   props: {
     id: [String, Number]
   },
@@ -99,10 +98,14 @@ export default {
       });
     });
     this.$eventHub.$on('sortBy-user-preference-change', sortBy => {
-      if (this.loaded()) {
+      if (!this.loading) {
         this.goToPage(1);
         this.screenReaderAlert = `Sort students by ${sortBy}`;
-        this.gaCuratedEvent(this.curatedGroup.id, this.curatedGroup.name, this.screenReaderAlert);
+        this.gaCuratedEvent({
+          id: this.curatedGroup.id,
+          name: this.curatedGroup.name,
+          action: this.screenReaderAlert
+        });
       }
     });
   },
@@ -131,7 +134,11 @@ export default {
             this.loaded();
             this.putFocusNextTick('curated-group-name');
             this.alertScreenReader(`${sids.length} students added to group '${this.curatedGroup.name}'`);
-            this.gaCuratedEvent(this.curatedGroup.id, this.curatedGroup.name, 'Update curated group with bulk-add SIDs');
+            this.gaCuratedEvent({
+              id: this.curatedGroup.id,
+              name: this.curatedGroup.name,
+              action: 'Update curated group with bulk-add SIDs'
+            });
           });
       } else {
         this.mode = undefined;
@@ -143,7 +150,11 @@ export default {
       this.pageNumber = page;
       if (page > 1) {
         this.screenReaderAlert = `Go to page ${page}`;
-        this.gaCuratedEvent(this.curatedGroup.id, this.curatedGroup.name, this.screenReaderAlert);
+        this.gaCuratedEvent({
+          id: this.curatedGroup.id,
+          name: this.curatedGroup.name,
+          action: this.screenReaderAlert
+        });
       }
       this.loadingStart();
       let offset = this.multiply(this.pageNumber - 1, this.itemsPerPage);

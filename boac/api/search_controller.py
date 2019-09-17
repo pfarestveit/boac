@@ -23,6 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from datetime import timedelta
 from itertools import islice
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError
@@ -46,8 +47,6 @@ def search():
     if is_unauthorized_search(list(params.keys()), order_by):
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
     search_phrase = util.get(params, 'searchPhrase', '').strip()
-    if not len(search_phrase):
-        raise BadRequestError('Invalid or empty search input')
     domain = {
         'students': util.get(params, 'students'),
         'courses': util.get(params, 'courses'),
@@ -55,35 +54,27 @@ def search():
     }
     if not domain['students'] and not domain['courses'] and not domain['notes']:
         raise BadRequestError('No search domain specified')
+    if not len(search_phrase) and not domain['notes']:
+        raise BadRequestError('Invalid or empty search input')
+    if domain['courses'] and not current_user.can_access_canvas_data:
+        raise ForbiddenRequestError('Unauthorized to search courses')
 
     feed = {}
 
-    if domain['students']:
+    if len(search_phrase) and domain['students']:
         feed.update(_student_search(search_phrase, params, order_by))
 
-    if domain['courses']:
+    if len(search_phrase) and domain['courses']:
         feed.update(_course_search(search_phrase, params, order_by))
 
     if domain['notes']:
-        note_options = util.get(params, 'noteOptions', {})
-        author_csid = note_options.get('authorCsid')
-        topic = note_options.get('topic')
-        notes_results = search_advising_notes(
-            search_phrase=search_phrase,
-            author_csid=author_csid,
-            topic=topic,
-            offset=0,
-            limit=20,
-        )
-        if notes_results:
-            feed['notes'] = notes_results
+        feed.update(_notes_search(search_phrase, params))
 
     return tolerant_jsonify(feed)
 
 
 def _student_search(search_phrase, params, order_by):
     student_results = search_for_students(
-        include_profiles=True,
         search_phrase=search_phrase.replace(',', ' '),
         order_by=order_by,
         offset=util.get(params, 'offset', 0),
@@ -91,7 +82,7 @@ def _student_search(search_phrase, params, order_by):
     )
     students = student_results['students']
     sids = [s['sid'] for s in students]
-    alert_counts = Alert.current_alert_counts_for_sids(current_user.id, sids)
+    alert_counts = Alert.current_alert_counts_for_sids(current_user.get_id(), sids)
     add_alert_counts(alert_counts, students)
     return {
         'students': students,
@@ -140,4 +131,53 @@ def _course_search(search_phrase, params, order_by):
     return {
         'courses': courses,
         'totalCourseCount': len(course_rows),
+    }
+
+
+def _notes_search(search_phrase, params):
+    note_options = util.get(params, 'noteOptions', {})
+    author_csid = note_options.get('authorCsid')
+    student_csid = note_options.get('studentCsid')
+    topic = note_options.get('topic')
+    limit = util.get(note_options, 'limit', 100)
+    offset = util.get(note_options, 'offset', 0)
+
+    date_from = note_options.get('dateFrom')
+    date_to = note_options.get('dateTo')
+
+    if not len(search_phrase) and not (author_csid or student_csid or topic or date_from or date_to):
+        raise BadRequestError('Invalid or empty search input')
+
+    if date_from:
+        try:
+            datetime_from = util.localized_timestamp_to_utc(f'{date_from}T00:00:00')
+        except ValueError:
+            raise BadRequestError('Invalid dateFrom value')
+    else:
+        datetime_from = None
+
+    if date_to:
+        try:
+            datetime_to = util.localized_timestamp_to_utc(f'{date_to}T00:00:00') + timedelta(days=1)
+        except ValueError:
+            raise BadRequestError('Invalid dateTo value')
+    else:
+        datetime_to = None
+
+    if datetime_from and datetime_to and datetime_to <= datetime_from:
+        raise BadRequestError('dateFrom must be less than dateTo')
+
+    notes_results = search_advising_notes(
+        search_phrase=search_phrase,
+        author_csid=author_csid,
+        student_csid=student_csid,
+        topic=topic,
+        datetime_from=datetime_from,
+        datetime_to=datetime_to,
+        offset=int(offset),
+        limit=int(limit),
+    )
+
+    return {
+        'notes': notes_results,
     }

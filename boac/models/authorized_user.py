@@ -23,20 +23,21 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
 from boac import db, std_commit
 from boac.models.base import Base
 from boac.models.db_relationships import cohort_filter_owners
-from flask_login import UserMixin
+from sqlalchemy import text
 
 
-class AuthorizedUser(Base, UserMixin):
+class AuthorizedUser(Base):
     __tablename__ = 'authorized_users'
 
     id = db.Column(db.Integer, nullable=False, primary_key=True)  # noqa: A003
     uid = db.Column(db.String(255), nullable=False, unique=True)
     is_admin = db.Column(db.Boolean)
     in_demo_mode = db.Column(db.Boolean, nullable=False)
+    can_access_canvas_data = db.Column(db.Boolean, nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     department_memberships = db.relationship(
         'UniversityDeptMember',
         back_populates='authorized_user',
@@ -54,32 +55,81 @@ class AuthorizedUser(Base, UserMixin):
         lazy='joined',
     )
 
-    def __init__(self, uid, is_admin=False, in_demo_mode=False):
+    def __init__(self, uid, is_admin=False, in_demo_mode=False, can_access_canvas_data=True):
         self.uid = uid
         self.is_admin = is_admin
         self.in_demo_mode = in_demo_mode
+        self.can_access_canvas_data = can_access_canvas_data
 
     def __repr__(self):
         return f"""<AuthorizedUser {self.uid},
                     is_admin={self.is_admin},
                     in_demo_mode={self.in_demo_mode},
+                    can_access_canvas_data={self.can_access_canvas_data},
                     updated={self.updated_at},
-                    created={self.created_at}>
+                    created={self.created_at},
+                    deleted={self.deleted_at}>
                 """
 
-    def get_id(self):
-        """Override UserMixin, since our DB conventionally reserves 'id' for generated keys."""
-        return self.uid
+    @classmethod
+    def create_or_restore(cls, uid, is_admin=False, can_access_canvas_data=True):
+        existing_user = cls.query.filter_by(uid=uid).first()
+        if existing_user:
+            # If restoring a previously deleted user, respect passed-in attributes.
+            if existing_user.deleted_at:
+                existing_user.is_admin = is_admin
+                existing_user.can_access_canvas_data = can_access_canvas_data
+                existing_user.deleted_at = None
+            # If the user currently exists in a non-deleted state, attributes passed in as True
+            # should replace existing attributes set to False, but not vice versa.
+            else:
+                if can_access_canvas_data and not existing_user.can_access_canvas_data:
+                    existing_user.can_access_canvas_data = True
+                if is_admin and not existing_user.is_admin:
+                    existing_user.is_admin = True
+            user = existing_user
+        else:
+            user = cls(
+                uid=uid,
+                is_admin=is_admin,
+                in_demo_mode=False,
+                can_access_canvas_data=can_access_canvas_data,
+            )
+        std_commit()
+        return user
+
+    @classmethod
+    def get_id_per_uid(cls, uid):
+        query = text(f'SELECT id FROM authorized_users WHERE uid = :uid AND deleted_at IS NULL')
+        result = db.session.execute(query, {'uid': uid}).first()
+        return result and result['id']
 
     @classmethod
     def find_by_id(cls, db_id):
-        user = AuthorizedUser.query.filter_by(id=db_id).first()
-        std_commit()
-        return user
+        return AuthorizedUser.query.filter_by(id=db_id, deleted_at=None).first()
 
     @classmethod
     def find_by_uid(cls, uid):
-        """Supports Flask-Login via user_loader in routes.py."""
-        user = AuthorizedUser.query.filter_by(uid=uid).first()
-        std_commit()
-        return user
+        return AuthorizedUser.query.filter_by(uid=uid, deleted_at=None).first()
+
+    @classmethod
+    def get_all_active_users(cls):
+        return cls.query.filter_by(deleted_at=None).all()
+
+    @classmethod
+    def get_all_uids_in_scope(cls, scope=()):
+        sql = 'SELECT uid FROM authorized_users u '
+        if not scope:
+            return None
+        elif 'ADMIN' in scope:
+            sql += 'WHERE u.deleted_at IS NULL'
+        else:
+            sql += """
+                JOIN university_dept_members m ON m.authorized_user_id = u.id
+                JOIN university_depts d ON d.id = m.university_dept_id
+                WHERE
+                d.dept_code = ANY(:scope)
+                AND u.deleted_at IS NULL
+            """
+        results = db.session.execute(sql, {'scope': scope})
+        return [row['uid'] for row in results]

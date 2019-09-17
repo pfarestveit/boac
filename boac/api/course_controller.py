@@ -23,8 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
-from boac.api.errors import ResourceNotFoundError
+from boac.api.errors import ForbiddenRequestError, ResourceNotFoundError
 from boac.lib import util
 from boac.lib.http import tolerant_jsonify
 from boac.merged.sis_sections import get_sis_section
@@ -37,6 +36,8 @@ from flask_login import current_user, login_required
 @app.route('/api/section/<term_id>/<section_id>')
 @login_required
 def get_section(term_id, section_id):
+    if not current_user.can_access_canvas_data:
+        raise ForbiddenRequestError('Unauthorized to view course data')
     offset = util.get(request.args, 'offset', None)
     if offset:
         offset = int(offset)
@@ -49,5 +50,5 @@ def get_section(term_id, section_id):
         raise ResourceNotFoundError(f'No section {section_id} in term {term_id}')
     student_profiles = get_course_student_profiles(term_id, section_id, offset=offset, limit=limit, featured=featured)
     section.update(student_profiles)
-    Alert.include_alert_counts_for_students(viewer_user_id=current_user.id, group=student_profiles)
+    Alert.include_alert_counts_for_students(viewer_user_id=current_user.get_id(), group=student_profiles)
     return tolerant_jsonify(section)
