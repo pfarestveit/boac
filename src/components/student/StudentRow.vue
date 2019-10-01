@@ -4,13 +4,13 @@
     <span :id="`student-sid-of-row-${rowIndex}`" hidden aria-hidden="true">{{ student.sid }}</span>
     <div class="cohort-list-view-column-01">
       <button
-        v-if="listType === 'curatedGroup'"
+        v-if="listType === 'curatedGroupForOwner'"
         :id="`row-${rowIndex}-remove-student-from-curated-group`"
         class="btn btn-link"
-        @click="removeFromCuratedGroup">
+        @click="removeStudent(student.sid)">
         <font-awesome icon="times-circle" class="font-size-24" />
       </button>
-      <div v-if="listType !== 'curatedGroup'">
+      <div v-if="listType === 'cohort'">
         <CuratedStudentCheckbox :student="student" />
       </div>
     </div>
@@ -135,14 +135,17 @@
     <div class="student-column">
       <div :id="`row-${rowIndex}-student-enrolled-units`" class="student-gpa">{{ get(student.term, 'enrolledUnits', 0) }}</div>
       <div class="student-text">Units in Progress</div>
-      <div v-if="get(student, 'currentTerm.unitsMinOverride')">
-        <div :id="`row-${rowIndex}-student-min-units`" class="student-gpa">{{ student.currentTerm.unitsMinOverride }}</div>
+      <!--
+      TODO: Until SISRP-48560 is resolved we will suppress unitsMin and unitsMax data in BOA.
+      <div v-if="get(student, 'currentTerm.unitsMin')">
+        <div :id="`row-${rowIndex}-student-min-units`" class="student-gpa">{{ student.currentTerm.unitsMin }}</div>
         <div class="student-text">Min&nbsp;Approved</div>
       </div>
-      <div v-if="get(student, 'currentTerm.unitsMaxOverride')">
-        <div :id="`row-${rowIndex}-student-max-units`" class="student-gpa">{{ student.currentTerm.unitsMaxOverride }}</div>
+      <div v-if="get(student, 'currentTerm.unitsMax')">
+        <div :id="`row-${rowIndex}-student-max-units`" class="student-gpa">{{ student.currentTerm.unitsMax }}</div>
         <div class="student-text">Max&nbsp;Approved</div>
       </div>
+      -->
       <div
         v-if="student.cumulativeUnits"
         :id="`row-${rowIndex}-student-cumulative-units`"
@@ -165,9 +168,13 @@
           <th class="cohort-course-activity-header">MID</th>
           <th class="cohort-course-activity-header">FINAL</th>
         </tr>
-        <tr v-for="(enrollment, index) in get(student.term, 'enrollments', [])" :key="index">
+        <tr v-for="(enrollment, index) in termEnrollments" :key="index">
           <td class="cohort-course-activity-data cohort-course-activity-course-name">
-            <div :id="`row-${rowIndex}-student-enrollment-name-${index}`">{{ enrollment.displayName }}</div>
+            <span :id="`row-${rowIndex}-student-enrollment-name-${index}`">{{ enrollment.displayName }}</span>
+            <span
+              v-if="enrollment.waitlisted"
+              :id="`student-${student.uid}-waitlisted-for-${enrollment.sections.length ? enrollment.sections[0].ccn : enrollment.displayName}`"
+              class="pl-1 red-flag-status">(W)</span>
           </td>
           <td v-if="user.canAccessCanvasData" class="cohort-course-activity-data">
             <div
@@ -205,7 +212,7 @@
             <span v-if="!enrollment.grade && !enrollment.gradingBasis"><span class="sr-only">No data</span>&mdash;</span>
           </td>
         </tr>
-        <tr v-if="!get(student.term, 'enrollments', []).length">
+        <tr v-if="!termEnrollments.length">
           <td class="cohort-course-activity-data cohort-course-activity-course-name faint-text">
             No {{ termNameForSisId(currentEnrollmentTermId) }} enrollments
           </td>
@@ -251,11 +258,31 @@ export default {
     Util
   ],
   props: {
-    listType: String,
-    rowIndex: Number,
-    student: Object,
-    sortedBy: String
+    listType: {
+      required: true,
+      type: String
+    },
+    removeStudent: {
+      required: false,
+      default: () => {},
+      type: Function
+    },
+    rowIndex: {
+      required: true,
+      type: Number
+    },
+    sortedBy: {
+      required: true,
+      type: String
+    },
+    student: {
+      required: true,
+      type: Object
+    }
   },
+  data: () => ({
+    termEnrollments: []
+  }),
   computed: {
     degreePlanOwners() {
       const plans = this.get(this.student, 'degree.plans');
@@ -266,10 +293,10 @@ export default {
       }
     }
   },
-  methods: {
-    removeFromCuratedGroup: function() {
-      this.$eventHub.$emit('curated-group-remove-student', this.student.sid);
-    }
+  created() {
+    const termEnrollments = this.get(this.student.term, 'enrollments', []);
+    this.each(termEnrollments, this.setWaitlistedStatus);
+    this.termEnrollments = termEnrollments;
   }
 };
 </script>

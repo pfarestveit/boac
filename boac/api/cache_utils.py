@@ -178,9 +178,11 @@ def refresh_department_memberships():
                 continue
             user = AuthorizedUser.create_or_restore(
                 uid=membership['uid'],
+                created_by='0',
                 can_access_canvas_data=membership['can_access_canvas_data'],
             )
-            UniversityDeptMember.create_membership(dept, user, is_advisor=True, is_director=False)
+            if user:
+                UniversityDeptMember.create_or_update_membership(dept, user, is_advisor=True, is_director=False)
 
 
 def load_filtered_cohort_counts():
