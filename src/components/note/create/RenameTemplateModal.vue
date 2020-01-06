@@ -2,6 +2,7 @@
   <b-modal
     id="rename-note-template"
     v-model="showModalProxy"
+    aria-label="Rename Your Template"
     body-class="pl-0 pr-0"
     hide-footer
     hide-header-close
@@ -10,8 +11,8 @@
     <div>
       <form @submit.prevent="renameTemplate()">
         <div class="ml-3 mr-3">
-          <label class="pb-2" for="rename-template-input">Template name:</label>
           <div>
+            <label for="rename-template-input" class="pb-2">Template name:</label>
             <input
               id="rename-template-input"
               v-model="title"
@@ -25,6 +26,7 @@
             v-if="error"
             id="rename-template-error"
             aria-live="polite"
+            role="alert"
             class="has-error">
             {{ error }}
           </div>
@@ -38,9 +40,9 @@
         <div class="modal-footer pl-0 mr-2">
           <b-btn
             id="rename-template-confirm"
+            :disabled="!title.length"
             class="btn-primary-color-override"
             variant="primary"
-            :disabled="!title.length"
             @click.prevent="renameTemplate()">
             Rename
           </b-btn>

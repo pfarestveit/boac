@@ -1,19 +1,18 @@
 <script>
 import _ from 'lodash';
+import Berkeley from '@/mixins/Berkeley';
 import store from '@/store';
 
 export default {
   name: 'Validator',
+  mixins: [ Berkeley ],
   methods: {
-    validateCohortName: cohort => {
-      const user = store.getters['user/user'];
+    validateCohortName: function(cohort) {
       const name = _.trim(cohort.name);
+      const deptCodes = this.myDeptCodes(['isAdvisor', 'isDirector']);
       const isReservedName = name =>
-        user.isAsc &&
-        _.includes(
-          ['intensive students', 'inactive students'],
-          name.toLowerCase()
-        );
+        _.includes(deptCodes, 'UWASC') &&
+        _.includes(['intensive students', 'inactive students'], name.toLowerCase());
       let msg = null;
       if (_.isEmpty(name)) {
         msg = 'Required';
@@ -23,8 +22,8 @@ export default {
         msg = `Sorry, '${name}' is a reserved name. Please choose a different name.`;
       } else {
         let all = {
-          'curated group': store.getters['curated/myCuratedGroups'],
-          cohort: store.getters['cohort/myCohorts']
+          'curated group': store.getters['currentUserExtras/myCuratedGroups'],
+          cohort: store.getters['currentUserExtras/myCohorts']
         };
         _.each(all, (cohorts, cohortType) => {
           _.each(cohorts, existing => {
@@ -48,7 +47,7 @@ export default {
       } else if (_.size(title) > 255) {
         msg = 'Name must be 255 characters or fewer';
       } else {
-        const myTemplates = store.getters['note/noteTemplates'];
+        const myTemplates = store.getters['noteEditSession/noteTemplates'];
         _.each(myTemplates, existing => {
           if (
             (!template.id || template.id !== existing.id) &&

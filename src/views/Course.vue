@@ -1,6 +1,6 @@
 <template>
   <div class="course-container">
-    <Spinner />
+    <Spinner alert-prefix="Course" />
 
     <div v-if="!loading && error">
       <h1 class="page-section-header">Error</h1>
@@ -71,34 +71,37 @@
           <div>
             <CuratedGroupSelector
               v-if="!isEmpty(section.students) && (tab === 'list')"
-              class="mr-2"
               :context-description="`Course ${section.displayName}`"
-              :ga-event-tracker="gaCourseEvent"
-              :students="section.students" />
+              :ga-event-tracker="$ga.courseEvent"
+              :students="section.students"
+              class="mr-2" />
           </div>
           <div class="course-tabs-container">
             <div class="btn-group tab-btn-group pb-0" role="group" aria-label="Select results view">
               <button
+                id="btn-tab-list"
+                :class="{'tab-button-selected': tab === 'list'}"
                 type="button"
                 class="btn btn-secondary tab-button"
                 aria-label="Switch to list view"
-                :class="{'tab-button-selected': tab === 'list'}"
-                @click="toggleView('list')">
+                @click="toggleView('list')"
+                @keyup.enter="toggleView('list')">
                 <font-awesome icon="list" /> List
               </button>
               <button
-                type="button"
-                class="btn btn-secondary tab-button"
-                aria-label="Switch to matrix view"
+                id="btn-tab-matrix"
                 :title="matrixDisabledMessage"
                 :class="{'tab-button-selected': tab === 'matrix'}"
                 :disabled="matrixDisabledMessage"
-                @click="toggleView('matrix')">
+                type="button"
+                class="btn btn-secondary tab-button"
+                aria-label="Switch to matrix view"
+                @click="toggleView('matrix')"
+                @keyup.enter="toggleView('matrix')">
                 <font-awesome icon="table" /> Matrix
               </button>
             </div>
           </div>
-
           <div
             v-if="tab === 'list' && (section.totalStudentCount > pagination.defaultItemsPerPage)"
             class="flex-container course-page-size">
@@ -106,10 +109,11 @@
             <ul class="flex-container">
               <li v-for="(option, optionIndex) in pagination.options" :key="optionIndex">
                 <a
-                  href="#"
                   :class="{'selected': option === pagination.itemsPerPage}"
                   :title="`Show ${option} results per page`"
-                  @click="resizePage(option)">
+                  href="#"
+                  @click="resizePage(option)"
+                  @keyup.enter="resizePage(option)">
                   {{ option }}</a><span v-if="optionIndex + 1 < pagination.options.length">&nbsp;|&nbsp;</span>
               </li>
             </ul>
@@ -145,7 +149,6 @@ import MatrixUtil from '@/components/matrix/MatrixUtil';
 import Pagination from '@/components/util/Pagination';
 import Scrollable from '@/mixins/Scrollable';
 import Spinner from '@/components/util/Spinner';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import { getSection } from '@/api/course';
 
@@ -162,7 +165,6 @@ export default {
     Loading,
     MatrixUtil,
     Scrollable,
-    UserMetadata,
     Util
   ],
   data: () => ({

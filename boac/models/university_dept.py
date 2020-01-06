@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -51,6 +51,15 @@ class UniversityDept(Base):
     @classmethod
     def find_by_dept_code(cls, dept_code):
         return cls.query.filter_by(dept_code=dept_code).first()
+
+    @classmethod
+    def get_all(cls, exclude_empty=False):
+        if exclude_empty:
+            results = db.session.execute(text('select distinct university_dept_id from university_dept_members'))
+            dept_ids = [row['university_dept_id'] for row in results]
+            return cls.query.filter(cls.id.in_(dept_ids)).order_by(cls.dept_name).all()
+        else:
+            return cls.query.order_by(cls.dept_name).all()
 
     @classmethod
     def create(cls, dept_code, dept_name):

@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -63,17 +63,10 @@ def initdb():
 
 
 @application.cli.command()
-def load_external_data():
-    from boac.api import cache_utils
-    from boac.lib import berkeley
-    cache_utils.refresh_request_handler(berkeley.current_term_id(), load_only=True)
-
-
-@application.cli.command()
 def refresh_external_data():
     from boac.api import cache_utils
-    from boac.lib import berkeley
-    cache_utils.refresh_request_handler(berkeley.current_term_id(), load_only=False)
+    from boac.merged.sis_terms import current_term_id
+    cache_utils.refresh_request_handler(current_term_id())
 
 
 host = application.config['HOST']

@@ -36,16 +36,23 @@
       <div v-if="plottable" class="matrix-zoom-wrapper">
         Zoom:
         <div class="btn-group">
-          <button type="button" class="btn matrix-zoom-button" @click="zoomIn()">
+          <button
+            id="btn-matrix-zoom-in"
+            type="button"
+            class="btn matrix-zoom-button"
+            @click="zoomIn()"
+            @keyup.enter="zoomIn()">
             <font-awesome icon="plus" />
             <span class="sr-only">Zoom in</span>
           </button>
           <button
+            id="btn-matrix-zoom-out"
+            :disabled="zoom.scale === 1"
             type="button"
             class="btn matrix-zoom-button"
-            :disabled="zoom.scale === 1"
-            @click="zoomOut()">
-            <font-awesome icon="minus" :class="{'matrix-zoom-disabled': zoom.scale === 1}" />
+            @click="zoomOut()"
+            @keyup.enter="zoomOut()">
+            <font-awesome :class="{'matrix-zoom-disabled': zoom.scale === 1}" icon="minus" />
             <span class="sr-only">Zoom out</span>
           </button>
         </div>
@@ -68,8 +75,8 @@
               v-for="student in studentsWithoutData"
               :id="student.uid"
               :key="student.uid"
-              class="cohort-missing-student-data-row"
-              :class="{'cohort-list-row-info': featured===student.uid}">
+              :class="{'cohort-list-row-info': featured===student.uid}"
+              class="cohort-missing-student-data-row">
               <td class="student-avatar-container">
                 <StudentAvatar :student="student" />
               </td>
@@ -78,16 +85,16 @@
                   <div class="flex-container student-name">
                     <router-link
                       :id="`link-to-student-${student.uid}`"
-                      :class="{'demo-mode-blur': user.inDemoMode}"
-                      :to="studentRoutePath(student.uid, user.inDemoMode)">
+                      :class="{'demo-mode-blur': $currentUser.inDemoMode}"
+                      :to="studentRoutePath(student.uid, $currentUser.inDemoMode)">
                       {{ student.lastName + (student.firstName ? ', ' + student.firstName : '') }}
                     </router-link>
                   </div>
                 </div>
                 <div
                   v-if="student.sid"
-                  class="student-sid"
-                  :class="{'demo-mode-blur': user.inDemoMode}">
+                  :class="{'demo-mode-blur': $currentUser.inDemoMode}"
+                  class="student-sid">
                   SID: {{ student.sid }}
                 </div>
               </td>
@@ -123,7 +130,6 @@ import Berkeley from '@/mixins/Berkeley';
 import Context from '@/mixins/Context';
 import MatrixUtil from '@/components/matrix/MatrixUtil';
 import StudentAvatar from '@/components/student/StudentAvatar';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
@@ -131,7 +137,7 @@ export default {
   components: {
     StudentAvatar
   },
-  mixins: [Berkeley, Context, MatrixUtil, UserMetadata, Util],
+  mixins: [Berkeley, Context, MatrixUtil, Util],
   props: {
     featured: String,
     section: Object
@@ -223,6 +229,9 @@ export default {
         .on('zoom', onZoom);
 
       var container = d3.select('#matrix-container');
+
+      // Clear any lingering tooltips.
+      container.selectAll('.matrix-tooltip').remove();
 
       // We clear the '#scatterplot' div with `html()` in case the current search results are replacing previous results.
       svg = d3
@@ -334,7 +343,7 @@ export default {
         if (d.isClassMean) {
           photoUri = require('@/assets/class-mean-avatar.svg');
         } else {
-          photoUri = this.user.inDemoMode
+          photoUri = this.$currentUser.inDemoMode
             ? avatarBackgroundPath
             : d.photoUrl;
         }
@@ -349,44 +358,6 @@ export default {
         );
         return 'url(#' + avatarId + ')';
       };
-
-      var objects = svg
-        .append('svg')
-        .attr('width', width)
-        .attr('height', height)
-        .attr('fill', 'none')
-        .classed('matrix-svg', true)
-        .classed('objects', true);
-
-      objects
-        .append('svg:defs')
-        .append('svg:clipPath')
-        .attr('id', 'clip')
-        .append('svg:rect')
-        .attr('id', 'clip-rect')
-        .attr('x', -55)
-        .attr('y', -55)
-        .attr('width', width + 110)
-        .attr('height', height + 110);
-
-      var dotGroup = objects.append('g').attr('clip-path', 'url(#clip-inner)');
-
-      var dot = dotGroup
-        .attr('class', 'dots')
-        .selectAll('.dot')
-        .data(students, key)
-        .enter()
-        .append('circle')
-        .attr(
-          'class',
-          d => (d.isClassMean ? 'dot dot-mean' : 'dot dot-student')
-        )
-        .style('fill', d => (d.isClassMean ? avatar(d) : '#8bbdda'))
-        .style('opacity', d => (d.isClassMean ? 1 : 0.66))
-        .style('stroke-width', 0)
-        .attr('cx', d => xScale(x(d)))
-        .attr('cy', d => yScale(y(d)))
-        .attr('r', d => (d.isClassMean ? 22 : 9));
 
       // Add x-axis labels.
       svg
@@ -444,17 +415,98 @@ export default {
           .attr('dy', 12)
           .text(word);
       });
+
+      var objects = svg
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('fill', 'none')
+        .classed('matrix-svg', true)
+        .classed('objects', true);
+
+      objects
+        .append('svg:defs')
+        .append('svg:clipPath')
+        .attr('id', 'clip')
+        .append('svg:rect')
+        .attr('id', 'clip-rect')
+        .attr('x', -55)
+        .attr('y', -55)
+        .attr('width', width + 110)
+        .attr('height', height + 110);
+
+      var dotGroup = objects.append('g').attr('clip-path', 'url(#clip-inner)');
+
+      var dot = dotGroup
+        .attr('class', 'dots')
+        .selectAll('.dot')
+        .data(students, key)
+        .enter()
+        .append('circle')
+        .attr(
+          'class',
+          d => (d.isClassMean ? 'dot dot-mean' : 'dot dot-student')
+        )
+        .style('fill', d => (d.isClassMean ? avatar(d) : '#8bbdda'))
+        .style('opacity', d => (d.isClassMean ? 1 : 0.66))
+        .style('stroke-width', 0)
+        .attr('cx', d => xScale(x(d)))
+        .attr('cy', d => yScale(y(d)))
+        .attr('r', d => (d.isClassMean ? 22 : 9));
+
       dot.on('click', d => {
         if (!d.isClassMean) {
-          this.$router.push(this.studentRoutePath(d.uid, this.user.inDemoMode));
+          this.$router.push(this.studentRoutePath(d.uid, this.$currentUser.inDemoMode));
         }
       });
 
-      var onDotSelected = d => {
-        var element = d3.event.currentTarget;
-        // Clear any existing tooltips.
-        container.selectAll('.matrix-tooltip').remove();
+      var onDotDeselected = (d, element, isProgrammatic) => {
+        if (isProgrammatic !== true) {
+          element = d3.event.currentTarget;
+        }
 
+        // Return the dot to the path-clipped dot group.
+        dotGroup.node().appendChild(element);
+
+        d3.select(element)
+          .attr('r', _d => (_d.isClassMean ? 22 : 9))
+          .style('fill', _d => (_d.isClassMean ? avatar(_d) : '#8bbdda'))
+          .style('opacity', _d => (_d.isClassMean ? 1 : 0.66))
+          .style('stroke-width', 0);
+
+        var tooltip = container.select('.matrix-tooltip');
+        tooltip
+          .transition(d3.transition().duration(500))
+          .on('end', () => tooltip.remove())
+          .style('opacity', 0);
+      };
+
+      // The "featured" UID passed in as a URL param, if any, will start out selected.
+      var getFeaturedStudent = () => {
+        var featuredData;
+        var featuredElement;
+        var featuredUid = this.featured;
+        if (featuredUid) {
+          dot.each(function(d) {
+            if (d.uid === featuredUid) {
+              featuredData = d;
+              featuredElement = this;
+            }
+          });
+        }
+        return [featuredData, featuredElement]
+      };
+
+      var onDotSelected = (d, element, isProgrammatic) => {
+        if (isProgrammatic !== true) {
+          element = d3.event.currentTarget;
+        }
+        // Clear any existing selections and tooltips.
+        var featuredStudent = getFeaturedStudent();
+        if (featuredStudent[0]) {
+          onDotDeselected(featuredStudent[0], featuredStudent[1], true);
+        }
+        container.selectAll('.matrix-tooltip').remove();
         /*
          * If the dot represents a real student, lift it outside the path-clipped dotGroup so it can
          * overlap the edge of the matrix if need be.
@@ -491,7 +543,7 @@ export default {
           .append('h4')
           .attr(
             'class',
-            this.user.inDemoMode ? 'demo-mode-blur' : 'matrix-tooltip-header'
+            this.$currentUser.inDemoMode ? 'demo-mode-blur' : 'matrix-tooltip-header'
           )
           .text(fullName);
         _.each(d.majors, major =>
@@ -534,26 +586,13 @@ export default {
           .style('opacity', 1);
       };
 
-      var onDotDeselected = () => {
-        // Return the dot to the path-clipped dot group.
-        var element = d3.event.currentTarget;
-        dotGroup.node().appendChild(element);
-
-        d3.select(element)
-          .attr('r', _d => (_d.isClassMean ? 22 : 9))
-          .style('fill', _d => (_d.isClassMean ? avatar(_d) : '#8bbdda'))
-          .style('opacity', _d => (_d.isClassMean ? 1 : 0.66))
-          .style('stroke-width', 0);
-
-        var tooltip = container.select('.matrix-tooltip');
-        tooltip
-          .transition(d3.transition().duration(500))
-          .on('end', () => tooltip.remove())
-          .style('opacity', 0);
-      };
-
       dot.on('mouseover', onDotSelected);
       dot.on('mouseout', onDotDeselected);
+
+      var featuredStudent = getFeaturedStudent();
+      if (featuredStudent[0]) {
+        onDotSelected(featuredStudent[0], featuredStudent[1], true);
+      }
     },
     formatForDisplay(prop) {
       if (prop === 'analytics.currentScore') {
@@ -579,7 +618,9 @@ export default {
         return _.get(obj, prop + '.displayPercentile') + ' percentile';
       }
       if (_.has(obj, prop)) {
-        return _.get(obj, prop);
+        const isGPA = prop.toLowerCase().includes('gpa');
+        const value = _.get(obj, prop);
+        return isGPA ? parseFloat('0' + this.trim(value)).toFixed(3) : value;
       }
       return 'No data';
     },
@@ -605,12 +646,12 @@ export default {
       return this.isGpaProp(prop) ? d3.format('.2f') : '';
     },
     initAxisLabels() {
-      var metrics = [
+      let metrics = [
         'analytics.currentScore',
         'analytics.lastActivity',
         'cumulativeGPA'
       ];
-      var lastTermId = this.previousSisTermId(this.currentEnrollmentTermId);
+      var lastTermId = this.previousSisTermId(this.$config.currentEnrollmentTermId);
       var previousTermId = this.previousSisTermId(lastTermId);
       metrics.push('termGpa.' + previousTermId);
       metrics.push('termGpa.' + lastTermId);
@@ -745,6 +786,7 @@ export default {
   position: absolute;
   text-align: left;
   width: 240px;
+  z-index: 1;
 }
 .matrix-tooltip-header {
   color: #49b;

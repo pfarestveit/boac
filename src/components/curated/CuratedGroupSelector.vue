@@ -3,25 +3,24 @@
     <b-form-checkbox
       id="add-all-to-curated-group"
       v-model="isSelectAllChecked"
-      class="add-all-checkbox mr-1"
-      plain
       :disabled="isSaving"
       :indeterminate="indeterminate"
-      aria-describedby="checkbox-add-all-label"
+      class="add-all-checkbox mr-1"
+      plain
       aria-controls="curated-group-dropdown-select"
       @change="toggle">
-      <span id="checkbox-add-all-label" class="sr-only">{{ 'Select all students to add to a curated group' }}</span>
+      <span class="sr-only">{{ 'Select all students to add to a curated group' }}</span>
     </b-form-checkbox>
     <div>
       <b-dropdown
         v-if="showMenu"
         id="curated-group-dropdown-select"
-        class="curated-selector mr-2"
         :variant="dropdownVariant"
+        :disabled="disableSelector"
+        class="curated-selector mr-2"
         toggle-class="b-dd-override"
         size="sm"
-        no-caret
-        :disabled="disableSelector">
+        no-caret>
         <template slot="button-content">
           <span
             :id="isSaving ? 'add-to-curated-group-confirmation' : 'add-to-curated-group'"
@@ -41,24 +40,23 @@
         </b-dropdown-item>
         <b-dropdown-item
           v-for="group in myCuratedGroups"
-          :id="`curated-group-${group.id}-menu-item`"
           :key="group.id"
           class="b-dd-item-override">
           <input
             :id="`curated-group-${group.id}-checkbox`"
-            type="checkbox"
             :aria-label="`Add students to curated group '${group.name}'`"
-            @click.prevent="curatedGroupCheckboxClick(group)" />
+            type="checkbox"
+            @click.prevent="curatedGroupCheckboxClick(group)"
+            @keyup.enter="curatedGroupCheckboxClick(group)" />
           <label
-            :id="`curated-group-${group.id}-name`"
             :for="`curated-group-${group.id}-checkbox`"
             class="curated-checkbox-label pb-0 pt-0">{{ group.name }}</label>
         </b-dropdown-item>
-        <hr role="separator" class="dropdown-divider">
+        <hr class="dropdown-divider">
         <b-dropdown-item>
           <b-btn
             id="create-curated-group"
-            v-b-modal="'modal'"
+            v-b-modal="'create-curated-group-modal'"
             class="text-dark"
             variant="link"
             aria-label="Create a new curated group">
@@ -67,7 +65,7 @@
         </b-dropdown-item>
       </b-dropdown>
       <b-modal
-        id="modal"
+        id="create-curated-group-modal"
         v-model="showModal"
         body-class="pl-0 pr-0"
         hide-footer
@@ -75,7 +73,6 @@
         title="Name Your Curated Group"
         @shown="focusModalById('create-input')">
         <CreateCuratedGroupModal
-          :sids="sids"
           :create="modalCreateCuratedGroup"
           :cancel="modalCancel" />
       </b-modal>
@@ -86,7 +83,7 @@
 <script>
 import Context from '@/mixins/Context';
 import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal';
-import UserMetadata from '@/mixins/UserMetadata';
+import CurrentUserExtras from '@/mixins/CurrentUserExtras';
 import Util from '@/mixins/Util';
 import { addStudents, createCuratedGroup } from '@/api/curated';
 
@@ -95,7 +92,7 @@ export default {
   components: {
     CreateCuratedGroupModal
   },
-  mixins: [Context, UserMetadata, Util],
+  mixins: [Context, CurrentUserExtras, Util],
   props: {
     contextDescription: String,
     gaEventTracker: Function,
@@ -135,9 +132,11 @@ export default {
         this.sids = this.map(this.students, 'sid');
         this.$eventHub.$emit('curated-group-select-all');
         this.putFocusNextTick('curated-group-dropdown-select', 'button');
+        this.alertScreenReader('All students on this page selected.');
       } else {
         this.sids = [];
         this.$eventHub.$emit('curated-group-deselect-all');
+        this.alertScreenReader('All students on this page deselected.');
       }
     },
     refresh() {
@@ -151,14 +150,11 @@ export default {
     },
     curatedGroupCheckboxClick(group) {
       const afterAddStudents = () => {
+        this.alertScreenReader(`${this.sids.length} student${this.sids.length === 1 ? '' : 's'} added to "${group.name}".`);
         this.sids = [];
         this.isSelectAllChecked = this.indeterminate = false;
         this.$eventHub.$emit('curated-group-deselect-all');
-        this.gaEventTracker({
-          id: group.id,
-          name: group.name,
-          action: `${this.contextDescription}: add students to Curated Group`
-      });
+        this.$ga.curatedEvent(group.id, group.name, `${this.contextDescription}: add students to Curated Group`);
       };
       const done = () => (this.isSaving = false);
       this.isSaving = true;
@@ -183,11 +179,7 @@ export default {
             `${this.contextDescription}: add students to Curated Group`
           ],
           action => {
-            this.gaEventTracker({
-              id: group.id,
-              name: group.name,
-              action
-            });
+            this.$ga.curatedEvent(group.id, group.name, action);
           }
         );
       };

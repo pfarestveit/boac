@@ -1,6 +1,5 @@
 import _ from 'lodash';
 import axios from 'axios';
-import store from '@/store';
 import utils from '@/api/api-utils';
 import Vue from 'vue';
 
@@ -16,15 +15,12 @@ export function getNote(noteId) {
     .then(response => response.data, () => null);
 }
 
-export function markRead(noteId) {
+export function markNoteRead(noteId) {
   return axios
     .post(`${utils.apiBaseUrl()}/api/notes/${noteId}/mark_read`)
     .then(response => {
-      store.dispatch('user/gaNoteEvent', {
-        id: noteId,
-        name: `Advisor ${store.getters['user/uid']} read a note`,
-        action: 'read'
-      });
+      const uid = Vue.prototype.$currentUser.uid;
+      Vue.prototype.$ga.noteEvent(noteId, `Advisor ${uid} read a note`, 'read');
       return response.data
     }, () => null);
 }
@@ -41,11 +37,8 @@ export function createNote(
   _.each(attachments || [], (attachment, index) => data[`attachment[${index}]`] = attachment);
   return utils.postMultipartFormData('/api/notes/create', data).then(data => {
     Vue.prototype.$eventHub.$emit('advising-note-created', data);
-    store.dispatch('user/gaNoteEvent', {
-      id: data.id,
-      label: `Advisor ${store.getters['user/uid']} created a note`,
-      action: 'create'
-    });
+    const uid = Vue.prototype.$currentUser.uid;
+    Vue.prototype.$ga.noteEvent(data.id, `Advisor ${uid} created a note`, 'create');
     return data;
   });
 }
@@ -64,11 +57,8 @@ export function createNoteBatch(
   _.each(attachments || [], (attachment, index) => data[`attachment[${index}]`] = attachment);
   return utils.postMultipartFormData('/api/notes/batch/create', data).then(data => {
     Vue.prototype.$eventHub.$emit('batch-of-notes-created', data);
-    store.dispatch('user/gaNoteEvent', {
-      id: data.id,
-      name: `Advisor ${store.getters['user/uid']} created a batch of notes`,
-      action: 'batch_create'
-    });
+    const uid = Vue.prototype.$currentUser.uid;
+    Vue.prototype.$ga.noteEvent(data.id, `Advisor ${uid} created a batch of notes`, 'batch_create');
   });
 }
 
@@ -85,11 +75,8 @@ export function updateNote(
     topics: topics
   };
   const api_json = utils.postMultipartFormData('/api/notes/update', data);
-  store.dispatch('user/gaNoteEvent', {
-    id: noteId,
-    name: `Advisor ${store.getters['user/uid']} updated a note`,
-    action: 'update'
-  });
+  const uid = Vue.prototype.$currentUser.uid;
+  Vue.prototype.$ga.noteEvent(noteId, `Advisor ${uid} updated a note`, 'update');
   return api_json;
 }
 
@@ -99,17 +86,18 @@ export function deleteNote(noteId: number) {
     .then(response => response.data);
 }
 
-export function getTopics(includeDeleted: boolean) {
-  return axios
-    .get(`${utils.apiBaseUrl()}/api/notes/topics?includeDeleted=${includeDeleted}`)
-    .then(response => response.data);
-}
+let $_findAuthorsByNameCancel = axios.CancelToken.source();
 
 export function findAuthorsByName(query: string, limit: number) {
-  let apiBaseUrl = store.getters['context/apiBaseUrl'];
+  if ($_findAuthorsByNameCancel) {
+     $_findAuthorsByNameCancel.cancel();
+  }
+  $_findAuthorsByNameCancel = axios.CancelToken.source();
   return axios
-    .get(`${apiBaseUrl}/api/notes/authors/find_by_name?q=${query}&limit=${limit}`)
-    .then(response => response.data);
+    .get(
+      `${utils.apiBaseUrl()}/api/notes/authors/find_by_name?q=${query}&limit=${limit}`,
+      {cancelToken: $_findAuthorsByNameCancel.token}
+    ).then(response => response.data);
 }
 
 export function addAttachment(noteId: number, attachment: any) {

@@ -83,6 +83,9 @@
   display: flex;
   flex-direction: row;
 }
+.font-size-12 {
+  font-size: 12px;
+}
 .font-size-14 {
   font-size: 14px;
 }
@@ -98,6 +101,9 @@
 .font-size-24 {
   font-size: 24px;
 }
+.font-weight-500 {
+  font-weight: 500;
+}
 .form-control {
   height: 38px;
   padding: 8px 12px;
@@ -112,14 +118,15 @@
   -webkit-filter: blur(10px);
   filter: blur(10px);
 }
+.inactive-info-icon {
+  color: #d0021b;
+  font-size: 16px;
+}
 .min-width-100 {
   min-width: 100%;
 }
 .no-wrap {
   white-space: nowrap;
-}
-.obfuscate-form-input {
-  -webkit-text-security: disc;
 }
 .page-section-header {
   font-size: 24px;
@@ -133,6 +140,32 @@
   -webkit-box-shadow: none;
   box-shadow: 0;
 }
+.panel-group {
+  margin-bottom: 20px;
+}
+.panel-group .panel + .panel {
+  margin-top: 5px;
+}
+.pill-alerts {
+  border-radius: 10px;
+  color: #fff;
+  display: inline-block;
+  font-size: 16px;
+  font-weight: 800;
+  height: 20px;
+  line-height: 20px;
+  padding: 0 4px 0 4px;
+  text-align: center;
+}
+.pill-alerts-nonzero {
+  background-color: #f0ad4e;
+}
+.pill-alerts-zero {
+  background-color: #ccc;
+}
+.pill-alerts-per-student {
+  color: #f0ad4e;
+}
 .red-flag-status {
   color: #d0021b;
   font-weight: bold;
@@ -141,6 +174,10 @@
   color: #d0021b;
   font-size: 12px;
   font-weight: bold;
+}
+.service-announcement {
+  background-color: #f0ad4e;
+  font-weight: 500;
 }
 .table-full-width {
   margin: 10px 0;

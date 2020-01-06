@@ -5,19 +5,16 @@ import { mapActions, mapGetters } from 'vuex';
 export default {
   name: 'Loading',
   computed: {
-    ...mapGetters('context', ['loading']),
-    ...mapGetters('user', ['user'])
+    ...mapGetters('context', ['loading'])
   },
   beforeCreate: () => store.dispatch('context/loadingStart'),
   methods: {
     ...mapActions('context', ['loadingStart']),
-    loaded() {
+    loaded(pageTitle) {
+      if (!!pageTitle && store.getters['context/loading']) {
+        store.dispatch('context/alertScreenReader', `${pageTitle} page is ready`)
+      }
       store.dispatch('context/loadingComplete');
-      this.$nextTick(() => {
-        if (this.$refs.pageHeader) {
-          this.$refs.pageHeader.focus();
-        }
-      });
     }
   }
 };

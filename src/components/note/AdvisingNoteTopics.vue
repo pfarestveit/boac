@@ -12,11 +12,21 @@
             v-if="topicOptions.length"
             id="add-topic-select-list"
             :key="topics.length"
+            v-model="selected"
             :disabled="disabled"
-            :options="topicOptions"
             role="listbox"
             aria-label="Use up and down arrows to review topics. Hit enter to select a topic."
-            @change="add">
+            @input="add">
+            <template v-slot:first>
+              <option :value="null" disabled>Select...</option>
+            </template>
+            <option
+              v-for="option in topicOptions"
+              :key="option.value"
+              :disabled="option.disabled"
+              :value="option.value">
+              {{ option.text }}
+            </option>
           </b-form-select>
         </b-col>
       </b-form-row>
@@ -34,14 +44,14 @@
               <b-btn
                 :id="`remove-${notePrefix}-topic-${index}`"
                 :disabled="disabled"
+                :aria-labelledby="`remove-${notePrefix}-topic-${index}-label`"
                 variant="link"
                 class="px-0 pt-1"
-                :aria-labelledby="`remove-${notePrefix}-topic-${index}-label`"
                 tabindex="0"
                 @click.prevent="remove(addedTopic)">
                 <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
               </b-btn>
-              <label :id="`remove-${notePrefix}-topic-${index}-label`" class="sr-only" :for="`remove-${notePrefix}-topic-${index}`">
+              <label :id="`remove-${notePrefix}-topic-${index}-label`" :for="`remove-${notePrefix}-topic-${index}`" class="sr-only">
                 remove topic {{ topics[index] }}
               </label>
             </span>
@@ -57,12 +67,12 @@
 
 <script>
 import Context from '@/mixins/Context';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
+import { getTopicsForNotes } from "@/api/topics";
 
 export default {
   name: 'AdvisingNoteTopics',
-  mixins: [Context, UserMetadata, Util],
+  mixins: [Context, Util],
   props: {
     disabled: {
       default: false,
@@ -87,6 +97,7 @@ export default {
     }
   },
   data: () => ({
+    selected: null,
     topicOptions: []
   }),
   computed: {
@@ -95,17 +106,20 @@ export default {
     }
   },
   created() {
-    this.topicOptions.push({text: '-- Select a category --', value: null});
-    this.each(this.suggestedNoteTopics, topic => {
-      this.topicOptions.push({
-        text: topic,
-        value: topic,
-        disabled: this.includes(this.topics, topic)
-      })
+    getTopicsForNotes(false).then(topics => {
+      this.each(topics, topic => {
+        this.topicOptions.push({
+          text: topic,
+          value: topic,
+          disabled: this.includes(this.topics, topic)
+        })
+      });
     });
   },
   methods: {
     add(topic) {
+      // Reset the dropdown
+      this.selected = null;
       if (topic) {
         this.setDisabled(topic, true);
         this.functionAdd(topic);

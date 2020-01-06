@@ -2,6 +2,7 @@
   <b-modal
     id="create-note-template"
     v-model="showModalProxy"
+    aria-label="Name Your Template"
     body-class="pl-0 pr-0"
     hide-footer
     hide-header-close
@@ -10,8 +11,8 @@
     <div>
       <form @submit.prevent="createTemplate()">
         <div class="ml-3 mr-3">
-          <label class="pb-2" for="template-title-input">Template name:</label>
           <div>
+            <label class="pb-2" for="template-title-input">Template name:</label>
             <input
               id="template-title-input"
               v-model="title"
@@ -39,9 +40,9 @@
         <div class="modal-footer pl-0 mr-2">
           <b-btn
             id="create-template-confirm"
+            :disabled="!title.length"
             class="btn-primary-color-override"
             variant="primary"
-            :disabled="!title.length"
             @click.prevent="createTemplate()">
             Save
           </b-btn>

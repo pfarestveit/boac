@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -170,4 +170,4 @@ class TestWithdrawalAlert:
             alerts = get_current_alerts('2345678901')
             assert len(alerts) == 1
             assert alerts[0]['key'] == '2178_withdrawal'
-            assert alerts[0]['message'] == 'Withdrawal! Student has withdrawn from the Fall 2017 term.'
+            assert alerts[0]['message'] == 'Student is no longer enrolled in the Fall 2017 term.'

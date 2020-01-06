@@ -2,6 +2,7 @@ import axios from 'axios';
 import moment from 'moment-timezone';
 import store from '@/store';
 import utils from '@/api/api-utils';
+import Vue from "vue";
 
 export function addStudents(curatedGroupId: number, sids: string[], returnStudentProfiles?: boolean) {
   return axios
@@ -12,7 +13,7 @@ export function addStudents(curatedGroupId: number, sids: string[], returnStuden
     })
     .then(response => {
       const group = response.data;
-      store.dispatch('curated/updateCuratedGroup', group);
+      store.commit('currentUserExtras/curatedGroupUpdated', group);
       return group;
     });
 }
@@ -25,7 +26,7 @@ export function createCuratedGroup(name: string, sids: string[]) {
     })
     .then(function(response) {
       const group = response.data;
-      store.dispatch('curated/createCuratedGroup', group);
+      store.commit('currentUserExtras/curatedGroupCreated', group);
       return group;
     });
 }
@@ -38,22 +39,17 @@ export function deleteCuratedGroup(id) {
       }
     })
     .then(() => {
-      store.commit('curated/deleteCuratedGroup', id);
+      store.commit('currentUserExtras/curatedGroupDeleted', id);
     })
-    .then(() => {
-      store.dispatch('user/gaCuratedEvent', {
-        id: id,
-        action: 'delete'
-      });
-    })
+    .then(() => Vue.prototype.$ga.curatedEvent(id, null, 'delete'))
     .catch(error => error);
 }
 
-export function downloadCuratedGroupCsv(id: number, name: string) {
+export function downloadCuratedGroupCsv(id: number, name: string, csvColumnsSelected: any[]) {
   const fileDownload = require('js-file-download');
   const now = moment().format('YYYY-MM-DD_HH-mm-ss');
   return axios
-    .get(`${utils.apiBaseUrl()}/api/curated_group/${id}/download_csv`)
+    .post(`${utils.apiBaseUrl()}/api/curated_group/${id}/download_csv`, { csvColumnsSelected })
     .then(response => fileDownload(response.data, `${name}-students-${now}.csv`), () => null);
 }
 
@@ -91,15 +87,11 @@ export function removeFromCuratedGroup(groupId, sid) {
     .delete(`${utils.apiBaseUrl()}/api/curated_group/${groupId}/remove_student/${sid}`)
     .then(response => {
       const group = response.data;
-      store.dispatch('curated/updateCuratedGroup', group);
+      store.commit('currentUserExtras/curatedGroupUpdated', group);
       return group;
     })
     .then(group => {
-      store.dispatch('user/gaCuratedEvent', {
-        id: group.id,
-        name: group.name,
-        action: 'remove_student'
-      });
+      Vue.prototype.$ga.curatedEvent(group.id, group.name, 'remove_student');
       return group;
     });
 }
@@ -109,15 +101,11 @@ export function renameCuratedGroup(id, name) {
     .post(`${utils.apiBaseUrl()}/api/curated_group/rename`, {id: id, name: name})
     .then(response => {
       const group = response.data;
-      store.commit('curated/updateCuratedGroup', group);
+      store.commit('currentUserExtras/curatedGroupUpdated', group);
       return group;
     })
     .then(group => {
-      store.dispatch('user/gaCuratedEvent', {
-        id: group.id,
-        name: group.name,
-        action: 'rename'
-      });
+      Vue.prototype.$ga.curatedEvent(group.id, group.name, 'rename');
       return group;
     })
     .catch(error => error);

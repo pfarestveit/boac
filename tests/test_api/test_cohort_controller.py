@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -33,6 +33,8 @@ guest_user_uid = '2'
 admin_uid = '2040'
 asc_advisor_uid = '1081940'
 coe_advisor_uid = '1133399'
+coe_scheduler_uid = '6972201'
+asc_and_coe_advisor_uid = '90412'
 
 
 @pytest.fixture()
@@ -48,6 +50,16 @@ def asc_advisor_login(fake_auth):
 @pytest.fixture()
 def coe_advisor_login(fake_auth):
     fake_auth.login(coe_advisor_uid)
+
+
+@pytest.fixture()
+def coe_scheduler_login(fake_auth):
+    fake_auth.login(coe_scheduler_uid)
+
+
+@pytest.fixture()
+def asc_and_coe_advisor_login(fake_auth):
+    fake_auth.login(asc_and_coe_advisor_uid)
 
 
 @pytest.fixture()
@@ -105,6 +117,11 @@ class TestCohortDetail:
 
     def test_my_cohorts_not_authenticated(self, client):
         """Rejects anonymous user."""
+        response = client.get('/api/cohorts/my')
+        assert response.status_code == 401
+
+    def test_scheduler_role_is_unauthorized(self, coe_scheduler_login, client):
+        """Rejects COE scheduler user."""
         response = client.get('/api/cohorts/my')
         assert response.status_code == 401
 
@@ -341,7 +358,7 @@ class TestCohortDetail:
 
     def test_unauthorized_request_for_athletic_study_center_data(self, client, fake_auth):
         """In order to access intensive_cohort, inactive status, etc. the user must be either ASC or Admin."""
-        fake_auth.login('1022796')
+        fake_auth.login('1133399')
         data = {
             'name': 'My filtered cohort just hacked the system!',
             'filters': [
@@ -431,6 +448,16 @@ class TestCohortCreate:
         assert cohort_id
         _verify(self._api_cohort(client, cohort_id))
 
+    def test_scheduler_role_is_forbidden(self, coe_scheduler_login, client):
+        """Rejects COE scheduler user."""
+        data = {
+            'name': 'COE scheduler cannot create cohorts',
+            'filters': [
+                {'key': 'coeEthnicities', 'value': 'Vietnamese'},
+            ],
+        }
+        assert self._post_cohort_create(client, data, expected_status_code=401)
+
     def test_asc_advisor_is_forbidden(self, asc_advisor_login, client, fake_auth):
         """Denies ASC advisor access to COE data."""
         data = {
@@ -494,7 +521,7 @@ class TestCohortCreate:
         assert 'Gender and Women''s Studies' in majors
 
     def test_admin_creation_of_asc_cohort(self, client, admin_login):
-        """COE advisor cannot use ASC criteria."""
+        """Admin can use ASC criteria."""
         self._post_cohort_create(
             client,
             {
@@ -515,6 +542,28 @@ class TestCohortCreate:
             ],
         }
         self._post_cohort_create(client, data, expected_status_code=403)
+
+    _intersecting_filter_criteria = {
+        'name': 'Mixmaster BOA',
+        'filters': [
+            {'key': 'groupCodes', 'value': 'MBB'},
+            {'key': 'coeGenders', 'value': 'F'},
+        ],
+    }
+
+    def test_admin_intersecting_filters(self, client, admin_login):
+        """An admin can create a cohort using both ASC and COE criteria."""
+        api_json = self._post_cohort_create(client, self._intersecting_filter_criteria)
+        assert len(api_json['students']) == 1
+
+    def test_multi_dept_intersecting_filters(self, client, asc_and_coe_advisor_login):
+        """An advisor belonging to multiple departments can create a cohort using intersecting criteria."""
+        api_json = self._post_cohort_create(client, self._intersecting_filter_criteria)
+        assert len(api_json['students']) == 1
+
+    def test_single_dept_intersecting_filters_fails(self, client, coe_advisor_login):
+        """An advisor belonging to a single department cannot create a cohort using intersecting criteria."""
+        self._post_cohort_create(client, self._intersecting_filter_criteria, expected_status_code=403)
 
 
 class TestCohortUpdate:
@@ -696,31 +745,34 @@ class TestCohortPerFilters:
             expected_status_code=403,
         )
 
-    def test_students_per_filters_coe_advisor(self, client, coe_advisor_login):
+    def test_students_per_ranges(self, client, coe_advisor_login):
         """API translates 'coeProbation' filter to proper filter_criteria query."""
-        gpa_range_1 = {'min': 0, 'max': 1.999}
-        gpa_range_2 = {'min': 2, 'max': 2.499}
+        gpa_range_1 = {'min': 0.000, 'max': 0.500}
+        gpa_range_2 = {'min': 3, 'max': 4}
+        last_name_range_1 = {'min': 'K', 'max': 'K'}
+        last_name_range_2 = {'min': 'A', 'max': 'F'}
+        last_name_range_3 = {'min': 'S', 'max': 'Z'}
         api_json = self._api_get_students_per_filters(
             client,
             {
                 'filters': [
-                    {'key': 'coeProbation', 'value': 'true'},
                     {'key': 'gpaRanges', 'value': gpa_range_1},
                     {'key': 'gpaRanges', 'value': gpa_range_2},
-                    {'key': 'lastNameRanges', 'value': {'min': 'B', 'max': 'F'}},
-                    {'key': 'lastNameRanges', 'value': {'min': 'M', 'max': 'P'}},
+                    {'key': 'lastNameRanges', 'value': last_name_range_1},
+                    {'key': 'lastNameRanges', 'value': last_name_range_2},
+                    {'key': 'lastNameRanges', 'value': last_name_range_3},
                 ],
+                'orderBy': 'last_name',
             },
         )
-        assert 'totalStudentCount' in api_json
-        assert 'students' in api_json
+        students = api_json['students']
+        assert len(students) == 5
+        assert api_json.get('totalStudentCount') == 5
+        assert ['Barney', 'Doolittle', 'Farestveit', 'Kerschen', 'Schlemiel'] == [s['lastName'] for s in students]
+        assert [3.85, 3.495, 3.9, 3.005, 0.4] == [s['cumulativeGPA'] for s in students]
         criteria = api_json['criteria']
-        assert criteria['coeProbation'] is not None
-        assert len(criteria['lastNameRanges']) == 2
-        gpa_ranges = criteria['gpaRanges']
-        assert len(gpa_ranges) == 2
-        assert gpa_range_1 in gpa_ranges
-        assert gpa_range_2 in gpa_ranges
+        assert len(criteria['gpaRanges']) == 2
+        assert len(criteria['lastNameRanges']) == 3
         for key in [
             'coeAdvisorLdapUids',
             'coeEthnicities',
@@ -735,6 +787,7 @@ class TestCohortPerFilters:
             'transfer',
             'underrepresented',
             'unitRanges',
+            'visaTypes',
         ]:
             assert criteria[key] is None
 
@@ -790,6 +843,20 @@ class TestCohortPerFilters:
         assert _get_first_student('level')['level'] == 'Junior'
         assert _get_first_student('major')['majors'][0] == 'Chemistry BS'
         assert _get_first_student('units')['cumulativeUnits'] == 34
+        assert _get_first_student('entering_term')['matriculation'] == 'Spring 2015'
+
+        defensive_line_by_units = self._get_defensive_line(client, False, 'enrolled_units')
+        assert 'term' not in defensive_line_by_units[0]
+        assert defensive_line_by_units[1]['term']['enrolledUnits'] == 5
+        assert defensive_line_by_units[2]['term']['enrolledUnits'] == 7
+
+        def _fall_2017_gpa(student_feed):
+            return next((t['gpa'] for t in student_feed['termGpa'] if t['termName'] == 'Fall 2017'), None)
+        defensive_line_by_term_gpa = self._get_defensive_line(client, False, 'term_gpa_2178')
+        assert _fall_2017_gpa(defensive_line_by_term_gpa[0]) == 2.1
+        assert _fall_2017_gpa(defensive_line_by_term_gpa[1]) == 3.2
+        assert _fall_2017_gpa(defensive_line_by_term_gpa[2]) is None
+
         student = _get_first_student('group_name')
         assert student['athleticsProfile']['athletics'][0]['groupName'] == 'Football, Defensive Backs'
 
@@ -811,6 +878,35 @@ class TestCohortPerFilters:
         assert is_active_asc(students[1]) is True
         assert is_active_asc(students[2]) is True
         assert is_active_asc(students[3]) is True
+
+    def test_filter_entering_term(self, client, coe_advisor_login):
+        api_json = self._api_get_students_per_filters(
+            client,
+            {
+                'filters': [
+                    {'key': 'enteringTerms', 'value': '2155'},
+                ],
+            },
+        )
+        students = api_json['students']
+        assert len(students) == 6
+        for student in students:
+            assert student['matriculation'] == 'Summer 2015'
+
+    def test_filter_multiple_entering_terms(self, client, coe_advisor_login):
+        api_json = self._api_get_students_per_filters(
+            client,
+            {
+                'filters': [
+                    {'key': 'enteringTerms', 'value': '1938'},
+                    {'key': 'enteringTerms', 'value': '2158'},
+                ],
+            },
+        )
+        students = api_json['students']
+        assert len(students) == 2
+        for student in students:
+            assert student['matriculation'] in ['Fall 1993', 'Fall 2015']
 
     def test_filter_expected_grad_term(self, client, coe_advisor_login):
         """Returns students per expected graduation."""
@@ -867,6 +963,42 @@ class TestCohortPerFilters:
         sids = sorted([s['sid'] for s in api_json['students']])
         assert sids == ['11667051']
 
+    def test_last_term_gpa_filter(self, client, coe_advisor_login):
+        summer_success = self._api_get_students_per_filters(
+            client,
+            {
+                'filters': [
+                    {'key': 'lastTermGpaRanges', 'value': {'min': 3, 'max': 4}},
+                ],
+            },
+        )
+        assert len(summer_success['students']) == 0
+        summer_less_success = self._api_get_students_per_filters(
+            client,
+            {
+                'filters': [
+                    {'key': 'lastTermGpaRanges', 'value': {'min': 0, 'max': 0.5}},
+                ],
+            },
+        )
+        assert len(summer_less_success['students']) == 1
+        assert {'termName': 'Summer 2017', 'gpa': 0.0} in summer_less_success['students'][0]['termGpa']
+
+    def test_filter_visa_types(self, client, coe_advisor_login):
+        """Returns students with verified visa status and the specified visa type(s)."""
+        api_json = self._api_get_students_per_filters(
+            client,
+            {
+                'filters': [
+                    {'key': 'visaTypes', 'value': 'F1'},
+                    {'key': 'visaTypes', 'value': 'J1'},
+                    {'key': 'visaTypes', 'value': 'PA,RF,L2,E2,H4,E1,U3,A1,E3,O1,OT,U1'},
+                ],
+            },
+        )
+        sids = sorted([s['sid'] for s in api_json['students']])
+        assert sids == ['2345678901', '5678901234']
+
 
 class TestDownloadCsvPerFilters:
     """Download Cohort CSV API."""
@@ -897,6 +1029,11 @@ class TestDownloadCsvPerFilters:
                 'filters': [
                     {'key': 'coeProbation', 'value': 'true'},
                 ],
+                'csvColumnsSelected': [
+                    'first_name',
+                    'last_name',
+                    'sid',
+                ],
             },
             expected_status_code=403,
         )
@@ -906,6 +1043,21 @@ class TestDownloadCsvPerFilters:
         data = {
             'filters': [
                 {'key': 'coeEthnicities', 'value': ['H', 'B']},
+            ],
+            'csvColumnsSelected': [
+                'first_name',
+                'last_name',
+                'sid',
+                'email',
+                'phone',
+                'majors',
+                'level',
+                'terms_in_attendance',
+                'expected_graduation_date',
+                'units_completed',
+                'term_gpa',
+                'cumulative_gpa',
+                'program_status',
             ],
         }
         response = client.post(
@@ -917,10 +1069,43 @@ class TestDownloadCsvPerFilters:
         assert 'csv' in response.content_type
         csv = str(response.data)
         for snippet in [
-            'first_name,last_name,sid,email,phone',
-            'Deborah,Davies,11667051,oski@berkeley.edu,415/123-4567',
-            'Paul,Farestveit,7890123456,,415/123-4567',
-            'Wolfgang,Pauli-O\'Rourke,9000000000,,415/123-4567',
+            'first_name,last_name,sid,email,phone,majors,level,terms_in_attendance,expected_graduation_date,units_completed,term_gpa,cumulative_gpa,\
+program_status',
+            'Deborah,Davies,11667051,barnburner@berkeley.edu,415/123-4567,English BA;Nuclear Engineering BS,Junior,5,Fall 2019,101.3,2.900,3.8,',
+            'Paul,Farestveit,7890123456,qadept@berkeley.edu,415/123-4567,Nuclear Engineering BS,Senior,5,Spring 2020,110,,3.9,',
+            'Wolfgang,Pauli-O\'Rourke,9000000000,wpo@berkeley.edu,415/123-4567,Engineering Undeclared UG,Sophomore,5,Spring 2020,55,,2.3,',
+        ]:
+            assert str(snippet) in csv
+
+    def test_download_csv_custom_columns(self, client, coe_advisor_login):
+        """Advisor can generate a CSV with the columns they want."""
+        data = {
+            'filters': [
+                {'key': 'levels', 'value': 'Junior'},
+            ],
+            'csvColumnsSelected': [
+                'majors',
+                'level',
+                'terms_in_attendance',
+                'expected_graduation_date',
+                'units_completed',
+                'term_gpa',
+                'cumulative_gpa',
+                'program_status',
+            ],
+        }
+        response = client.post(
+            '/api/cohort/download_csv_per_filters',
+            data=json.dumps(data),
+            content_type='application/json',
+        )
+        assert response.status_code == 200
+        assert 'csv' in response.content_type
+        csv = str(response.data)
+        for snippet in [
+            'majors,level,terms_in_attendance,expected_graduation_date,units_completed,term_gpa,cumulative_gpa,program_status',
+            'Chemistry BS,Junior,5,Fall 2019,34,0.000,3.495,',
+            'English BA;Political Economy BA,Junior,5,Fall 2019,70,3.200,3.005,',
         ]:
             assert str(snippet) in csv
 
@@ -1077,15 +1262,16 @@ class TestCohortFilterOptions:
                 else:
                     assert 'disabled' not in menu
 
-    def test_range_of_expected_terms(self, client, guest_user_login):
-        """Expected grad term options ."""
+    def test_range_of_entering_terms(self, client, guest_user_login):
         api_json = self._api_cohort_filter_options(client, {'existingFilters': []})
-        assert len(api_json)
-        assert len(api_json[0])
         filter_options = api_json[0][0].get('options')
-        assert filter_options[-1].get('name') == '1997 Fall'
-        assert filter_options[-2].get('name') == 'divider'
-        assert filter_options[-3].get('name') == '2019 Spring'
+        assert len(filter_options) == 4
+        assert [o['name'] for o in filter_options] == ['2015 Fall', '2015 Summer', '2015 Spring', '1993 Fall']
+
+    def test_range_of_expected_grad_terms(self, client, guest_user_login):
+        api_json = self._api_cohort_filter_options(client, {'existingFilters': []})
+        filter_options = api_json[0][1].get('options')
+        assert [o['name'] for o in filter_options[-3:]] == ['2019 Spring', 'divider', '1997 Fall']
 
 
 class TestTranslateToFilterOptions:
@@ -1119,7 +1305,7 @@ class TestTranslateToFilterOptions:
         }
         api_json = self._api_translate_to_filter_options(client, json_data)
         assert len(api_json) == 1
-        assert api_json[0]['label']['primary'] == 'Inactive'
+        assert api_json[0]['label']['primary'] == 'Inactive (COE)'
         assert api_json[0]['key'] == 'isInactiveCoe'
         assert api_json[0]['value'] is False
 

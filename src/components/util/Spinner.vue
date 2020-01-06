@@ -1,26 +1,42 @@
 <template>
-  <div>
-    <div v-if="loading" id="spinner-when-loading" class="spinner">
-      <font-awesome icon="sync" size="5x" spin />
-      <span
-        role="alert"
-        aria-live="assertive"
-        class="sr-only">Page is loading...</span>
-    </div>
-    <div v-if="!loading">
-      <span
-        role="alert"
-        aria-live="assertive"
-        class="sr-only">Page has loaded.</span>
-    </div>
+  <div v-if="loading" id="spinner-when-loading" class="spinner">
+    <font-awesome icon="sync" size="5x" spin />
   </div>
 </template>
 
 <script>
+import Context from '@/mixins/Context.vue';
 import Loading from '@/mixins/Loading.vue';
 
 export default {
-  mixins: [Loading]
+  mixins: [Context, Loading],
+  props: {
+    alertPrefix: {
+      type: String,
+      default: 'The page'
+    },
+    isPlural: {
+      type: Boolean,
+      default: false
+    }
+  },
+  watch: {
+    loading(value) {
+      this.alert(value, true);
+    }
+  },
+  created() {
+    this.alert(this.loading, false);
+  },
+  methods: {
+    alert(isLoading, voiceIfLoaded)  {
+      if (isLoading) {
+        this.alertScreenReader(`${this.alertPrefix} ${this.isPlural ? 'are' : 'is'} loading...`);
+      } else if (voiceIfLoaded) {
+        this.alertScreenReader(`${this.alertPrefix} ${this.isPlural ? 'have' : 'has'} loaded.`);
+      }
+    }
+  }
 };
 </script>
 

@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -30,8 +30,9 @@ import re
 
 from boac.externals import data_loch, s3
 from boac.lib import analytics
-from boac.lib.berkeley import current_term_id, future_term_id, term_name_for_sis_id
+from boac.lib.berkeley import dept_codes_where_advising, term_name_for_sis_id
 from boac.lib.util import get_benchmarker
+from boac.merged.sis_terms import current_term_id, future_term_id
 from boac.models.manually_added_advisee import ManuallyAddedAdvisee
 from flask import current_app as app
 from flask_login import current_user
@@ -40,15 +41,16 @@ from flask_login import current_user
 """Provide merged student data from external sources."""
 
 
-def get_api_json(sids):
+def get_distilled_student_profiles(sids):
     if not sids:
         return []
 
     def distill_profile(profile):
         distilled = {
-            key: profile[key] for key in
+            key: profile.get(key) for key in
             [
                 'firstName',
+                'fullProfilePending',
                 'gender',
                 'lastName',
                 'name',
@@ -58,12 +60,18 @@ def get_api_json(sids):
                 'underrepresented',
             ]
         }
+        distilled['academicCareerStatus'] = profile['sisProfile'].get('academicCareerStatus')
         if profile.get('athleticsProfile'):
             distilled['athleticsProfile'] = profile['athleticsProfile']
         if profile.get('coeProfile'):
             distilled['coeProfile'] = profile['coeProfile']
         return distilled
-    return [distill_profile(profile) for profile in get_full_student_profiles(sids)]
+    profiles = get_full_student_profiles(sids)
+    remaining_sids = list(set(sids) - set([p.get('sid') for p in profiles]))
+    if remaining_sids:
+        historical_profiles = get_historical_student_profiles(remaining_sids)
+        profiles += historical_profiles
+    return [distill_profile(profile) for profile in profiles]
 
 
 def get_full_student_profiles(sids):
@@ -214,21 +222,7 @@ def get_summary_student_profiles(sids, include_historical=False, term_id=None):
     remaining_sids = list(set(sids) - set([p.get('sid') for p in profiles]))
     if len(remaining_sids) and include_historical:
         benchmark('begin historical profile supplement')
-        historical_profile_rows = data_loch.get_historical_student_profiles_for_sids(remaining_sids)
-
-        def _historicize_profile(row):
-            return {
-                **json.loads(row['profile']),
-                **{
-                    'fullProfilePending': True,
-                },
-            }
-        historical_profiles = [_historicize_profile(row) for row in historical_profile_rows]
-        # We don't expect photo information to show for historical profiles, but we still need a placeholder element
-        # in the feed so the front end can show the proper fallback.
-        _merge_photo_urls(historical_profiles)
-        for historical_profile in historical_profiles:
-            ManuallyAddedAdvisee.find_or_create(historical_profile['sid'])
+        historical_profiles = get_historical_student_profiles(remaining_sids)
         profiles += historical_profiles
         historical_enrollments_for_term = data_loch.get_historical_enrollments_for_term(term_id, remaining_sids)
         for row in historical_enrollments_for_term:
@@ -255,6 +249,7 @@ def summarize_profile(profile, enrollments=None, term_gpas=None):
         profile['expectedGraduationTerm'] = sis_profile.get('expectedGraduationTerm')
         profile['level'] = _get_sis_level_description(sis_profile)
         profile['majors'] = _get_active_plan_descriptions(sis_profile)
+        profile['matriculation'] = sis_profile.get('matriculation')
         profile['transfer'] = sis_profile.get('transfer')
         if sis_profile.get('withdrawalCancel'):
             profile['withdrawalCancel'] = sis_profile['withdrawalCancel']
@@ -270,8 +265,19 @@ def summarize_profile(profile, enrollments=None, term_gpas=None):
             profile['term'] = term
             if term['termId'] == current_term_id() and len(term['enrollments']) > 0:
                 profile['hasCurrentTermEnrollments'] = True
-        if term_gpas:
-            profile['termGpa'] = term_gpas.get(profile['sid'])
+    if term_gpas:
+        profile['termGpa'] = term_gpas.get(profile['sid'])
+
+
+def get_historical_student_profiles(sids):
+    historical_profile_rows = data_loch.get_historical_student_profiles_for_sids(sids)
+    historical_profiles = [_historicize_profile(row) for row in historical_profile_rows]
+    # We don't expect photo information to show for historical profiles, but we still need a placeholder element
+    # in the feed so the front end can show the proper fallback.
+    _merge_photo_urls(historical_profiles)
+    for historical_profile in historical_profiles:
+        ManuallyAddedAdvisee.find_or_create(historical_profile['sid'])
+    return historical_profiles
 
 
 def get_student_and_terms_by_sid(sid):
@@ -309,6 +315,7 @@ def query_students(
     coe_prep_statuses=None,
     coe_probation=None,
     coe_underrepresented=None,
+    entering_terms=None,
     ethnicities=None,
     expected_grad_terms=None,
     genders=None,
@@ -319,6 +326,7 @@ def query_students(
     is_active_asc=None,
     is_active_coe=None,
     last_name_ranges=None,
+    last_term_gpa_ranges=None,
     levels=None,
     limit=50,
     majors=None,
@@ -330,6 +338,7 @@ def query_students(
     transfer=None,
     underrepresented=None,
     unit_ranges=None,
+    visa_types=None,
 ):
 
     criteria = {
@@ -347,6 +356,7 @@ def query_students(
         'is_active_asc': is_active_asc,
         'is_active_coe': is_active_coe,
         'underrepresented': underrepresented,
+        'visa_types': visa_types,
     }
 
     # Cohorts pull from all students in BOA unless they include a department-specific criterion.
@@ -360,6 +370,8 @@ def query_students(
         coe_prep_statuses=coe_prep_statuses,
         coe_probation=coe_probation,
         coe_underrepresented=coe_underrepresented,
+        current_term_id=current_term_id(),
+        entering_terms=entering_terms,
         ethnicities=ethnicities,
         expected_grad_terms=expected_grad_terms,
         genders=genders,
@@ -369,6 +381,7 @@ def query_students(
         is_active_asc=is_active_asc,
         is_active_coe=is_active_coe,
         last_name_ranges=last_name_ranges,
+        last_term_gpa_ranges=last_term_gpa_ranges,
         levels=levels,
         majors=majors,
         midpoint_deficient_grade=midpoint_deficient_grade,
@@ -377,6 +390,7 @@ def query_students(
         transfer=transfer,
         underrepresented=underrepresented,
         unit_ranges=unit_ranges,
+        visa_types=visa_types,
     )
     if not query_tables:
         return {
@@ -395,6 +409,7 @@ def query_students(
     }
     if not sids_only:
         o, o_secondary, o_tertiary, supplemental_query_tables = data_loch.get_students_ordering(
+            current_term_id=current_term_id(),
             order_by=order_by,
             group_codes=group_codes,
             majors=majors,
@@ -402,8 +417,10 @@ def query_students(
         )
         if supplemental_query_tables:
             query_tables += supplemental_query_tables
-        # Sorting by team is the one case where null results should go below not-null results.
-        o_null_order = 'NULLS LAST' if 'group_name' in o else 'NULLS FIRST'
+        if 'group_name' in o or 'entering_term' in o or 'term_gpa' in o:
+            o_null_order = 'NULLS LAST'
+        else:
+            o_null_order = 'NULLS FIRST'
         sql = f"""SELECT
             sas.sid, MIN({o}), MIN({o_secondary}), MIN({o_tertiary})
             {query_tables}
@@ -421,7 +438,7 @@ def query_students(
         if include_profiles:
             summary['students'] = get_summary_student_profiles([row['sid'] for row in students_result])
         else:
-            summary['students'] = get_api_json([row['sid'] for row in students_result])
+            summary['students'] = get_distilled_student_profiles([row['sid'] for row in students_result])
     return summary
 
 
@@ -440,7 +457,10 @@ def search_for_students(
             'students': [],
             'totalStudentCount': 0,
         }
-    o, o_secondary, o_tertiary, supplemental_query_tables = data_loch.get_students_ordering(order_by=order_by)
+    o, o_secondary, o_tertiary, supplemental_query_tables = data_loch.get_students_ordering(
+        current_term_id=current_term_id(),
+        order_by=order_by,
+    )
     if supplemental_query_tables:
         query_tables += supplemental_query_tables
     benchmark('begin SID query')
@@ -506,8 +526,8 @@ def get_student_query_scope(user=None):
         return []
     elif user.is_admin:
         return ['ADMIN']
-    elif hasattr(user, 'dept_codes'):
-        return user.dept_codes
+    elif hasattr(user, 'departments'):
+        return dept_codes_where_advising(user)
     else:
         return [m.university_dept.dept_code for m in user.department_memberships]
 
@@ -566,6 +586,15 @@ def _get_sis_level_description(profile):
 
 def _get_active_plan_descriptions(profile):
     return sorted(plan.get('description') for plan in profile.get('plans', []) if plan.get('status') == 'Active')
+
+
+def _historicize_profile(row):
+    return {
+        **json.loads(row['profile']),
+        **{
+            'fullProfilePending': True,
+        },
+    }
 
 
 def _merge_photo_urls(profiles):
@@ -666,11 +695,30 @@ def _merge_enrollment_terms(profile, enrollment_results):
         if term['termId'] == current_term_id():
             profile['hasCurrentTermEnrollments'] = len(term['enrollments']) > 0
         else:
-            # Omit dropped sections for past terms.
+            # Omit dropped sections for non-current terms.
             term.pop('droppedSections', None)
+
             # Filter out the now-empty term if all classes were dropped.
-            if not term.get('enrollments'):
+            enrollments = term.get('enrollments')
+            if not enrollments:
                 continue
+
+            # Omit zombie waitlisted enrollments for past terms.
+            # TODO Even for current terms, it may be a mistake when SIS data sources show both active and waitlisted
+            #  section enrollments for a single class, but that needs confirmation.
+            if enrollments and term['termId'] < current_term_id():
+                for course in enrollments:
+                    sections = course['sections']
+                    if sections:
+                        fixed_sections = []
+                        for enrollment in sections:
+                            if enrollment.get('enrollmentStatus') != 'W':
+                                fixed_sections.append(enrollment)
+                        if not fixed_sections:
+                            app.logger.warn(f'SIS provided only waitlisted enrollments in a past term: {term}')
+                        else:
+                            course['sections'] = fixed_sections
+
         if not current_user.can_access_canvas_data:
             _suppress_canvas_sites(term)
         filtered_enrollment_terms.append(term)

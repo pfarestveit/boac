@@ -131,6 +131,7 @@ export function $_cohortEditSession_applyFilters({ commit, state }, orderBy: str
     if (!_.get(state.filters, 'length')) {
       return resolve();
     }
+    store.dispatch('context/alertScreenReader', 'Getting the students');
     commit('setEditMode', 'apply');
     let offset =
       (state.pagination.currentPage - 1) * state.pagination.itemsPerPage;
@@ -144,6 +145,7 @@ export function $_cohortEditSession_applyFilters({ commit, state }, orderBy: str
         students: data.students,
         totalStudentCount: data.totalStudentCount
       });
+      store.dispatch('context/alertScreenReader', 'Students are ready');
       commit('stashOriginalFilters');
       commit('setEditMode', null);
       resolve();
@@ -158,7 +160,7 @@ const actions = {
       commit('isCompactView', !!id);
       commit('setCurrentPage', 0);
       commit('setModifiedSinceLastSearch', null);
-      store.dispatch('user/setUserPreference', {
+      store.commit('currentUserExtras/setUserPreference', {
         key: 'sortBy',
         value: 'last_name'
       });
@@ -188,7 +190,7 @@ const actions = {
     });
   },
   onPageNumberChange: ({ commit, state }) => {
-    const preferences = store.getters['user/preferences'];
+    const preferences = store.getters['currentUserExtras/preferences'];
     return $_cohortEditSession_applyFilters({ commit, state }, preferences.sortBy);
   },
   applyFilters: ({ commit, state }, orderBy: string) => {
@@ -212,9 +214,9 @@ const actions = {
       );
     });
   },
-  downloadCsvPerFilters: ({ state }) => {
+  downloadCsvPerFilters: ({ state }, csvColumnsSelected: any) => {
     return new Promise(resolve => {
-      downloadCsv(state.cohortName, state.filters).then(resolve);
+      downloadCsv(state.cohortName, state.filters, csvColumnsSelected).then(resolve);
     });
   },
   loadCohort: ({commit}, {id, orderBy} ) => {

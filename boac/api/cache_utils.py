@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -29,14 +29,14 @@ from threading import Thread
 
 from boac import std_commit
 from boac.externals import data_loch
-from boac.lib import berkeley
+from boac.merged.sis_terms import all_term_ids, current_term_id
 from boac.models.alert import Alert
 from boac.models.curated_group import CuratedGroupStudent
 from boac.models.job_progress import JobProgress
 from flask import current_app as app
 
 
-def refresh_request_handler(term_id, load_only=False):
+def refresh_request_handler(term_id):
     """Handle a start refresh admin request by returning an error status or starting the job on a background thread."""
     job_state = JobProgress().get()
 
@@ -44,9 +44,7 @@ def refresh_request_handler(term_id, load_only=False):
         app.logger.error(f'Previous refresh job did not finish normally: {job_state}')
         JobProgress().delete()
 
-    job_type = 'Load' if load_only else 'Refresh'
     JobProgress().start({
-        'job_type': job_type,
         'term_id': term_id,
     })
     app.logger.warn('About to start background thread')
@@ -56,7 +54,6 @@ def refresh_request_handler(term_id, load_only=False):
         kwargs={
             'app_arg': app._get_current_object(),
             'term_id': term_id,
-            'job_type': job_type,
         },
     )
     thread.start()
@@ -72,16 +69,13 @@ def continue_request_handler():
 
     job_state = JobProgress().get()
     if job_state and job_state['start'] and not job_state['end']:
-        job_type = job_state['job_type']
         term_id = job_state['term_id']
-        JobProgress().update(f'Continuing {job_type} for term {term_id}')
         thread = Thread(
             target=background_thread_refresh,
             daemon=True,
             kwargs={
                 'app_arg': app._get_current_object(),
                 'term_id': term_id,
-                'job_type': job_type,
                 'continuation': True,
             },
         )
@@ -96,13 +90,11 @@ def continue_request_handler():
         }
 
 
-def background_thread_refresh(app_arg, term_id, job_type, continuation=False):
+def background_thread_refresh(app_arg, term_id):
     with app_arg.app_context():
         try:
-            if job_type == 'Refresh':
-                refresh_term(term_id, continuation)
-            else:
-                load_term(term_id)
+            refresh_current_term_index()
+            load_term(term_id)
             JobProgress().end()
         except Exception as e:
             app.logger.exception(e)
@@ -111,14 +103,10 @@ def background_thread_refresh(app_arg, term_id, job_type, continuation=False):
             raise e
 
 
-def refresh_term(term_id=berkeley.current_term_id(), continuation=False):
-    load_term(term_id)
-
-
 def load_all_terms():
     job_progress = JobProgress().get()
     terms_done = job_progress.get('terms_done', [])
-    all_terms = berkeley.all_term_ids()
+    all_terms = all_term_ids()
     while terms_done != all_terms:
         if len(terms_done) == len(all_terms):
             app.logger.error(f'Unexpected terms_done value; stopping load: {terms_done}')
@@ -129,7 +117,7 @@ def load_all_terms():
         JobProgress().update(f'Term {term_id} loaded', properties={'terms_done': terms_done})
 
 
-def load_term(term_id=berkeley.current_term_id()):
+def load_term(term_id=current_term_id(use_cache=False)):
     if term_id == 'all':
         load_all_terms()
         return
@@ -137,7 +125,7 @@ def load_term(term_id=berkeley.current_term_id()):
     JobProgress().update(f'About to refresh alerts for term {term_id}')
     refresh_alerts(term_id)
 
-    if term_id == berkeley.current_term_id():
+    if term_id == current_term_id():
         JobProgress().update(f'About to refresh department memberships')
         refresh_department_memberships()
         JobProgress().update(f'About to refresh CalNet attributes for active users')
@@ -163,8 +151,17 @@ def refresh_calnet_attributes():
     app.logger.info(f'Cached {len(new_attrs)} CalNet records for {len(active_uids)} active users')
 
 
+def refresh_current_term_index():
+    from boac.merged import sis_terms
+    from boac.models import json_cache
+    json_cache.clear('current_term_index')
+    sis_terms.get_current_term_index()
+    app.logger.info('Cached current and future SIS terms')
+
+
 def refresh_department_memberships():
     from boac.models.authorized_user import AuthorizedUser
+    from boac.models.drop_in_advisor import DropInAdvisor
     from boac.models.university_dept import UniversityDept
     from boac.models.university_dept_member import UniversityDeptMember
     depts = UniversityDept.query.all()
@@ -182,7 +179,14 @@ def refresh_department_memberships():
                 can_access_canvas_data=membership['can_access_canvas_data'],
             )
             if user:
-                UniversityDeptMember.create_or_update_membership(dept, user, is_advisor=True, is_director=False)
+                UniversityDeptMember.create_or_update_membership(
+                    university_dept_id=dept.id,
+                    authorized_user_id=user.id,
+                    is_advisor=True,
+                    is_director=False,
+                    is_scheduler=False,
+                )
+    DropInAdvisor.delete_orphans()
 
 
 def load_filtered_cohort_counts():

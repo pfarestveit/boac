@@ -57,8 +57,8 @@
       v-if="showAreYouSureModal"
       :function-cancel="cancelTheCancel"
       :function-confirm="cancelConfirmed"
-      modal-header="Discard unsaved changes?"
-      :show-modal="showAreYouSureModal" />
+      :show-modal="showAreYouSureModal"
+      modal-header="Discard unsaved changes?" />
     <div v-if="size(model.attachments)">
       <div class="pill-list-header mt-3 mb-1">{{ size(model.attachments) === 1 ? 'Attachment' : 'Attachments' }}</div>
       <ul class="pill-list pl-0">
@@ -67,7 +67,8 @@
           :id="`note-${model.id}-attachment-${index}`"
           :key="attachment.id"
           class="mt-2"
-          @click.stop>
+          @click.stop
+          @keyup.stop>
           <span class="pill pill-attachment text-nowrap">
             <font-awesome icon="paperclip" class="pr-1 pl-1" />
             {{ attachment.displayName }}
@@ -80,7 +81,8 @@
       :show.sync="showErrorPopover"
       placement="top"
       target="edit-note-subject"
-      title="">
+      aria-live="polite"
+      role="alert">
       <span id="popover-error-message" class="has-error">{{ error }}</span>
     </b-popover>
   </form>

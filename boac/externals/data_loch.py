@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -26,7 +26,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from datetime import datetime
 import re
 
-from boac.lib.berkeley import current_term_id, sis_term_id_for_name
+from boac.lib.berkeley import previous_term_id, sis_term_id_for_name
 from boac.lib.mockingdata import fixture
 from boac.lib.util import join_if_present, tolerant_remove
 from flask import current_app as app
@@ -93,6 +93,10 @@ def sis_schema():
     return app.config['DATA_LOCH_SIS_SCHEMA']
 
 
+def sis_terms_schema():
+    return app.config['DATA_LOCH_SIS_TERMS_SCHEMA']
+
+
 def student_schema():
     return app.config['DATA_LOCH_STUDENT_SCHEMA']
 
@@ -101,8 +105,13 @@ def earliest_term_id():
     return sis_term_id_for_name(app.config['LEGACY_EARLIEST_TERM'])
 
 
+def get_current_term_index():
+    rows = safe_execute_rds(f'SELECT * FROM {sis_terms_schema()}.current_term_index')
+    return None if not rows or (len(rows) == 0) else rows[0]
+
+
 def get_undergraduate_term(term_id):
-    sql = f"""SELECT * FROM {sis_schema()}.term_definitions
+    sql = f"""SELECT * FROM {sis_terms_schema()}.term_definitions
               WHERE term_id = '{term_id}'
            """
     return safe_execute_rds(sql)
@@ -378,19 +387,34 @@ def match_advising_note_authors_by_name(prefixes, limit=None):
 
 
 def match_students_by_name_or_sid(prefixes, limit=None):
-    prefix_conditions = []
+    current_student_conditions = []
+    non_current_student_conditions = []
     prefix_kwargs = {}
     for idx, prefix in enumerate(prefixes):
-        prefix_conditions.append(
+        current_student_conditions.append(
             f"""JOIN {student_schema()}.student_names sn{idx}
             ON (sn{idx}.name LIKE :prefix_{idx} OR sn{idx}.sid LIKE :prefix_{idx})
             AND sn{idx}.sid = sas.sid""",
         )
+        if not prefix.isalpha():
+            non_current_student_conditions.append(
+                f"""JOIN {student_schema()}.student_name_index_hist_enr sn{idx}
+                ON sn{idx}.sid LIKE :prefix_{idx}
+                AND sn{idx}.sid = s.sid""",
+            )
         prefix_kwargs[f'prefix_{idx}'] = f'{prefix}%'
-    sql = f"""SELECT DISTINCT sas.first_name, sas.last_name, sas.sid, sas.uid
+
+    inner_sql = f"""SELECT sas.first_name, sas.last_name, sas.sid, sas.uid
         FROM {student_schema()}.student_academic_status sas
-        {' '.join(prefix_conditions)}
-        ORDER BY sas.first_name, sas.last_name"""
+        {' '.join(current_student_conditions)}"""
+    if len(non_current_student_conditions) > 0:
+        inner_sql += f"""\nUNION
+            SELECT s.first_name, s.last_name, s.sid, s.uid
+            FROM {student_schema()}.student_names_hist_enr s
+            {' '.join(non_current_student_conditions)}"""
+    sql = f"""SELECT DISTINCT q.*
+        FROM ({inner_sql}) q
+        ORDER BY q.first_name, q.last_name"""
     if limit:
         sql += f' LIMIT {limit}'
     return safe_execute_rds(sql, **prefix_kwargs)
@@ -600,6 +624,13 @@ def get_distinct_ethnicities():
     return safe_execute_rds(f'SELECT DISTINCT ethnicity FROM {student_schema()}.ethnicities ORDER BY ethnicity')
 
 
+def get_entering_terms():
+    sql = f"""SELECT DISTINCT entering_term FROM {student_schema()}.student_academic_status
+        WHERE entering_term > '0'
+        ORDER BY entering_term DESC"""
+    return safe_execute_rds(sql)
+
+
 def get_expected_graduation_terms():
     sql = f"""SELECT DISTINCT expected_grad_term FROM {student_schema()}.student_academic_status
         WHERE expected_grad_term > '0'
@@ -615,6 +646,12 @@ def get_majors():
     return safe_execute_rds(sql)
 
 
+def get_other_visa_types():
+    sql = f"""SELECT DISTINCT visa_type FROM {student_schema()}.visas
+        WHERE visa_status = 'G' and visa_type NOT IN ('F1','J1','PR')"""
+    return safe_execute_rds(sql)
+
+
 def get_students_query(     # noqa
     advisor_plan_mappings=None,
     coe_advisor_ldap_uids=None,
@@ -623,7 +660,9 @@ def get_students_query(     # noqa
     coe_prep_statuses=None,
     coe_probation=None,
     coe_underrepresented=None,
+    current_term_id=None,
     ethnicities=None,
+    entering_terms=None,
     expected_grad_terms=None,
     genders=None,
     gpa_ranges=None,
@@ -632,6 +671,7 @@ def get_students_query(     # noqa
     is_active_asc=None,
     is_active_coe=None,
     last_name_ranges=None,
+    last_term_gpa_ranges=None,
     levels=None,
     majors=None,
     midpoint_deficient_grade=None,
@@ -641,6 +681,7 @@ def get_students_query(     # noqa
     transfer=None,
     underrepresented=None,
     unit_ranges=None,
+    visa_types=None,
 ):
 
     # If no specific scope is required by criteria, default to the admin view.
@@ -660,7 +701,17 @@ def get_students_query(     # noqa
         if len(words) == 1 and re.match(r'^\d+$', words[0]):
             query_filter += ' AND (sas.sid LIKE :sid_phrase)'
             query_bindings.update({'sid_phrase': f'{words[0]}%'})
-        # Other strings indicate a name search.
+        # If a single word, search on both name and email.
+        elif len(words) == 1:
+            name_string = ''.join(re.split('\W', words[0]))
+            email_string = search_phrase.lower()
+            query_tables += f"""
+                LEFT JOIN {student_schema()}.student_names n
+                        ON n.name LIKE :name_string
+                        AND n.sid = sas.sid"""
+            query_filter += ' AND (sas.email_address LIKE :email_string OR n.name IS NOT NULL)'
+            query_bindings.update({'email_string': f'{email_string}%', 'name_string': f'{name_string}%'})
+        # If multiple words, search name only.
         else:
             for i, word in enumerate(words):
                 query_tables += f"""
@@ -673,6 +724,8 @@ def get_students_query(     # noqa
         query_tables += f""" JOIN {student_schema()}.ethnicities e ON e.sid = sas.sid"""
     if genders or underrepresented is not None:
         query_tables += f""" JOIN {student_schema()}.demographics d ON d.sid = sas.sid"""
+    if visa_types:
+        query_tables += f""" JOIN {student_schema()}.visas v ON v.sid = sas.sid"""
     if sids:
         query_filter += f' AND sas.sid = ANY(:sids)'
         query_bindings.update({'sids': sids})
@@ -680,11 +733,20 @@ def get_students_query(     # noqa
     # Generic SIS criteria
     if gpa_ranges:
         sql_ready_gpa_ranges = [f"numrange({gpa_range['min']}, {gpa_range['max']}, '[]')" for gpa_range in gpa_ranges]
-        query_filter += _numranges_to_sql('sas.gpa', sql_ready_gpa_ranges)
-    query_filter += _numranges_to_sql('sas.units', unit_ranges) if unit_ranges else ''
+        query_filter += _number_ranges_to_sql('sas.gpa', sql_ready_gpa_ranges)
+    if last_term_gpa_ranges:
+        sql_ready_term_gpa_ranges = [f"numrange({gpa_range['min']}, {gpa_range['max']}, '[]')" for gpa_range in last_term_gpa_ranges]
+        query_filter += _number_ranges_to_sql('previous_term.term_gpa', sql_ready_term_gpa_ranges)
+        query_tables += f"""
+            JOIN {student_schema()}.student_enrollment_terms previous_term
+            ON previous_term.sid = sas.sid AND previous_term.term_id = :previous_term_id"""
+        query_bindings.update({'previous_term_id': previous_term_id(current_term_id)})
+    query_filter += _number_ranges_to_sql('sas.units', unit_ranges) if unit_ranges else ''
     if last_name_ranges:
-        for last_name_range in last_name_ranges:
-            query_filter += _query_filter_last_name_range(last_name_range['min'], last_name_range['max'])
+        query_filter += _last_name_ranges_to_sql(last_name_ranges)
+    if entering_terms:
+        query_filter += ' AND sas.entering_term = ANY(:entering_terms)'
+        query_bindings.update({'entering_terms': entering_terms})
     if ethnicities:
         query_filter += ' AND e.ethnicity = ANY(:ethnicities)'
         query_bindings.update({'ethnicities': ethnicities})
@@ -720,7 +782,7 @@ def get_students_query(     # noqa
                              ON ser.sid = sas.sid
                              AND ser.term_id = :term_id
                              AND ser.midpoint_deficient_grade = TRUE"""
-        query_bindings.update({'term_id': current_term_id()})
+        query_bindings.update({'term_id': current_term_id})
     if transfer is True:
         query_filter += ' AND sas.transfer = TRUE'
     if advisor_plan_mappings:
@@ -738,6 +800,11 @@ def get_students_query(     # noqa
                 )
         query_tables += f""" JOIN {advisor_schema()}.advisor_students advs ON advs.student_sid = sas.sid"""
         query_tables += ' AND (' + ' OR '.join(advisor_plan_filters) + ')'
+    if visa_types:
+        query_filter += ' AND v.visa_status = \'G\' AND v.visa_type = ANY(:visa_types)'
+        visa_types_flattened = []
+        [visa_types_flattened.extend(t.split(',')) for t in visa_types]
+        query_bindings.update({'visa_types': visa_types_flattened})
 
     # ASC criteria
     query_filter += f' AND s.active IS {is_active_asc}' if is_active_asc is not None else ''
@@ -770,7 +837,7 @@ def get_students_query(     # noqa
     return query_tables, query_filter, query_bindings
 
 
-def get_students_ordering(order_by=None, group_codes=None, majors=None, scope=None):
+def get_students_ordering(current_term_id, order_by=None, group_codes=None, majors=None, scope=None):
     supplemental_query_tables = None
     # Case-insensitive sort of first_name and last_name.
     by_first_name = naturalize_order('sas.first_name')
@@ -780,7 +847,7 @@ def get_students_ordering(order_by=None, group_codes=None, majors=None, scope=No
         o = 's.intensive'
     elif order_by in ['first_name', 'last_name']:
         o = naturalize_order(f'sas.{order_by}')
-    elif order_by in ['gpa', 'units', 'level']:
+    elif order_by in ['entering_term', 'gpa', 'units', 'level']:
         o = f'sas.{order_by}'
     elif order_by == 'group_name':
         # Sorting by athletic team introduces a couple of onerous special cases where we
@@ -807,6 +874,17 @@ def get_students_ordering(order_by=None, group_codes=None, majors=None, scope=No
         else:
             supplemental_query_tables = f' LEFT JOIN {student_schema()}.student_majors m ON m.sid = sas.sid'
             o = naturalize_order('m.major')
+    elif order_by == 'enrolled_units':
+        supplemental_query_tables = f"""
+            LEFT JOIN {student_schema()}.student_enrollment_terms set
+            ON set.sid = sas.sid AND set.term_id = '{current_term_id}'"""
+        o = 'set.enrolled_units'
+    elif order_by and order_by.startswith('term_gpa_'):
+        gpa_term_id = order_by.replace('term_gpa_', '')
+        supplemental_query_tables = f"""
+            LEFT JOIN {student_schema()}.student_enrollment_terms set
+            ON set.sid = sas.sid AND set.term_id = '{gpa_term_id}'"""
+        o = 'set.term_gpa'
     o_secondary = by_first_name if order_by == 'last_name' else by_last_name
     diff = {by_first_name, by_last_name} - {o, o_secondary}
     o_tertiary = diff.pop() if diff else 'sas.sid'
@@ -828,7 +906,7 @@ def naturalize_order(column_name):
     return f"UPPER(regexp_replace({column_name}, '\\\W', ''))"
 
 
-def numrange_to_sql(column, numrange):
+def _number_range_to_sql(column, numrange):
     # TODO BOAC currently expresses range criteria using Postgres-specific numrange syntax, which must be
     # translated into vanilla SQL for use against Redshift. If we end up keeping these criteria in Redshift
     # long-term, we should look into migrating stored ranges.
@@ -857,13 +935,35 @@ def numrange_to_sql(column, numrange):
         return sql_clause
 
 
-def _numranges_to_sql(column, numranges):
-    sql_ranges = [numrange_to_sql(column, numrange) for numrange in numranges]
+def _number_ranges_to_sql(column, number_ranges):
+    sql_ranges = [_number_range_to_sql(column, number_range) for number_range in number_ranges]
     sql_ranges = [r for r in sql_ranges if r]
     if len(sql_ranges):
         return ' AND (' + ' OR '.join(sql_ranges) + ')'
     else:
         return ''
+
+
+def _last_name_ranges_to_sql(last_name_ranges):
+    query_filter = ''
+    count = len(last_name_ranges)
+    if count:
+        query_filter += ' AND ('
+        for idx, last_name_range in enumerate(last_name_ranges):
+            range_min = last_name_range['min']
+            range_max = last_name_range['max']
+            if range_max == range_min:
+                query_filter += f'(sas.last_name ILIKE \'{range_min}%\')'
+            else:
+                query_filter += f'(UPPER(sas.last_name) >= \'{range_min}\''
+                if range_max < 'Z':
+                    # If 'stop' were 'Z' then upper bound would not be necessary
+                    query_filter += f' AND UPPER(sas.last_name) < \'{chr(ord(range_max) + 1)}\''
+                query_filter += ')'
+            if idx < count - 1:
+                query_filter += ' OR '
+        query_filter += ')'
+    return query_filter
 
 
 def _student_query_tables_for_scope(scope):
@@ -904,9 +1004,9 @@ def _student_query_tables_for_scope(scope):
             columns_for_codes = {
                 'COENG': [
                     'advisor_ldap_uid',
-                    'coe_genders',
-                    'coe_ethnicity',
-                    'coe_underrepresented',
+                    'gender',
+                    'ethnicity',
+                    'minority',
                     'did_prep',
                     'did_tprep',
                     'prep_eligible',
@@ -930,15 +1030,3 @@ def _student_query_tables_for_scope(scope):
             table_sql = f"""FROM ({intersection_sql}) s
                 JOIN {student_schema()}.student_academic_status sas ON sas.sid = s.sid"""
     return table_sql
-
-
-def _query_filter_last_name_range(range_min, range_max):
-    query_filter = ''
-    if range_max == range_min:
-        query_filter += f' AND sas.last_name ILIKE \'{range_min}%\''
-    else:
-        query_filter += f' AND UPPER(sas.last_name) >= \'{range_min}\''
-        if range_max < 'Z':
-            # If 'stop' were 'Z' then upper bound would not be necessary
-            query_filter += f' AND UPPER(sas.last_name) < \'{chr(ord(range_max) + 1)}\''
-    return query_filter

@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -78,8 +78,7 @@ class TestJobProgress:
 
     def test_start_with_stored_properties(self):
         assert JobProgress().get() is None
-        JobProgress().start({'job_type': 'refresh', 'term_id': '2178'})
+        JobProgress().start({'term_id': '2178'})
         progress = JobProgress().get()
         assert progress['start'].startswith(str(date.today()))
-        assert progress['job_type'] == 'refresh'
         assert progress['term_id'] == '2178'

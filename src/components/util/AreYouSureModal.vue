@@ -2,10 +2,10 @@
   <b-modal
     id="are-you-sure-modal"
     v-model="showAreYouSureModal"
+    :no-close-on-backdrop="true"
     body-class="pl-0 pr-0"
     hide-footer
     hide-header
-    :no-close-on-backdrop="true"
     @cancel.prevent="functionCancel"
     @hide.prevent="functionCancel"
     @shown="putFocusNextTick('are-you-sure-confirm')">
@@ -20,9 +20,9 @@
         <form @submit.prevent="functionConfirm">
           <b-btn
             id="are-you-sure-confirm"
+            :aria-label="modalHeader"
             class="btn-primary-color-override"
             variant="primary"
-            :aria-label="modalHeader"
             @click.prevent="functionConfirm">
             {{ buttonLabelConfirm }}
           </b-btn>

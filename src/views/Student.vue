@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Spinner />
+    <Spinner alert-prefix="Student profile" />
     <div v-if="!loading">
       <div class="light-blue-background border-bottom">
         <StudentProfileHeader :student="student" />
@@ -22,8 +22,8 @@
           v-if="showAreYouSureModal"
           :function-cancel="cancelTheCancel"
           :function-confirm="cancelConfirmed"
-          modal-header="Discard unsaved note?"
-          :show-modal="showAreYouSureModal" />
+          :show-modal="showAreYouSureModal"
+          modal-header="Discard unsaved note?" />
       </div>
       <div>
         <StudentClasses :student="student" />
@@ -77,16 +77,16 @@ export default {
   },
   created() {
     let uid = this.get(this.$route, 'params.uid');
-    if (this.user.inDemoMode) {
+    if (this.$currentUser.inDemoMode) {
       // In demo-mode we do not want to expose SID in browser location bar.
       uid = window.atob(uid);
     }
     getStudentByUid(uid).then(student => {
       if (student) {
-        this.setPageTitle(this.user.inDemoMode ? 'Student' : student.name);
+        this.setPageTitle(this.$currentUser.inDemoMode ? 'Student' : student.name);
         this.assign(this.student, student);
         this.each(this.student.enrollmentTerms, this.parseEnrollmentTerm);
-        this.loaded();
+        this.loaded(this.student);
       } else {
         this.$router.push({ path: '/404' });
       }
@@ -142,7 +142,7 @@ export default {
       }
     },
     parseCourse(course) {
-      const canAccessCanvasData = this.user.canAccessCanvasData;
+      const canAccessCanvasData = this.$currentUser.canAccessCanvasData;
       const fullProfileAvailable = !this.student.fullProfilePending;
       this.setWaitlistedStatus(course);
       this.each(course.sections, function(section) {

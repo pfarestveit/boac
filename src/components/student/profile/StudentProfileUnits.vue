@@ -13,9 +13,9 @@
         <div>
           <StudentUnitsChart
             v-if="cumulativeUnits || currentEnrolledUnits"
-            class="student-units-chart"
             :current-enrolled-units="currentEnrolledUnits"
-            :cumulative-units="cumulativeUnits" />
+            :cumulative-units="cumulativeUnits"
+            class="student-units-chart" />
           <div
             v-if="!cumulativeUnits && !currentEnrolledUnits"
             class="section-label">
@@ -56,7 +56,7 @@ export default {
     const currentEnrollmentTerm = this.find(
       this.get(this.student, 'enrollmentTerms'),
       {
-        termId: this.toString(this.currentEnrollmentTermId)
+        termId: this.toString(this.$config.currentEnrollmentTermId)
       }
     );
     if (currentEnrollmentTerm) {

@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,20 +27,22 @@ from datetime import timedelta
 from itertools import islice
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError
-from boac.api.util import add_alert_counts, is_unauthorized_search
+from boac.api.util import add_alert_counts, advisor_required, is_unauthorized_search
 from boac.externals.data_loch import get_enrolled_primary_sections, get_enrolled_primary_sections_for_parsed_code
 from boac.lib import util
-from boac.lib.berkeley import current_term_id
 from boac.lib.http import tolerant_jsonify
 from boac.merged.advising_note import search_advising_notes
+from boac.merged.calnet import get_uid_for_csid
+from boac.merged.sis_terms import current_term_id
 from boac.merged.student import search_for_students
 from boac.models.alert import Alert
+from boac.models.appointment import Appointment
 from flask import current_app as app, request
-from flask_login import current_user, login_required
+from flask_login import current_user
 
 
 @app.route('/api/search', methods=['POST'])
-@login_required
+@advisor_required
 def search():
     params = util.remove_none_values(request.get_json())
     order_by = util.get(params, 'orderBy', None)
@@ -48,18 +50,22 @@ def search():
         raise ForbiddenRequestError('You are unauthorized to access student data managed by other departments')
     search_phrase = util.get(params, 'searchPhrase', '').strip()
     domain = {
+        'appointments': util.get(params, 'appointments'),
         'students': util.get(params, 'students'),
         'courses': util.get(params, 'courses'),
         'notes': util.get(params, 'notes'),
     }
-    if not domain['students'] and not domain['courses'] and not domain['notes']:
+    if not domain['students'] and not domain['courses'] and not domain['notes'] and not domain['appointments']:
         raise BadRequestError('No search domain specified')
-    if not len(search_phrase) and not domain['notes']:
+    if not len(search_phrase) and not (domain['notes'] or domain['appointments']):
         raise BadRequestError('Invalid or empty search input')
     if domain['courses'] and not current_user.can_access_canvas_data:
         raise ForbiddenRequestError('Unauthorized to search courses')
 
     feed = {}
+
+    if domain['appointments']:
+        feed.update(_appointments_search(search_phrase, params))
 
     if len(search_phrase) and domain['students']:
         feed.update(_student_search(search_phrase, params, order_by))
@@ -71,6 +77,58 @@ def search():
         feed.update(_notes_search(search_phrase, params))
 
     return tolerant_jsonify(feed)
+
+
+def _appointments_search(search_phrase, params):
+    appointment_options = util.get(params, 'appointmentOptions', {})
+    advisor_uid = appointment_options.get('advisorUid')
+    advisor_csid = appointment_options.get('advisorCsid')
+    student_csid = appointment_options.get('studentCsid')
+    topic = appointment_options.get('topic')
+    limit = int(util.get(appointment_options, 'limit', 20))
+    offset = int(util.get(appointment_options, 'offset', 0))
+
+    date_from = appointment_options.get('dateFrom')
+    date_to = appointment_options.get('dateTo')
+
+    if not len(search_phrase) and not (advisor_uid or advisor_csid or student_csid or topic or date_from or date_to):
+        raise BadRequestError('Invalid or empty search input')
+
+    if advisor_csid and not advisor_uid:
+        advisor_uid = get_uid_for_csid(app, advisor_csid)
+
+    if date_from:
+        try:
+            datetime_from = util.localized_timestamp_to_utc(f'{date_from}T00:00:00')
+        except ValueError:
+            raise BadRequestError('Invalid dateFrom value')
+    else:
+        datetime_from = None
+
+    if date_to:
+        try:
+            datetime_to = util.localized_timestamp_to_utc(f'{date_to}T00:00:00') + timedelta(days=1)
+        except ValueError:
+            raise BadRequestError('Invalid dateTo value')
+    else:
+        datetime_to = None
+
+    if datetime_from and datetime_to and datetime_to <= datetime_from:
+        raise BadRequestError('dateFrom must be less than dateTo')
+
+    appointment_results = Appointment.search(
+        search_phrase=search_phrase,
+        advisor_uid=advisor_uid,
+        student_csid=student_csid,
+        topic=topic,
+        datetime_from=datetime_from,
+        datetime_to=datetime_to,
+        offset=offset,
+        limit=limit,
+    )
+    return {
+        'appointments': appointment_results,
+    }
 
 
 def _student_search(search_phrase, params, order_by):
@@ -136,16 +194,17 @@ def _course_search(search_phrase, params, order_by):
 
 def _notes_search(search_phrase, params):
     note_options = util.get(params, 'noteOptions', {})
-    author_csid = note_options.get('authorCsid')
+    author_csid = note_options.get('advisorCsid')
+    author_uid = note_options.get('advisorUid')
     student_csid = note_options.get('studentCsid')
     topic = note_options.get('topic')
-    limit = util.get(note_options, 'limit', 100)
-    offset = util.get(note_options, 'offset', 0)
+    limit = int(util.get(note_options, 'limit', 20))
+    offset = int(util.get(note_options, 'offset', 0))
 
     date_from = note_options.get('dateFrom')
     date_to = note_options.get('dateTo')
 
-    if not len(search_phrase) and not (author_csid or student_csid or topic or date_from or date_to):
+    if not len(search_phrase) and not (author_uid or author_csid or student_csid or topic or date_from or date_to):
         raise BadRequestError('Invalid or empty search input')
 
     if date_from:
@@ -170,14 +229,14 @@ def _notes_search(search_phrase, params):
     notes_results = search_advising_notes(
         search_phrase=search_phrase,
         author_csid=author_csid,
+        author_uid=author_uid,
         student_csid=student_csid,
         topic=topic,
         datetime_from=datetime_from,
         datetime_to=datetime_to,
-        offset=int(offset),
-        limit=int(limit),
+        offset=offset,
+        limit=limit,
     )
-
     return {
         'notes': notes_results,
     }

@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -210,8 +210,11 @@ def mock_advising_note(app, db):
                     },
                 ],
             )
+            db.session.add(note)
             std_commit(allow_test_environment=True)
-            return note
+    yield note
+    Note.delete(note_id=note.id)
+    std_commit(allow_test_environment=True)
 
 
 @pytest.fixture()

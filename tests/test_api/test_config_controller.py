@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -60,8 +60,7 @@ class TestConfigController:
         # In tests, certain configs are omitted or disabled (e.g., Google Analytics)
         data = response.json
         assert data['ebEnvironment'] is None
-        assert data['featureFlagAdvisorAppointments'] is False
-        assert data['googleAnalyticsId'] is False
+        assert data['googleAnalyticsId'] == 'UA-XXX-X'
         assert '@' in data['supportEmailAddress']
         assert data['maxAttachmentsPerNote'] > 0
         assert data['pingFrequency'] == 900000

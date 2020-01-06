@@ -1,12 +1,21 @@
 <script>
 import _ from 'lodash';
+import Vue from 'vue';
 
 export default {
   name: 'Berkeley',
   methods: {
+    isSupervisorOnCall: (advisor, deptCode) => {
+      return !!_.find(advisor.dropInAdvisorStatus, (status) => {
+        return status.deptCode === deptCode && status.supervisorOnCall;
+      });
+    },
+    myDeptCodes: (roles) => {
+      return _.map(_.filter(Vue.prototype.$currentUser.departments, d => _.findIndex(roles, role => d[role]) > -1), 'code');
+    },
     previousSisTermId(termId) {
-      var previousTermId = '';
-      var strTermId = termId.toString();
+      let previousTermId = '';
+      let strTermId = termId.toString();
       switch (strTermId.slice(3)) {
         case '2':
           previousTermId =

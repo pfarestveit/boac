@@ -25,14 +25,13 @@
 import Context from '@/mixins/Context';
 import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal';
 import CuratedGroupBulkAdd from '@/components/curated/CuratedGroupBulkAdd.vue';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import { createCuratedGroup } from '@/api/curated';
 
 export default {
   name: 'CreateCuratedGroup',
   components: {CreateCuratedGroupModal, CuratedGroupBulkAdd},
-  mixins: [Context, UserMetadata, Util],
+  mixins: [Context, Util],
   data: () => ({
     isSaving: false,
     showCreateModal: false,
@@ -54,11 +53,7 @@ export default {
       this.showCreateModal = false;
       createCuratedGroup(name, this.sids)
         .then(group => {
-          this.gaCuratedEvent({
-            id: group.id,
-            name: group.name,
-            action: 'Create curated group with bulk SIDs'
-          });
+          this.$ga.curatedEvent( group.id, group.name, 'Create curated group with bulk SIDs');
           this.alertScreenReader(`Curated group '${name}' created. It has ${this.sids.length} students.`);
           this.isSaving = false;
           this.$router.push(`/curated/${group.id}`);

@@ -4,32 +4,32 @@
     <b-btn
       v-if="showApplyButton"
       id="unsaved-filter-apply"
+      :disabled="!!editMode"
       class="btn-filter-draft btn-primary-color-override"
       variant="primary"
       aria-label="Search for students"
-      :disabled="!!editMode"
       @click="apply()">
       Apply
     </b-btn>
     <b-btn
       v-if="showApplyButton"
       id="unsaved-filter-reset"
+      :disabled="!!editMode"
       class="btn-filter-draft"
       aria-label="Reset filters"
-      :disabled="!!editMode"
       @click="resetToLastApply()">
       Reset
     </b-btn>
     <div v-if="showSaveButton && isPerforming !== 'search'">
       <b-btn
         id="save-button"
-        class="btn-filter-draft save-button-width mt-3"
         :class="{
           'btn-primary-color-override': isPerforming !== 'acknowledgeSave'
         }"
         :variant="saveButtonVariant"
         :aria-label="cohortId ? 'Save cohort' : 'Create cohort'"
         :disabled="!!editMode || showCreateModal || !!isPerforming"
+        class="btn-filter-draft save-button-width mt-3"
         @click="save()">
         <span v-if="isPerforming === 'acknowledgeSave'">Saved</span>
         <span v-if="isPerforming === 'save'"><font-awesome icon="spinner" spin /> Saving</span>
@@ -38,10 +38,10 @@
       </b-btn>
       <b-btn
         v-if="!isPerforming && cohortId"
-        id="unsaved-filter-reset"
+        id="reset-to-saved-cohort"
+        :disabled="!!editMode"
         class="btn-filter-draft"
         aria-label="Reset filters"
-        :disabled="!!editMode"
         @click="resetToSaved()">
         Reset
       </b-btn>
@@ -63,17 +63,17 @@
 
 <script>
 import CohortEditSession from '@/mixins/CohortEditSession';
+import Context from '@/mixins/Context';
 import CreateCohortModal from '@/components/cohort/CreateCohortModal';
-import UserMetadata from '@/mixins/UserMetadata';
+import CurrentUserExtras from '@/mixins/CurrentUserExtras';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'ApplyAndSaveButtons',
   components: { CreateCohortModal },
-  mixins: [CohortEditSession, UserMetadata, Util],
+  mixins: [CohortEditSession, Context, CurrentUserExtras, Util],
   data: () => ({
     isPerforming: undefined,
-    screenReaderAlert: undefined,
     showCreateModal: false
   }),
   computed: {
@@ -84,68 +84,54 @@ export default {
   methods: {
     apply() {
       this.$eventHub.$emit('cohort-apply-filters');
-      this.screenReaderAlert = `Searching for students`;
       this.isPerforming = 'search';
       this.applyFilters(this.preferences.sortBy).then(() => {
         this.putFocusNextTick('cohort-results-header');
-        this.gaCohortEvent({
-          id: this.cohortId,
-          name: this.cohortName || '',
-          action: 'search'
-        });
+        this.$ga.cohortEvent(this.cohortId, this.cohortName || '', 'search');
         this.isPerforming = null;
       });
     },
     cancelCreateModal() {
-      this.screenReaderAlert = `Cancel creation of new cohort`;
+      this.alertScreenReader(`Cancelled`);
       this.showCreateModal = false;
     },
     create(name) {
-      this.screenReaderAlert = `Creating new cohort with name ${name}`;
       this.showCreateModal = false;
       this.isPerforming = 'save';
       this.createCohort(name).then(() => {
-        this.savedCohortCallback(`Cohort ${name} created`);
+        this.savedCohortCallback(`Cohort "${name}" created`);
         this.setPageTitle(this.cohortName);
-        this.gaCohortEvent({
-          id: this.cohortId,
-          name, action: 'create'
-        });
+        this.$ga.cohortEvent(this.cohortId, name, 'create');
         history.pushState({}, null, `/cohort/${this.cohortId}`);
         this.isPerforming = null;
       });
     },
     resetToLastApply() {
-      this.screenReaderAlert = 'Resetting filters';
+      this.alertScreenReader('Resetting filters');
       this.resetFiltersToLastApply();
     },
     resetToSaved() {
-      this.screenReaderAlert = 'Resetting filters';
       this.isPerforming = 'search';
       this.resetFiltersToSaved(this.cohortId).then(() => {
-        this.screenReaderAlert = 'Filters reset';
+        this.alertScreenReader('Filters reset');
         this.isPerforming = null;
       });
     },
     save() {
       if (this.cohortId) {
-        this.screenReaderAlert = `Saving changes to cohort ${this.cohortName}`;
+        this.alertScreenReader(`Saving changes to cohort ${this.cohortName}`);
         this.isPerforming = 'save';
         this.saveExistingCohort().then(() => {
-          this.gaCohortEvent({
-            id: this.cohortId,
-            name: this.cohortName,
-            action: 'save'
-          });
-          this.savedCohortCallback(`Cohort ${this.cohortName} saved`);
+          this.$ga.cohortEvent(this.cohortId, this.cohortName, 'save');
+          this.savedCohortCallback(`Cohort "${this.cohortName}" saved`);
         });
       } else {
-        this.screenReaderAlert = `Opening popup to create new cohort`;
         this.showCreateModal = true;
+        this.alertScreenReader('Create cohort form is open');
       }
     },
     savedCohortCallback(updateStatus) {
-      this.screenReaderAlert = updateStatus;
+      this.alertScreenReader(updateStatus);
       this.isPerforming = 'acknowledgeSave';
       setTimeout(() => (this.isPerforming = null), 2000);
     }

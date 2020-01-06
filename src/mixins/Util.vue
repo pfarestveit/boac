@@ -20,6 +20,7 @@ export default {
   name: 'Util',
   methods: {
     assign: _.assign,
+    capitalize: _.capitalize,
     clone: _.clone,
     cloneDeep: _.cloneDeep,
     concat: _.concat,
@@ -29,14 +30,17 @@ export default {
     filterList: _.filter,
     find: _.find,
     findIndex: _.findIndex,
+    flatMap: _.flatMap,
     flatten: _.flatten,
     focusModalById: id =>
       document.getElementById(id) && document.getElementById(id).focus(),
     get: _.get,
     has: _.has,
     includes: _.includes,
+    indexOf: _.indexOf,
     inRange: _.inRange,
     isEmpty: _.isEmpty,
+    isEqual: _.isEqual,
     isNaN: _.isNaN,
     isNil: _.isNil,
     isNumber: _.isNumber,
@@ -53,8 +57,8 @@ export default {
     oxfordJoin: arr => {
       switch(arr.length) {
         case 1: return _.head(arr);
-        case 2: return `${_.head(arr)} and ${_.last(arr)}`
-        default: return _.join(_.concat(_.initial(arr), `and ${_.last(arr)}`));
+        case 2: return `${_.head(arr)} and ${_.last(arr)}`;
+        default: return _.join(_.concat(_.initial(arr), ` and ${_.last(arr)}`), ', ');
       }
     },
     partition: _.partition,
@@ -72,14 +76,19 @@ export default {
         }, 500);
       });
     },
+    reduce: _.reduce,
     remove: _.remove,
     set: _.set,
     setPageTitle: phrase => (document.title = `${phrase ? decodeHtml(phrase) : 'UC Berkeley'} | BOA`),
     size: _.size,
     slice: _.slice,
-    sortComparator: (a, b) => {
+    sortComparator: (a, b, nullFirst=true) => {
       if (_.isNil(a) || _.isNil(b)) {
-        return _.isNil(a) ? (_.isNil(b) ? 0 : -1) : 1;
+        if (nullFirst) {
+          return _.isNil(a) ? (_.isNil(b) ? 0 : -1) : 1;
+        } else {
+          return _.isNil(b) ? (_.isNil(a) ? 0 : -1) : 1;
+        }
       } else if (_.isNumber(a) && _.isNumber(b)) {
         return a < b ? -1 : a > b ? 1 : 0
       } else {
@@ -96,6 +105,7 @@ export default {
     },
     split: _.split,
     startsWith: _.startsWith,
+    stripAnchorRef: fullPath => _.split(fullPath, '#', 1)[0],
     stripHtmlAndTrim: html => {
       let text = html && html.replace(/<([^>]+)>/ig,"");
       text = text && text.replace(/&nbsp;/g, '');
@@ -107,7 +117,10 @@ export default {
     trim: _.trim,
     truncate: _.truncate,
     union: _.union,
+    unionBy: _.unionBy,
     uniq: _.uniq,
+    uniqBy: _.uniqBy,
+    upperCase: _.upperCase,
     without: _.without,
     xor: _.xor,
     xorBy: _.xorBy

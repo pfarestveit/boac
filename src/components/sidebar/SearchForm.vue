@@ -2,9 +2,9 @@
   <div>
     <form
       id="search-students-form"
+      :class="{'search-page-body': context === 'pageBody'}"
       autocomplete="off"
       class="search-form"
-      :class="{'search-page-body': context === 'pageBody'}"
       @keypress.enter.stop="search()"
       @submit.prevent="search()">
       <div class="d-flex flex-column-reverse">
@@ -19,13 +19,13 @@
           <input
             id="search-students-input"
             v-model="searchPhrase"
-            class="pl-2 pr-2 search-input w-100"
             :class="{ 'input-disabled': allOptionsUnchecked }"
             :readonly="allOptionsUnchecked"
             :aria-readonly="allOptionsUnchecked"
+            :required="searchInputRequired"
+            class="pl-2 pr-2 search-input w-100"
             aria-label="Hit enter to execute search"
             type="text"
-            :required="searchInputRequired"
             maxlength="255" />
         </div>
         <div v-if="context === 'sidebar'" class="d-flex flex-wrap justify-content-between search-label text-nowrap text-white">
@@ -65,7 +65,7 @@
             for="search-include-students-checkbox"
             class="search-form-label">
             <span class="sr-only">Search for</span>
-            Students (name or SID)
+            Students
           </label>
         </div>
         <div v-if="domain.includes('courses')" class="d-flex">
@@ -91,13 +91,13 @@
             for="search-include-notes-checkbox"
             class="search-form-label">
             <span class="sr-only">Search for</span>
-            Notes
+            Notes &amp; Appointments
           </label>
           <b-btn
             id="search-options-note-filters-toggle"
+            :class="includeNotes ? 'visible' : 'invisible'"
             class="search-options-panel-toggle search-options-panel-toggle-subpanel text-nowrap"
             variant="link"
-            :class="includeNotes ? 'visible' : 'invisible'"
             @click="toggleNoteFilters()">
             ({{ showNoteFilters ? 'hide' : 'show' }} filters)
           </b-btn>
@@ -107,43 +107,46 @@
           v-model="showNoteFilters"
           class="search-options-note-filters-subpanel text-white">
           <div>
-            <b-form-group label="Topic">
+            <b-form-group label="Topic" label-for="search-option-note-filters-topic">
               <b-form-select
                 id="search-option-note-filters-topic"
                 v-model="noteFilters.topic"
                 :options="topicOptions">
+                <template v-slot:first>
+                  <option :value="null">Any topic</option>
+                </template>
               </b-form-select>
             </b-form-group>
             <b-form-group label="Posted By">
               <b-form-radio
                 id="search-options-note-filters-posted-by-anyone"
                 v-model="noteFilters.postedBy"
+                :ischecked="noteFilters.postedBy === 'anyone'"
                 name="note-filters-posted-by"
                 value="anyone"
-                :ischecked="noteFilters.postedBy === 'anyone'"
                 @change.native="clearAuthorFilter">
                 Anyone
               </b-form-radio>
               <b-form-radio
                 id="search-options-note-filters-posted-by-you"
                 v-model="noteFilters.postedBy"
+                :ischecked="noteFilters.postedBy === 'you'"
                 name="note-filters-posted-by"
                 value="you"
-                :ischecked="noteFilters.postedBy === 'you'"
                 @change.native="clearAuthorFilter">
                 You
               </b-form-radio>
             </b-form-group>
-            <b-form-group label="Advisor">
+            <b-form-group label="Advisor" label-for="search-options-note-filters-author-input">
               <Autocomplete
                 id="search-options-note-filters-author"
                 v-model="noteAuthor"
-                :source="findAuthorsByName"
+                :source="findAdvisorsByName"
                 :disabled="noteFilters.postedBy === 'you'"
-                :placeholder="noteFilters.postedBy === 'you' ? user.name : 'Enter name...'">
+                :placeholder="noteFilters.postedBy === 'you' ? $currentUser.name : 'Enter name...'">
               </Autocomplete>
             </b-form-group>
-            <b-form-group label="Student (name or SID)">
+            <b-form-group label="Student (name or SID)" label-for="search-options-note-filters-student-input">
               <Autocomplete
                 id="search-options-note-filters-student"
                 v-model="noteFilters.student"
@@ -152,7 +155,7 @@
                 placeholder="Enter name or SID...">
               </Autocomplete>
             </b-form-group>
-            <b-form-group label="Last Updated">
+            <b-form-group label="Date Range">
               <label
                 for="search-options-note-filters-last-updated-from"
                 class="search-form-label">
@@ -167,11 +170,11 @@
                   <b-input-group>
                     <b-form-input
                       id="search-options-note-filters-last-updated-from"
+                      :value="inputValue"
+                      :formatter="dateFormat"
                       type="text"
                       name="note-filters-date-from"
                       class="search-input-date"
-                      :value="inputValue"
-                      :formatter="dateFormat"
                       placeholder="MM/DD/YYYY"
                       expanded
                       lazy-formatter
@@ -181,7 +184,7 @@
                       v-if="noteFilters.dateFrom"
                       id="search-options-note-filters-last-updated-from-clear"
                       class="search-input-date"
-                      @click="noteFilters.dateFrom = null;">
+                      @click="noteFilters.dateFrom = null">
                       <font-awesome icon="times"></font-awesome>
                       <span class="sr-only">Clear date from</span>
                     </b-btn>
@@ -202,11 +205,11 @@
                   <b-input-group>
                     <b-form-input
                       id="search-options-note-filters-last-updated-to"
+                      :value="inputValue"
+                      :formatter="dateFormat"
                       type="text"
                       name="note-filters-date-to"
                       class="search-input-date"
-                      :value="inputValue"
-                      :formatter="dateFormat"
                       placeholder="MM/DD/YYYY"
                       expanded
                       lazy-formatter
@@ -216,7 +219,7 @@
                       v-if="noteFilters.dateTo"
                       id="search-options-note-filters-last-updated-to-clear"
                       class="search-input-date"
-                      @click="noteFilters.dateTo = null;">
+                      @click="noteFilters.dateTo = null">
                       <font-awesome icon="times"></font-awesome>
                       <span class="sr-only">Clear date to</span>
                     </b-btn>
@@ -231,9 +234,9 @@
           </div>
         </b-collapse>
         <b-button
+          :disabled="validDateRange === false"
           type="submit"
-          variant="primary"
-          :disabled="validDateRange === false">
+          variant="primary">
           Search
         </b-button>
       </b-collapse>
@@ -245,17 +248,18 @@
 <script>
 import Autocomplete from '@/components/util/Autocomplete';
 import Context from '@/mixins/Context';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
-import { getTopics, findAuthorsByName } from '@/api/notes';
+import { findAdvisorsByName } from '@/api/appointments';
+import { findAuthorsByName } from '@/api/notes';
 import { findStudentsByNameOrSid } from '@/api/student';
+import { getAllTopics } from '@/api/topics';
 
 export default {
   name: 'SearchForm',
   components: {
     Autocomplete
   },
-  mixins: [Context, UserMetadata, Util],
+  mixins: [Context, Util],
   props: {
     context: String,
     domain: Array,
@@ -273,7 +277,6 @@ export default {
       includeCourses: this.domain.includes('courses'),
       includeNotes: this.domain.includes('notes'),
       includeStudents: this.domain.includes('students'),
-      findAuthorsByName: findAuthorsByName,
       findStudentsByNameOrSid: findStudentsByNameOrSid,
       noteFilters: null,
       searchPhrase: null,
@@ -300,18 +303,14 @@ export default {
       }
     },
     searchInputRequired() {
-      if (this.includeNotes && (
+      return !(this.includeNotes && (
         this.noteFilters.author ||
         this.noteFilters.dateFrom ||
         this.noteFilters.dateTo ||
         this.noteFilters.postedBy !== 'anyone' ||
         this.noteFilters.student ||
         this.noteFilters.topic
-      )) {
-        return false;
-      } else {
-        return true;
-      }
+      ));
     },
     validDateRange() {
       if (!this.noteFilters.dateFrom || !this.noteFilters.dateTo) {
@@ -324,9 +323,29 @@ export default {
     }
   },
   watch: {
-    includeNotes: function(val) {
-      if (!val) {
+    includeCourses(value) {
+      this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include courses.`);
+    },
+    includeNotes(value) {
+      if (value) {
+        this.alertScreenReader('Search will include notes and appointments.');
+      } else {
         this.showNoteFilters = false;
+        this.alertScreenReader('Search will include neither notes nor appointments.');
+      }
+    },
+    includeStudents(value) {
+      this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include students.`);
+    },
+    showNoteFilters(value) {
+      if (value) {
+        this.alertScreenReader('Notes and Appointments search filters opened.');
+        this.putFocusNextTick('search-option-note-filters-topic');
+      }
+      else {
+        this.resetNoteFilters();
+        this.alertScreenReader('Notes and Appointments search filters closed.');
+        this.putFocusNextTick('search-options-note-filters-toggle');
       }
     }
   },
@@ -348,6 +367,12 @@ export default {
     dateString(d, format) {
       return this.$options.filters.moment(d, format);
     },
+    findAdvisorsByName(q, limit) {
+      const queries = [findAuthorsByName(q, limit), findAdvisorsByName(q, limit)];
+      return Promise.all(queries).then((results) => {
+        return this.orderBy(this.unionBy(this.flatten(results), 'label'), 'label');
+      });
+    },
     resetNoteFilters() {
       this.noteFilters = this.cloneDeep(this.defaultNoteFilters);
     },
@@ -366,9 +391,10 @@ export default {
         }
         if (this.includeNotes) {
           if (this.noteFilters.postedBy === 'you') {
-            query.authorCsid = this.user.csid;
+            query.advisorCsid = this.$currentUser.csid;
           } else if (this.noteFilters.author) {
-            query.authorCsid = this.noteFilters.author.sid;
+            query.advisorCsid = this.noteFilters.author.sid;
+            query.advisorUid = this.noteFilters.author.uid;
           }
           if (this.noteFilters.student) {
             query.studentCsid = this.noteFilters.student.sid;
@@ -383,26 +409,24 @@ export default {
             query.noteDateTo = this.dateString(this.noteFilters.dateTo, 'YYYY-MM-DD');
           }
         }
-        this.$router.push({
-          path: `/search`,
-          query: query
-        });
-        this.gaSearchEvent(`Search with courses: ${this.includeCourses}; notes: ${this.includeNotes}; students: ${this.includeStudents}`);
+        this.$router.push(
+          {
+            path: `/search`,
+            query: query
+          },
+          this.noop
+        );
+        this.$ga.searchEvent(`Search with courses: ${this.includeCourses}; notes: ${this.includeNotes}; students: ${this.includeStudents}`);
       } else {
         this.alertScreenReader('Search input is required');
       }
     },
     toggleNoteFilters() {
       this.showNoteFilters = !this.showNoteFilters;
-      if (!this.showNoteFilters) {
-        this.resetNoteFilters();
-      }
       if (!this.topicOptions) {
-        this.topicOptions = [
-          {text: 'Any topic', value: null}
-        ];
-        getTopics(true).then(data => {
-          this.each(data, topic => {
+        this.topicOptions = [];
+        getAllTopics(true).then(topics => {
+          this.each(topics, topic => {
             this.topicOptions.push({
               text: topic,
               value: topic
@@ -414,9 +438,11 @@ export default {
     toggleSearchOptions() {
       this.showSearchOptions = !this.showSearchOptions;
       if (this.showSearchOptions) {
+        this.alertScreenReader('Search options opened');
         this.putFocusNextTick('search-include-students-checkbox');
       } else {
         this.resetNoteFilters();
+        this.alertScreenReader('Search options closed');
         this.putFocusNextTick('search-students-input');
       }
     }

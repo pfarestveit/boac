@@ -1,6 +1,7 @@
+import _ from 'lodash';
 import axios from 'axios';
-import store from '@/store';
 import utils from '@/api/api-utils';
+import Vue from "vue";
 
 export function devAuthLogIn(uid: string, password: string) {
   return axios
@@ -9,12 +10,10 @@ export function devAuthLogIn(uid: string, password: string) {
       password: password
     })
     .then(response => {
-      const user = response.data;
-      if (user.isAuthenticated) {
-        store.dispatch('user/registerUser', user);
-        store.dispatch('context/initUserSession');
-      }
-      return user;
+      Vue.prototype.$currentUser = response.data;
+      Vue.prototype.$core.initializeCurrentUser().then(_.noop);
+      Vue.prototype.$core.mountGoogleAnalytics().then(_.noop);
+      return Vue.prototype.$currentUser;
     }, error => error);
 }
 

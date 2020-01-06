@@ -34,9 +34,9 @@
         <div v-if="cohortId && size(filters)">
           <b-btn
             id="show-hide-details-button"
+            :aria-label="isCompactView ? 'Show cohort filters' : 'Hide cohort filters'"
             class="no-wrap pr-2 p-0"
             variant="link"
-            :aria-label="isCompactView ? 'Show cohort filters' : 'Hide cohort filters'"
             @click="toggleShowHideDetails()">
             {{ isCompactView ? 'Show' : 'Hide' }} Filters
           </b-btn>
@@ -79,13 +79,24 @@
         <div v-if="cohortId || totalStudentCount !== undefined">
           <b-btn
             id="export-student-list-button"
+            v-b-modal="'export-list-modal'"
+            :disabled="!exportEnabled || !totalStudentCount || isModifiedSinceLastSearch"
             class="no-wrap pl-2 pr-0 pt-0"
             variant="link"
-            :disabled="!exportEnabled || !totalStudentCount || isModifiedSinceLastSearch"
-            aria-label="Download CSV file containing all students"
-            @click.prevent="exportCohort()">
+            aria-label="Download CSV file containing all students">
             Export List
           </b-btn>
+          <b-modal
+            id="export-list-modal"
+            v-model="showExportListModal"
+            body-class="pl-0 pr-0"
+            hide-footer
+            hide-header
+            @shown="focusModalById('export-list-confirm')">
+            <ExportListModal
+              :cancel-export-list-modal="cancelExportCohortModal"
+              :export-list="exportCohort" />
+          </b-modal>
         </div>
       </div>
     </div>
@@ -96,8 +107,8 @@
             <input
               id="rename-cohort-input"
               v-model="name"
-              class="rename-input text-dark p-2 w-100"
               :aria-invalid="!name"
+              class="rename-input text-dark p-2 w-100"
               aria-label="Input cohort name, 255 characters or fewer"
               aria-required="true"
               maxlength="255"
@@ -121,11 +132,11 @@
       <div class="d-flex align-self-baseline">
         <b-btn
           id="rename-confirm"
+          :disabled="!name"
           class="cohort-manage-btn btn-primary-color-override"
           variant="primary"
           aria-label="Save changes to cohort name"
           size="sm"
-          :disabled="!name"
           @click.prevent="submitRename()">
           Rename
         </b-btn>
@@ -147,21 +158,22 @@
 import CohortEditSession from '@/mixins/CohortEditSession';
 import Context from '@/mixins/Context';
 import DeleteCohortModal from '@/components/cohort/DeleteCohortModal';
+import ExportListModal from '@/components/util/ExportListModal';
 import router from '@/router';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import Validator from '@/mixins/Validator';
 import { deleteCohort } from '@/api/cohort';
 
 export default {
   name: 'CohortPageHeader',
-  components: { DeleteCohortModal },
-  mixins: [CohortEditSession, Context, UserMetadata, Util, Validator],
+  components: { DeleteCohortModal, ExportListModal },
+  mixins: [CohortEditSession, Context, Util, Validator],
   data: () => ({
     exportEnabled: true,
     name: undefined,
     renameError: undefined,
-    showDeleteModal: false
+    showDeleteModal: false,
+    showExportListModal: false
   }),
   computed: {
     renameMode() {
@@ -187,6 +199,10 @@ export default {
       this.showDeleteModal = false;
       this.alertScreenReader(`Cancel deletion of ${this.name} cohort`);
     },
+    cancelExportCohortModal() {
+      this.showExportListModal = false;
+      this.alertScreenReader(`Cancel export of ${this.name} cohort`);
+    },
     cancelRename() {
       this.name = this.cohortName;
       this.setEditMode(null);
@@ -196,17 +212,15 @@ export default {
       this.alertScreenReader(`Deleting ${this.name} cohort`);
       deleteCohort(this.cohortId).then(() => {
         this.showDeleteModal = false;
-        this.gaCohortEvent({
-          id: this.cohortId,
-          name: this.cohortName,
-          action: 'delete'
-        });
+        this.$ga.cohortEvent(this.cohortId, this.cohortName, 'delete');
         router.push({ path: '/' });
       });
     },
-    exportCohort() {
+    exportCohort(csvColumnsSelected) {
+      this.showExportListModal = false
       this.exportEnabled = false;
-      this.downloadCsvPerFilters().then(() => {
+      this.alertScreenReader(`Exporting ${this.name} cohort`);
+      this.downloadCsvPerFilters(csvColumnsSelected).then(() => {
         this.exportEnabled = true;
       });
     },
@@ -222,11 +236,7 @@ export default {
           this.alertScreenReader(`Saved new cohort name: ${this.name}`);
           this.setPageTitle(this.name);
           this.putFocusNextTick('cohort-name');
-          this.gaCohortEvent({
-            id: this.cohortId,
-            name: this.name,
-            action: 'rename'
-          });
+          this.$ga.cohortEvent(this.cohortId, this.name, 'rename');
         });
         this.setEditMode(null);
       }

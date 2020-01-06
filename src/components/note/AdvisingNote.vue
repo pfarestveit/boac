@@ -1,24 +1,24 @@
 <template>
   <div :id="`note-${note.id}-outer`" class="advising-note-outer">
-    <div :id="`note-${note.id}-is-closed`" :class="{'truncate-with-ellipsis': !isOpen}" title="Advising note">
-      <span v-if="note.subject" :id="`note-${note.id}-subject-closed`">{{ note.subject }}</span>
-      <span v-if="!note.subject && size(note.message)" :id="`note-${note.id}-message-closed`" v-html="note.message"></span>
-      <span v-if="!note.subject && !size(note.message)" :id="`note-${note.id}-category-closed`">{{ note.category }}<span v-if="note.subcategory" :id="`note-${note.id}-subcategory-closed`">, {{ note.subcategory }}</span></span>
-      <span v-if="!note.subject && !size(note.message) && !note.category" :id="`note-${note.id}-category-closed`">{{ note.author.departments[0].name }}
+    <div :id="`note-${note.id}-is-closed`" :class="{'truncate-with-ellipsis': !isOpen}" aria-label="Advising note">
+      <span v-if="note.subject" :id="`note-${note.id}-subject`">{{ note.subject }}</span>
+      <span v-if="!note.subject && size(note.message)" :id="`note-${note.id}-subject`" v-html="note.message"></span>
+      <span v-if="!note.subject && !size(note.message) && note.category" :id="`note-${note.id}-subject`">{{ note.category }}<span v-if="note.subcategory">, {{ note.subcategory }}</span></span>
+      <span v-if="!note.subject && !size(note.message) && !note.category" :id="`note-${note.id}-category-closed`">{{ note.author.departments && note.author.departments[0].name }}
         advisor {{ note.author.name }}<span v-if="note.topics && size(note.topics)">: {{ oxfordJoin(note.topics) }}</span>
       </span>
     </div>
     <div v-if="isOpen" :id="`note-${note.id}-is-open`">
       <div v-if="isEditable">
         <b-btn
-          v-if="user.isAdmin"
+          v-if="$currentUser.isAdmin"
           :id="`btn-delete-note-${note.id}`"
           class="sr-only"
           @click.stop="deleteNote(note)">
           Delete Note
         </b-btn>
         <b-btn
-          v-if="user.uid === note.author.uid"
+          v-if="$currentUser.uid === note.author.uid"
           :id="`btn-edit-note-${note.id}`"
           class="sr-only"
           @click.stop="editNote(note)">
@@ -28,7 +28,7 @@
       <div v-if="note.subject && note.message" class="mt-2">
         <span :id="`note-${note.id}-message-open`" v-html="note.message"></span>
       </div>
-      <div v-if="!isUndefined(note.author) && !note.author.name" class="mt-2 advisor-profile-not-found">
+      <div v-if="!isNil(note.author) && !note.author.name" class="mt-2 advisor-profile-not-found">
         Advisor profile not found
       </div>
       <div v-if="note.author" class="mt-2">
@@ -43,14 +43,14 @@
           <span v-if="!note.author.uid" :id="`note-${note.id}-author-name`">
             {{ note.author.name }}
           </span>
-          <span v-if="note.author.role">
-            - <span :id="`note-${note.id}-author-role`" class="text-dark">{{ note.author.role }}</span>
+          <span v-if="note.author.role || note.author.title">
+            - <span :id="`note-${note.id}-author-role`" class="text-dark">{{ note.author.role || note.author.title }}</span>
           </span>
         </div>
         <div v-if="size(note.author.departments)" class="text-secondary">
-          <span v-if="note.isLegacy">(currently </span><span v-if="note.author.title">{{ note.author.title }}, </span><span v-for="(dept, index) in note.author.departments" :key="dept.code">
-            <span :id="`note-${note.id}-author-dept-${index}`">{{ dept.name }}</span>
-          </span><span v-if="note.isLegacy">)</span>
+          <div v-for="(deptName, index) in orderBy(map(note.author.departments, 'name'))" :key="index">
+            <span :id="`note-${note.id}-author-dept-${index}`">{{ deptName }}</span>
+          </div>
         </div>
       </div>
       <div v-if="note.topics && size(note.topics)">
@@ -68,12 +68,12 @@
     </div>
     <AreYouSureModal
       v-if="showConfirmDeleteAttachment"
-      button-label-confirm="Delete"
       :function-cancel="cancelRemoveAttachment"
       :function-confirm="confirmedRemoveAttachment"
       :modal-body="`Are you sure you want to delete the <b>'${displayName(attachments, deleteAttachmentIndex)}'</b> attachment?`"
-      modal-header="Delete Attachment"
-      :show-modal="showConfirmDeleteAttachment" />
+      :show-modal="showConfirmDeleteAttachment"
+      button-label-confirm="Delete"
+      modal-header="Delete Attachment" />
     <div>
       <ul class="pill-list pl-0 mt-3">
         <li
@@ -83,14 +83,13 @@
           class="mt-2">
           <span class="pill pill-attachment text-nowrap">
             <a
-              v-if="!isPreCsNote"
               :id="`note-${note.id}-attachment-${index}`"
               :href="downloadUrl(attachment)">
               <font-awesome icon="paperclip" />
               {{ attachment.displayName }}
             </a>
             <b-btn
-              v-if="isEditable && (user.isAdmin || user.uid === note.author.uid)"
+              v-if="isEditable && ($currentUser.isAdmin || $currentUser.uid === note.author.uid)"
               :id="`note-${note.id}-remove-note-attachment-${index}`"
               variant="link"
               class="p-0"
@@ -98,15 +97,10 @@
               <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
               <span class="sr-only">Delete attachment '{{ attachment.displayName }}'</span>
             </b-btn>
-            <span
-              v-if="isPreCsNote"
-              :id="`note-${note.id}-attachment-${index}`">
-              <font-awesome icon="paperclip" /> {{ attachment.displayName }}
-            </span>
           </span>
         </li>
       </ul>
-      <div v-if="isEditable && user.uid === note.author.uid">
+      <div v-if="isEditable && $currentUser.uid === note.author.uid">
         <div v-if="attachmentError" class="mt-3 mb-3 w-100">
           <font-awesome icon="exclamation-triangle" class="text-danger pr-1" />
           <span :id="`note-${note.id}-attachment-error`" aria-live="polite" role="alert">{{ attachmentError }}</span>
@@ -114,7 +108,7 @@
         <div v-if="uploadingAttachment" class="w-100">
           <font-awesome icon="sync" spin /> Uploading attachment...
         </div>
-        <div v-if="size(attachments) < maxAttachmentsPerNote && !uploadingAttachment" class="w-100">
+        <div v-if="size(attachments) < $config.maxAttachmentsPerNote && !uploadingAttachment" class="w-100">
           <label for="choose-file-for-note-attachment" class="sr-only"><span class="sr-only">Note </span>Attachments</label>
           <div :id="`note-${note.id}-attachment-dropzone`" class="choose-attachment-file-wrapper no-wrap pl-3 pr-3 w-100">
             Drop file to upload attachment or
@@ -130,14 +124,14 @@
             <b-form-file
               ref="attachment-file-input"
               v-model="attachment"
-              :disabled="size(attachments) === maxAttachmentsPerNote"
+              :disabled="size(attachments) === $config.maxAttachmentsPerNote"
               :state="Boolean(attachment)"
               :plain="true"
             ></b-form-file>
           </div>
         </div>
-        <div v-if="size(attachments) === maxAttachmentsPerNote" :id="`note-${note.id}-max-attachments-notice`" class="w-100">
-          A note can have no more than {{ maxAttachmentsPerNote }} attachments.
+        <div v-if="size(attachments) === $config.maxAttachmentsPerNote" :id="`note-${note.id}-max-attachments-notice`" class="w-100">
+          A note can have no more than {{ $config.maxAttachmentsPerNote }} attachments.
         </div>
       </div>
     </div>
@@ -148,16 +142,14 @@
 import AreYouSureModal from '@/components/util/AreYouSureModal';
 import Attachments from '@/mixins/Attachments';
 import Context from '@/mixins/Context';
-import store from '@/store';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import { addAttachment, removeAttachment } from '@/api/notes';
-import { getUserByUid } from '@/api/user';
+import { getCalnetProfileByCsid, getCalnetProfileByUid } from '@/api/user';
 
 export default {
   name: 'AdvisingNote',
   components: { AreYouSureModal },
-  mixins: [Attachments, Context, UserMetadata, Util],
+  mixins: [Attachments, Context, Util],
   props: {
     afterSaved: Function,
     deleteNote: Function,
@@ -178,9 +170,6 @@ export default {
   computed: {
     isEditable() {
       return !this.note.isLegacy;
-    },
-    isPreCsNote() {
-      return this.get(this.note, 'createdBy') === 'UCBCONVERSION';
     }
   },
   watch: {
@@ -220,20 +209,24 @@ export default {
   },
   methods: {
     setAuthor() {
-      if (this.isOpen && (!this.note.author.name || !this.note.author.role)) {
-        const author_uid = this.note.author.uid;
-        if (author_uid) {
-          if (author_uid === this.user.uid) {
-            this.note.author = this.user;
-          } else {
-            getUserByUid(author_uid).then(data => {
+      const requiresLazyLoad = this.isOpen && (!this.get(this.note, 'author.name') || !this.get(this.note, 'author.role'));
+      if (requiresLazyLoad) {
+        const hasIdentifier = this.get(this.note, 'author.uid') || this.get(this.note, 'author.sid');
+        if (hasIdentifier) {
+          const author_uid = this.note.author.uid;
+          if (author_uid) {
+            if (author_uid === this.$currentUser.uid) {
+              this.note.author = this.$currentUser;
+            } else {
+              getCalnetProfileByUid(author_uid).then(data => {
+                this.note.author = data;
+              });
+            }
+          } else if (this.note.author.sid) {
+            getCalnetProfileByCsid(this.note.author.sid).then(data => {
               this.note.author = data;
             });
           }
-        } else if (this.note.author.sid) {
-          store.dispatch('user/loadCalnetUserByCsid', this.note.author.sid).then(data => {
-            this.note.author = data;
-          });
         }
       }
     },
@@ -267,7 +260,7 @@ export default {
       return this.size(attachments) <= index ? '' : attachments[index].displayName;
     },
     downloadUrl(attachment) {
-      return this.apiBaseUrl + '/api/notes/attachment/' + attachment.id;
+      return `${this.$config.apiBaseUrl}/api/notes/attachment/${attachment.id}`;
     },
     resetAttachments() {
       this.attachments = this.cloneDeep(this.note.attachments);

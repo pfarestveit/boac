@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,6 +27,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from datetime import datetime
 
 from boac import db, std_commit
+from sqlalchemy.sql import desc
 
 
 class UserLogin(db.Model):
@@ -45,3 +46,7 @@ class UserLogin(db.Model):
         db.session.add(user_login)
         std_commit()
         return user_login
+
+    @classmethod
+    def last_login(cls, uid):
+        return cls.query.filter(cls.uid == uid).order_by(desc(cls.created_at)).limit(1).first()

@@ -2,55 +2,25 @@ import _ from 'lodash';
 import Admin from '@/views/Admin.vue';
 import AllCohorts from '@/views/AllCohorts.vue';
 import AllGroups from '@/views/AllGroups.vue';
+import AppointmentDropIn from '@/layouts/AppointmentDropIn.vue';
+import auth from './auth';
 import Cohort from '@/views/Cohort.vue';
 import Course from '@/views/Course.vue';
 import CreateCuratedGroup from '@/views/CreateCuratedGroup.vue'
 import CuratedGroup from '@/views/CuratedGroup.vue';
+import DropInAdvisorHome from '@/views/DropInAdvisorHome.vue';
+import DropInDesk from '@/views/DropInDesk.vue';
 import Home from '@/views/Home.vue';
 import Login from '@/layouts/Login.vue';
 import NotFound from '@/views/NotFound.vue';
+import PassengerManifest from '@/views/PassengerManifest.vue';
 import Router from 'vue-router';
 import Search from '@/views/Search.vue';
-import StandardLayout from './layouts/StandardLayout.vue';
-import store from '@/store';
+import StandardLayout from '@/layouts/StandardLayout.vue';
 import Student from '@/views/Student.vue';
 import Vue from 'vue';
 
 Vue.use(Router);
-
-const requiresAuth = (to: any, from: any, next: any) => {
-  store.dispatch('user/loadUser').then(data => {
-    if (data.isAuthenticated) {
-      next();
-    } else {
-      next({
-        path: '/login',
-        query: {
-          error: to.query.error,
-          redirect: to.name === 'home' ? undefined : to.fullPath
-        }
-      });
-    }
-  });
-};
-
-const requiresUser = (to: any, from: any, next: any) => {
-  store.dispatch('user/loadUser').then(data => {
-    if (data.isAuthenticated) {
-      store.dispatch('user/loadUser').then(() => {
-        next();
-      });
-    } else {
-      next({
-        path: '/login',
-        query: {
-          error: to.query.error,
-          redirect: to.name === 'home' ? undefined : to.fullPath
-        }
-      });
-    }
-  });
-};
 
 const router = new Router({
   mode: 'history',
@@ -63,13 +33,26 @@ const router = new Router({
       path: '/login',
       component: Login,
       beforeEnter: (to: any, from: any, next: any) => {
-        store.dispatch('user/loadUser').then(data => {
-          if (data.isAuthenticated) {
-            next(to.query.redirect || '/home');
+        const currentUser = Vue.prototype.$currentUser;
+        if (currentUser.isAuthenticated) {
+          if (_.trim(to.query.redirect)) {
+            next(to.query.redirect);
+          } else if (auth.isAdvisor(currentUser) || currentUser.isAdmin) {
+            next('/home');
           } else {
-            next();
+            const deptCodes = auth.getSchedulerDeptCodes(currentUser);
+            if (_.size(deptCodes)) {
+              // The multi-department scheduler is NOT a use case we support, yet. Therefore,
+              // we grab first deptCode from his/her profile.
+              const deptCode = deptCodes[0].toLowerCase();
+              next({ path: `/appt/desk/${deptCode}` });
+            } else {
+              next({ path: '/404' });
+            }
           }
-        });
+        } else {
+          next();
+        }
       },
       meta: {
         title: 'Welcome'
@@ -77,15 +60,43 @@ const router = new Router({
     },
     {
       path: '/',
+      component: AppointmentDropIn,
+      beforeEnter: auth.requiresScheduler,
+      children: [
+        {
+          path: '/appt/desk/:deptCode',
+          component: DropInDesk,
+          meta: {
+            title: 'Drop-in Appointments Desk'
+          }
+        },
+        {
+          path: '/scheduler/settings',
+          component: Admin,
+          meta: {
+            title: 'Admin'
+          }
+        },
+        {
+          path: '/scheduler/404',
+          component: NotFound,
+          meta: {
+            title: 'Not Found'
+          }
+        }
+      ]
+    },
+    {
+      path: '/',
       component: StandardLayout,
-      beforeEnter: requiresUser,
+      beforeEnter: auth.requiresAdvisor,
       children: [
         {
           path: '/admin',
           name: 'admin',
           component: Admin,
           meta: {
-            title: 'Admin'
+            title: 'Flight Deck'
           }
         },
         {
@@ -151,9 +162,53 @@ const router = new Router({
     {
       path: '/',
       component: StandardLayout,
-      beforeEnter: requiresAuth,
+      beforeEnter: auth.requiresAdmin,
       children: [
         {
+          path: '/admin/passengers',
+          component: PassengerManifest,
+          meta: {
+            title: 'Passenger Manifest'
+          }
+        }
+      ]
+    },
+    {
+      path: '/',
+      component: StandardLayout,
+      beforeEnter: auth.requiresDropInAdvisor,
+      children: [
+        {
+          path: '/home/:deptCode',
+          component: DropInAdvisorHome,
+          meta: {
+            title: 'Home'
+          }
+        }
+      ]
+    },
+    {
+      path: '/',
+      component: StandardLayout,
+      beforeEnter: auth.requiresAuthenticated,
+      children: [
+        {
+          beforeEnter: (to: any, from: any, next: any) => {
+            const currentUser = Vue.prototype.$currentUser;
+            const deptCodes = auth.getSchedulerDeptCodes(currentUser);
+            if (_.size(deptCodes) && !auth.isAdvisor(currentUser) && !currentUser.isAdmin) {
+              const deptCode = deptCodes[0].toLowerCase();
+              next({ path: `/appt/desk/${deptCode}` });
+            } else {
+              if (_.size(currentUser.dropInAdvisorStatus)) {
+                // We assume drop-in advisor status for one department only.
+                const deptCode = currentUser.dropInAdvisorStatus[0].deptCode.toLowerCase();
+                next({ path: `/home/${deptCode}` });
+              } else {
+                next();
+              }
+            }
+          },
           path: '/home',
           name: 'home',
           component: Home,
@@ -162,6 +217,14 @@ const router = new Router({
           }
         },
         {
+          beforeEnter: (to: any, from: any, next: any) => {
+            const currentUser = Vue.prototype.$currentUser;
+            if (_.size(auth.getSchedulerDeptCodes(currentUser)) && !auth.isAdvisor(currentUser) && !currentUser.isAdmin) {
+              next({ path: '/scheduler/404' });
+            } else {
+              next();
+            }
+          },
           path: '/404',
           component: NotFound,
           meta: {
@@ -177,18 +240,9 @@ const router = new Router({
   ]
 });
 
-router.beforeEach((to: any, from: any, next: any) => {
-  store.dispatch('context/clearAlertsInStore').then(() => next());
-});
-
 router.afterEach((to: any) => {
-  let name = _.get(to, 'meta.title') || _.capitalize(to.name) || 'Welcome';
-  document.title = `${name} | BOA`;
-  if (to.query.error) {
-    store.dispatch('context/reportError', {
-      message: to.query.error
-    });
-  }
+  const title = _.get(to, 'meta.title') || _.capitalize(to.name) || 'Welcome';
+  document.title = `${title} | BOA`;
 });
 
 export default router;

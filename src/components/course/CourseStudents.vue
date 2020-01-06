@@ -4,31 +4,31 @@
     :fields="fields"
     :items="section.students"
     :small="true"
-    stacked="md"
     :tbody-tr-class="rowClass"
+    stacked="md"
     thead-class="sortable-table-header border-bottom">
-    <template slot="curated" slot-scope="row">
+    <template v-slot:cell(curated)="row">
       <div>
         <CuratedStudentCheckbox :student="row.item" class="curated-checkbox" />
       </div>
     </template>
 
-    <template slot="avatar" slot-scope="row">
+    <template v-slot:cell(avatar)="row">
       <StudentAvatar :key="row.item.sid" :student="row.item" size="medium" />
     </template>
 
-    <template slot="profile" slot-scope="row">
+    <template v-slot:cell(profile)="row">
       <div>
-        <router-link :id="`link-to-student-${row.item.uid}`" :to="studentRoutePath(row.item.uid, user.inDemoMode)">
+        <router-link :id="`link-to-student-${row.item.uid}`" :to="studentRoutePath(row.item.uid, $currentUser.inDemoMode)">
           <h3
-            class="student-name m-0 p-0"
-            :class="{'demo-mode-blur': user.inDemoMode}">
+            :class="{'demo-mode-blur': $currentUser.inDemoMode}"
+            class="student-name m-0 p-0">
             <span v-if="row.item.firstName" v-html="`${row.item.lastName}, ${row.item.firstName}`"></span>
             <span v-if="!row.item.firstName" v-html="row.item.lastName"></span>
           </h3>
         </router-link>
       </div>
-      <div :id="`row-${row.index}-student-sid`" class="student-sid" :class="{'demo-mode-blur': user.inDemoMode}">
+      <div :id="`row-${row.index}-student-sid`" :class="{'demo-mode-blur': $currentUser.inDemoMode}" class="student-sid">
         {{ row.item.sid }}
         <span
           v-if="row.item.enrollment.enrollmentStatus === 'W'"
@@ -78,7 +78,7 @@
       </div>
     </template>
 
-    <template slot="courseSites" slot-scope="row">
+    <template v-slot:cell(courseSites)="row">
       <div class="course-sites flex-col font-size-14 pl-2">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
@@ -91,7 +91,7 @@
       </div>
     </template>
 
-    <template slot="assignmentsSubmitted" slot-scope="row">
+    <template v-slot:cell(assignmentsSubmitted)="row">
       <div v-if="row.item.enrollment.canvasSites.length" class="flex-col">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
@@ -128,7 +128,7 @@
         v-if="!row.item.enrollment.canvasSites.length"><span class="sr-only">No data</span>&mdash;</span>
     </template>
 
-    <template slot="assignmentGrades" slot-scope="row">
+    <template v-slot:cell(assignmentGrades)="row">
       <div class="flex-col">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
@@ -165,7 +165,7 @@
       </div>
     </template>
 
-    <template slot="bCourses" slot-scope="row">
+    <template v-slot:cell(bCourses)="row">
       <div class="flex-col font-size-14">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
@@ -180,13 +180,13 @@
       </div>
     </template>
 
-    <template slot="midtermGrade" slot-scope="row">
+    <template v-slot:cell(midtermGrade)="row">
       <span v-if="row.item.enrollment.midtermGrade" v-accessible-grade="row.item.enrollment.midtermGrade" class="font-weight-bold font-size-14"></span>
       <font-awesome v-if="isAlertGrade(row.item.enrollment.midtermGrade)" icon="exclamation-triangle" class="boac-exclamation" />
       <span v-if="!row.item.enrollment.midtermGrade"><span class="sr-only">No data</span>&mdash;</span>
     </template>
 
-    <template slot="finalGrade" slot-scope="row">
+    <template v-slot:cell(finalGrade)="row">
       <span v-if="row.item.enrollment.grade" v-accessible-grade="row.item.enrollment.grade" class="font-weight-bold font-size-14"></span>
       <font-awesome v-if="isAlertGrade(row.item.enrollment.grade)" icon="exclamation-triangle" class="boac-exclamation" />
       <span v-if="!row.item.enrollment.grade" class="cohort-grading-basis">
@@ -203,7 +203,6 @@ import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
 import StudentBoxplot from '@/components/student/StudentBoxplot';
 import StudentMetadata from '@/mixins/StudentMetadata';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
@@ -217,7 +216,6 @@ export default {
     Context,
     StudentAnalytics,
     StudentMetadata,
-    UserMetadata,
     Util
   ],
   props: {
@@ -236,7 +234,7 @@ export default {
       {key: 'assignmentsSubmitted', label: 'Assignments Submitted'},
       {key: 'assignmentGrades', label: 'Assignment Grades'}
     ];
-    if (this.currentEnrollmentTermId === parseInt(this.section.termId)) {
+    if (this.$config.currentEnrollmentTermId === parseInt(this.section.termId)) {
       cols.push(
         {key: 'bCourses', label: 'bCourses Activity'}
       );

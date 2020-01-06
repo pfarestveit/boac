@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,9 +27,10 @@ from copy import copy, deepcopy
 
 from boac.api.util import authorized_users_api_feed
 from boac.externals import data_loch
-from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, COE_ETHNICITIES_PER_CODE, current_term_id, term_name_for_sis_id
+from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, COE_ETHNICITIES_PER_CODE, term_name_for_sis_id
 from boac.merged import athletics
 from boac.merged.calnet import get_csid_for_uid
+from boac.merged.sis_terms import current_term_id
 from boac.merged.student import get_student_query_scope
 from boac.models.authorized_user import AuthorizedUser
 from flask import current_app as app
@@ -114,6 +115,19 @@ def _get_filter_options(scope, cohort_owner_uid):
             {
                 'availableTo': all_dept_codes,
                 'defaultValue': None,
+                'key': 'enteringTerms',
+                'label': {
+                    'primary': 'Entering Term',
+                },
+                'options': _entering_terms,
+                'type': {
+                    'db': 'string[]',
+                    'ux': 'dropdown',
+                },
+            },
+            {
+                'availableTo': all_dept_codes,
+                'defaultValue': None,
                 'key': 'expectedGradTerms',
                 'label': {
                     'primary': 'Expected Graduation Term',
@@ -130,7 +144,23 @@ def _get_filter_options(scope, cohort_owner_uid):
                 'key': 'gpaRanges',
                 'options': None,
                 'label': {
-                    'primary': 'GPA',
+                    'primary': 'GPA (Cumulative)',
+                    'range': ['', '-'],
+                    'rangeMinEqualsMax': '',
+                },
+                'type': {
+                    'db': 'json[]',
+                    'ux': 'range',
+                },
+                'validation': 'gpa',
+            },
+            {
+                'availableTo': all_dept_codes,
+                'defaultValue': None,
+                'key': 'lastTermGpaRanges',
+                'options': None,
+                'label': {
+                    'primary': 'GPA (Last Term)',
                     'range': ['', '-'],
                     'rangeMinEqualsMax': '',
                 },
@@ -254,6 +284,19 @@ def _get_filter_options(scope, cohort_owner_uid):
                     'ux': 'boolean',
                 },
             },
+            {
+                'availableTo': all_dept_codes,
+                'defaultValue': None,
+                'key': 'visaTypes',
+                'label': {
+                    'primary': 'Visa Type',
+                },
+                'options': _visa_types,
+                'type': {
+                    'db': 'string[]',
+                    'ux': 'dropdown',
+                },
+            },
         ],
         [
             {
@@ -261,7 +304,7 @@ def _get_filter_options(scope, cohort_owner_uid):
                 'defaultValue': False if 'UWASC' in scope else None,
                 'key': 'isInactiveAsc',
                 'label': {
-                    'primary': 'Inactive' if 'UWASC' in scope else 'Inactive (ASC)',
+                    'primary': 'Inactive (ASC)',
                 },
                 'type': {
                     'db': 'boolean',
@@ -342,7 +385,7 @@ def _get_filter_options(scope, cohort_owner_uid):
                 'defaultValue': False if 'COENG' in scope else None,
                 'key': 'isInactiveCoe',
                 'label': {
-                    'primary': 'Inactive' if 'COENG' in scope else 'Inactive (COE)',
+                    'primary': 'Inactive (COE)',
                 },
                 'type': {
                     'db': 'boolean',
@@ -465,6 +508,11 @@ def _academic_plans_for_cohort_owner(owner_uid):
     return plans
 
 
+def _entering_terms():
+    term_ids = [r['entering_term'] for r in data_loch.get_entering_terms()]
+    return [{'name': ' '.join(term_name_for_sis_id(term_id).split()[::-1]), 'value': term_id} for term_id in term_ids]
+
+
 def _ethnicities():
     return [{'name': row['ethnicity'], 'value': row['ethnicity']} for row in data_loch.get_distinct_ethnicities()]
 
@@ -499,6 +547,16 @@ def _team_groups():
 def _majors():
     major_results = [row['major'] for row in data_loch.get_majors()]
     return [{'name': major, 'value': major} for major in major_results]
+
+
+def _visa_types():
+    other_types = [row['visa_type'] for row in data_loch.get_other_visa_types()]
+    return [
+        {'name': 'F-1 International Student', 'value': 'F1'},
+        {'name': 'J-1 International Student', 'value': 'J1'},
+        {'name': 'Permanent Resident', 'value': 'PR'},
+        {'name': 'Other', 'value': ','.join(other_types)},
+    ]
 
 
 def _get_dept_codes(user):

@@ -17,8 +17,8 @@
             <input
               id="rename-input"
               v-model="renameInput"
-              class="form-control"
               :aria-invalid="!renameInput"
+              class="form-control"
               aria-label="Curated group name, 255 characters or fewer"
               aria-required="true"
               maxlength="255"
@@ -40,11 +40,11 @@
       <div v-if="mode === 'rename'" class="d-flex align-self-baseline mr-4">
         <b-btn
           id="rename-confirm"
+          :disabled="!size(renameInput)"
           class="btn-primary-color-override"
           variant="primary"
           size="sm"
           aria-label="Save changes to curated group name"
-          :disabled="!size(renameInput)"
           @click.stop="rename">
           Rename
         </b-btn>
@@ -117,12 +117,23 @@
         <div>
           <b-btn
             id="export-student-list-button"
-            variant="link"
+            v-b-modal="'export-list-modal'"
             :disabled="!exportEnabled || !totalStudentCount"
-            aria-label="Download CSV file containing all students"
-            @click="downloadCsv()">
+            variant="link"
+            aria-label="Download CSV file containing all students">
             Export List
           </b-btn>
+          <b-modal
+            id="export-list-modal"
+            v-model="showExportListModal"
+            body-class="pl-0 pr-0"
+            hide-footer
+            hide-header
+            @shown="focusModalById('export-list-confirm')">
+            <ExportListModal
+              :cancel-export-list-modal="cancelExportGroupModal"
+              :export-list="exportGroup" />
+          </b-modal>
         </div>
       </div>
     </div>
@@ -130,26 +141,29 @@
 </template>
 
 <script>
+import Context from '@/mixins/Context';
 import CuratedEditSession from '@/mixins/CuratedEditSession';
+import ExportListModal from '@/components/util/ExportListModal';
 import Loading from '@/mixins/Loading.vue';
 import router from '@/router';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 import Validator from '@/mixins/Validator.vue';
 import { deleteCuratedGroup, downloadCuratedGroupCsv } from '@/api/curated';
 
 export default {
   name: 'CuratedGroupHeader',
-  mixins: [CuratedEditSession, Loading, UserMetadata, Util, Validator],
+  components: { ExportListModal },
+  mixins: [Context, CuratedEditSession, Loading, Util, Validator],
   data: () => ({
     exportEnabled: true,
     isModalOpen: false,
     renameError: undefined,
-    renameInput: undefined
+    renameInput: undefined,
+    showExportListModal: false
   }),
   computed: {
     isOwnedByCurrentUser() {
-      return this.ownerId === this.user.id;
+      return this.ownerId === this.$currentUser.id;
     }
   },
   watch: {
@@ -162,6 +176,10 @@ export default {
     this.putFocusNextTick('curated-group-name');
   },
   methods: {
+    cancelExportGroupModal() {
+      this.showExportListModal = false;
+      this.alertScreenReader(`Cancel export of ${this.name} curated group`);
+    },
     enterBulkAddMode() {
       this.setMode('bulkAdd');
     },
@@ -185,9 +203,11 @@ export default {
           this.error = error;
         });
     },
-    downloadCsv() {
+    exportGroup(csvColumnsSelected) {
+      this.showExportListModal = false
       this.exportEnabled = false;
-      downloadCuratedGroupCsv(this.curatedGroupId, this.curatedGroupName).then(() => {
+      this.alertScreenReader(`Exporting ${this.name} curated group`);
+      downloadCuratedGroupCsv(this.curatedGroupId, this.curatedGroupName, csvColumnsSelected).then(() => {
         this.exportEnabled = true;
       });
     },

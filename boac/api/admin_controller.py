@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -25,16 +25,16 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 from boac.api import cache_utils
 from boac.api.util import admin_required
-from boac.lib import berkeley
 from boac.lib.http import tolerant_jsonify
 from boac.merged import reporter
+from boac.merged.sis_terms import current_term_id
 from boac.models.job_progress import JobProgress
 from boac.models.manually_added_advisee import ManuallyAddedAdvisee
 from flask import current_app as app, request
 
 
 def term():
-    term_id = request.args.get('term') or berkeley.current_term_id()
+    term_id = request.args.get('term') or current_term_id()
     return term_id
 
 
@@ -69,26 +69,11 @@ def start_continuation_of_interrupted_job():
     return tolerant_jsonify(cache_utils.continue_request_handler())
 
 
-@app.route('/api/admin/cachejob/load')
-@admin_required
-def start_load_only():
-    """Lets us load still-uncached data without having to erase any data which was already cached."""
-    job_state = cache_utils.refresh_request_handler(term(), load_only=True)
-    return tolerant_jsonify(job_state)
-
-
 @app.route('/api/admin/cachejob/refresh')
 @admin_required
 def start_refresh():
     response = cache_utils.refresh_request_handler(term())
     return tolerant_jsonify(response, status=500 if 'error' in response else 200)
-
-
-@app.route('/api/admin/cachejob/import_refresh')
-# For the moment, keeping this around as a legacy alias for start_refresh.
-@admin_required
-def start_import_refresh():
-    return tolerant_jsonify(cache_utils.refresh_request_handler(term()))
 
 
 @app.route('/api/admin/report/low_assignment_scores')

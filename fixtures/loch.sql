@@ -7,6 +7,7 @@ DROP SCHEMA IF EXISTS boac_advisor cascade;
 DROP SCHEMA IF EXISTS boac_analytics cascade;
 DROP SCHEMA IF EXISTS sis_advising_notes cascade;
 DROP SCHEMA IF EXISTS sis_data cascade;
+DROP SCHEMA IF EXISTS sis_terms cascade;
 DROP SCHEMA IF EXISTS student cascade;
 
 CREATE SCHEMA boac_advising_asc;
@@ -18,6 +19,7 @@ CREATE SCHEMA boac_advisor;
 CREATE SCHEMA boac_analytics;
 CREATE SCHEMA sis_advising_notes;
 CREATE SCHEMA sis_data;
+CREATE SCHEMA sis_terms;
 CREATE SCHEMA student;
 
 CREATE TABLE boac_advising_asc.advising_notes
@@ -227,7 +229,13 @@ CREATE TABLE sis_data.enrolled_primary_sections
     instructors VARCHAR
 );
 
-CREATE TABLE sis_data.term_definitions
+CREATE TABLE sis_terms.current_term_index
+(
+    current_term_name VARCHAR NOT NULL,
+    future_term_name VARCHAR NOT NULL
+);
+
+CREATE TABLE sis_terms.term_definitions
 (
     term_id VARCHAR(4) NOT NULL,
     term_name VARCHAR NOT NULL,
@@ -274,9 +282,11 @@ CREATE TABLE student.student_academic_status
     first_name VARCHAR NOT NULL,
     last_name VARCHAR NOT NULL,
     level VARCHAR(2),
-    gpa DECIMAL(4,3),
+    gpa DECIMAL(5,3),
     units DECIMAL (4,1),
     transfer BOOLEAN,
+    email_address VARCHAR,
+    entering_term VARCHAR(4),
     expected_grad_term VARCHAR(4)
 );
 
@@ -286,10 +296,24 @@ CREATE TABLE student.student_majors
     major VARCHAR NOT NULL
 );
 
+CREATE TABLE student.student_name_index_hist_enr
+(
+    sid VARCHAR NOT NULL,
+    name VARCHAR NOT NULL
+);
+
 CREATE TABLE student.student_names
 (
     sid VARCHAR NOT NULL,
     name VARCHAR NOT NULL
+);
+
+CREATE TABLE student.student_names_hist_enr
+(
+    sid VARCHAR NOT NULL,
+    uid VARCHAR,
+    first_name VARCHAR NOT NULL,
+    last_name VARCHAR NOT NULL
 );
 
 CREATE TABLE student.student_enrollment_terms
@@ -297,7 +321,9 @@ CREATE TABLE student.student_enrollment_terms
     sid VARCHAR NOT NULL,
     term_id VARCHAR(4) NOT NULL,
     enrollment_term TEXT NOT NULL,
-    midpoint_deficient_grade BOOLEAN NOT NULL
+    midpoint_deficient_grade BOOLEAN NOT NULL,
+    enrolled_units DECIMAL(3,1),
+    term_gpa DECIMAL(5,3)
 );
 
 CREATE TABLE student.student_enrollment_terms_hist_enr
@@ -313,6 +339,12 @@ CREATE TABLE student.student_term_gpas
     term_id VARCHAR(4) NOT NULL,
     gpa DECIMAL(4,3),
     units_taken_for_gpa DECIMAL(4,1)
+);
+
+CREATE TABLE student.visas (
+    sid VARCHAR,
+    visa_status VARCHAR,
+    visa_type VARCHAR
 );
 
 INSERT INTO boac_advising_asc.advising_notes
@@ -549,7 +581,12 @@ VALUES
 ('2178', '22460', 'MATH 185', 'MATH185', 'MATH', '185', 'Introduction to Complex Analysis', 'LEC', '001', 'Leonhard Euler'),
 ('2178', '22114', 'MATH 55', 'MATH55', 'MATH', '55', 'Discrete Mathematics', 'LEC', '001', 'David Hilbert');
 
-INSERT INTO sis_data.term_definitions
+INSERT INTO sis_terms.current_term_index
+(current_term_name, future_term_name)
+VALUES
+('Fall 2017', 'Spring 2018');
+
+INSERT INTO sis_terms.term_definitions
 (term_id, term_name, term_begins, term_ends)
 VALUES
 ('2188', 'Fall 2018', '2018-08-15', '2018-12-14'),
@@ -615,17 +652,17 @@ VALUES
 ('3141592653', '314159', :profile_inactive_3141592653);
 
 INSERT INTO student.student_academic_status
-(sid, uid, first_name, last_name, level, gpa, units, transfer, expected_grad_term)
+(sid, uid, first_name, last_name, level, gpa, units, transfer, email_address, entering_term, expected_grad_term)
 VALUES
-('11667051', '61889', 'Deborah', 'Davies', NULL, NULL, 0, FALSE, '2198'),
-('2345678901', '98765', 'Dave', 'Doolittle', '30', 3.495, 34, FALSE, '2192'),
-('3456789012', '242881', 'Paul', 'Kerschen', '30', 3.005, 70, FALSE, '2192'),
-('5678901234', '9933311', 'Sandeep', 'Jayaprakash', '40', 3.501, 102, FALSE, '2192'),
-('7890123456', '1049291', 'Paul', 'Farestveit', '40', 3.9, 110, FALSE, '2202'),
-('8901234567', '123456', 'John David', 'Crossman', '10', 1.85, 12, FALSE, '1978'),
-('890127492', '211159', 'Siegfried', 'Schlemiel', '20', 0.4, 8, FALSE, '2192'),
-('9000000000', '300847', 'Wolfgang', 'Pauli-O''Rourke', '20', 2.3, 55, TRUE, '2202'),
-('9100000000', '300848', 'Nora Stanton', 'Barney', '20', 3.85, 60, TRUE, '2192');
+('11667051', '61889', 'Deborah', 'Davies', NULL, NULL, 0, FALSE, 'barnburner@berkeley.edu', '2158', '2198'),
+('2345678901', '98765', 'Dave', 'Doolittle', '30', 3.495, 34, FALSE, 'debaser@berkeley.edu', '2155', '2192'),
+('3456789012', '242881', 'Paul', 'Kerschen', '30', 3.005, 70, FALSE, 'doctork@berkeley.edu', '2152', '2192'),
+('5678901234', '9933311', 'Sandeep', 'Jayaprakash', '40', 3.501, 102, FALSE, 'ilovela@berkeley.edu', '2155', '2192'),
+('7890123456', '1049291', 'Paul', 'Farestveit', '40', 3.9, 110, FALSE, 'qadept@berkeley.edu', '2155', '2202'),
+('8901234567', '123456', 'John David', 'Crossman', '10', 1.85, 12, FALSE, 'mrwonderful@berkeley.edu', '1938', '1978'),
+('890127492', '211159', 'Siegfried', 'Schlemiel', '20', 0.4, 8, FALSE, 'neerdowell@berkeley.edu', '2155', '2192'),
+('9000000000', '300847', 'Wolfgang', 'Pauli-O''Rourke', '20', 2.3, 55, TRUE, 'wpo@berkeley.edu', '2155', '2202'),
+('9100000000', '300848', 'Nora Stanton', 'Barney', '20', 3.85, 60, TRUE, 'nsb@berkeley.edu', '2155', '2192');
 
 INSERT INTO student.student_majors
 (sid, major)
@@ -641,6 +678,16 @@ VALUES
 ('890127492', 'Mathematics'),
 ('9000000000', 'Engineering Undeclared UG'),
 ('9100000000', 'Engineering Undeclared UG');
+
+INSERT INTO student.student_name_index_hist_enr
+(sid, name)
+VALUES
+('2718281828', 'ERNEST'),
+('2718281828', 'PONTIFEX'),
+('3141592653', 'CLIMACUS'),
+('3141592653', 'JOHANNES'),
+('9191919191', 'PAUL'),
+('9191919191', 'TARSUS');
 
 INSERT INTO student.student_names
 (sid, name)
@@ -666,17 +713,26 @@ VALUES
 ('9100000000', 'NORA'),
 ('9100000000', 'STANTON');
 
-INSERT INTO student.student_enrollment_terms
-(sid, term_id, enrollment_term, midpoint_deficient_grade)
+INSERT INTO student.student_names_hist_enr
+(sid, uid, first_name, last_name)
 VALUES
-('11667051', '2012', :enrollment_term_11667051_2012, FALSE),
-('11667051', '2162', :enrollment_term_11667051_2162, FALSE),
-('11667051', '2172', :enrollment_term_11667051_2172, FALSE),
-('11667051', '2178', :enrollment_term_11667051_2178, TRUE),
-('11667051', '2182', :enrollment_term_11667051_2182, FALSE),
-('2345678901', '2172', :enrollment_term_2345678901_2172, FALSE),
-('3456789012', '2178', :enrollment_term_3456789012_2178, FALSE),
-('5678901234', '2178', :enrollment_term_5678901234_2178, FALSE);
+('2718281828', '271828', 'Ernest', 'Pontifex'),
+('3141592653', '314159', 'Johannes', 'Climacus'),
+('9191919191', '191919', 'Paul', 'Tarsus');
+
+INSERT INTO student.student_enrollment_terms
+(sid, term_id, enrollment_term, midpoint_deficient_grade, enrolled_units, term_gpa)
+VALUES
+('11667051', '2012', :enrollment_term_11667051_2012, FALSE, 0.0, NULL),
+('11667051', '2162', :enrollment_term_11667051_2162, FALSE, 0.0, 3.8),
+('11667051', '2172', :enrollment_term_11667051_2172, FALSE, 10.0, 2.7),
+('11667051', '2175', :enrollment_term_11667051_2175, FALSE, 0.0, NULL),
+('11667051', '2178', :enrollment_term_11667051_2178, TRUE, 12.5, 1.8),
+('11667051', '2182', :enrollment_term_11667051_2182, FALSE, 3.0, 2.9),
+('2345678901', '2172', :enrollment_term_2345678901_2172, FALSE, 10.0, 3.5),
+('2345678901', '2175', :enrollment_term_2345678901_2175, FALSE, 4.0, 0.0),
+('3456789012', '2178', :enrollment_term_3456789012_2178, FALSE, 5.0, 3.2),
+('5678901234', '2178', :enrollment_term_5678901234_2178, FALSE, 7.0, 2.1);
 
 INSERT INTO student.student_enrollment_terms_hist_enr
 (sid, term_id, enrollment_term)
@@ -697,3 +753,10 @@ VALUES
 ('2345678901', '2175', 0, 4),
 ('3456789012', '2178', 3.2, 15),
 ('5678901234', '2178', 2.1, 14);
+
+INSERT INTO student.visas
+(sid, visa_status, visa_type)
+VALUES
+('2345678901', 'G', 'F1'),
+('3456789012', 'A', 'J1'),
+('5678901234', 'G', 'OT');

@@ -1,6 +1,6 @@
 <template>
   <div class="m-3">
-    <Spinner />
+    <Spinner :is-plural="true" alert-prefix="Curated groups" />
     <div v-if="!loading">
       <h1 ref="pageHeader" class="mb-4">Everyone's Groups</h1>
 
@@ -14,7 +14,7 @@
         </h2>
         <ul v-if="row.groups.length">
           <li v-for="group in row.groups" :key="group.id">
-            <router-link :to="'/curated/' + group.id">{{ group.name }}</router-link> ({{ group.studentCount }})
+            <router-link :to="'/curated/' + group.id">{{ group.name }}</router-link> ({{ group.totalStudentCount }})
           </li>
         </ul>
         <div v-if="!row.groups.length" class="m-3">
@@ -40,7 +40,7 @@ export default {
   created() {
     getUsersWithGroups().then(data => {
       this.rows = data;
-      this.loaded();
+      this.loaded('Everyone\'s Groups');
     });
   }
 };

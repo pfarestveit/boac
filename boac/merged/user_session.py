@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,7 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, get_dept_codes, get_dept_role
+from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, get_dept_role
 from boac.merged import calnet
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.json_cache import clear, stow
@@ -49,6 +49,10 @@ class UserSession(UserMixin):
     def flush_cached(self):
         clear(f'boa_user_session_{self.user_id}')
 
+    @classmethod
+    def flush_cache_for_id(cls, user_id):
+        clear(f'boa_user_session_{user_id}')
+
     def get_id(self):
         return self.user_id
 
@@ -71,12 +75,19 @@ class UserSession(UserMixin):
         return not self.api_json['isAnonymous']
 
     @property
+    def is_drop_in_advisor(self):
+        if self.api_json['dropInAdvisorStatus']:
+            return True
+        else:
+            return False
+
+    @property
     def departments(self):
         return self.api_json['departments']
 
     @property
-    def dept_codes(self):
-        return [d['code'] for d in self.api_json['departments']]
+    def drop_in_advisor_departments(self):
+        return self.api_json['dropInAdvisorStatus']
 
     @property
     def is_admin(self):
@@ -90,14 +101,6 @@ class UserSession(UserMixin):
     def can_access_canvas_data(self):
         return self.api_json['canAccessCanvasData']
 
-    @property
-    def is_asc_authorized(self):
-        return self.api_json['canViewAsc']
-
-    @property
-    def is_coe_authorized(self):
-        return self.api_json['canViewCoe']
-
     def to_api_json(self):
         return self.api_json
 
@@ -110,8 +113,6 @@ class UserSession(UserMixin):
     def _get_api_json(cls, user=None):
         calnet_profile = None
         departments = []
-        is_asc = False
-        is_coe = False
         if user:
             calnet_profile = calnet.get_calnet_user_for_uid(
                 app,
@@ -128,10 +129,9 @@ class UserSession(UserMixin):
                         'role': get_dept_role(m),
                         'isAdvisor': m.is_advisor,
                         'isDirector': m.is_director,
+                        'isScheduler': m.is_scheduler,
                     })
-            dept_codes = get_dept_codes(user) if user else []
-            is_asc = 'UWASC' in dept_codes
-            is_coe = 'COENG' in dept_codes
+        drop_in_advisor_status = []
         is_active = False
         if user:
             if not calnet_profile:
@@ -140,23 +140,20 @@ class UserSession(UserMixin):
                 is_active = True
             elif len(user.department_memberships):
                 for m in user.department_memberships:
-                    is_active = m.is_advisor or m.is_director
+                    is_active = m.is_advisor or m.is_director or m.is_scheduler
                     if is_active:
                         break
-        is_admin = user and user.is_admin
+            drop_in_advisor_status = [d.to_api_json() for d in user.drop_in_departments]
         return {
             **(calnet_profile or {}),
             **{
                 'id': user and user.id,
-                'canViewAsc': is_asc or is_admin,
-                'canViewCoe': is_coe or is_admin,
                 'departments': departments,
+                'dropInAdvisorStatus': drop_in_advisor_status,
                 'isActive': is_active,
-                'isAdmin': is_admin,
+                'isAdmin': user and user.is_admin,
                 'isAnonymous': not is_active,
-                'isAsc': is_asc,
                 'isAuthenticated': is_active,
-                'isCoe': is_coe,
                 'inDemoMode': user and user.in_demo_mode,
                 'canAccessCanvasData': user and user.can_access_canvas_data,
                 'uid': user and user.uid,

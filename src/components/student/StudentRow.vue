@@ -7,7 +7,8 @@
         v-if="listType === 'curatedGroupForOwner'"
         :id="`row-${rowIndex}-remove-student-from-curated-group`"
         class="btn btn-link"
-        @click="removeStudent(student.sid)">
+        @click="removeStudent(student.sid)"
+        @keyup.enter="removeStudent(student.sid)">
         <font-awesome icon="times-circle" class="font-size-24" />
       </button>
       <div v-if="listType === 'cohort'">
@@ -16,31 +17,31 @@
     </div>
     <div class="cohort-list-view-column-01">
       <StudentAvatar
-        size="medium"
         :student="student"
-        :alert-count="student.alertCount" />
+        :alert-count="student.alertCount"
+        size="medium" />
     </div>
     <div class="cohort-student-bio-container mb-1">
       <div class="cohort-student-name-container">
         <div>
-          <router-link :id="`link-to-student-${student.uid}`" :to="studentRoutePath(student.uid, user.inDemoMode)">
+          <router-link :id="`link-to-student-${student.uid}`" :to="studentRoutePath(student.uid, $currentUser.inDemoMode)">
             <h3
               v-if="sortedBy !== 'first_name'"
               :id="`row-${rowIndex}-student-name`"
+              :class="{'demo-mode-blur' : $currentUser.inDemoMode}"
               class="student-name"
-              :class="{'demo-mode-blur' : user.inDemoMode}"
               v-html="`${student.lastName}, ${student.firstName}`"></h3>
             <h3
               v-if="sortedBy === 'first_name'"
               :id="`row-${rowIndex}-student-name`"
-              class="student-name"
-              :class="{'demo-mode-blur' : user.inDemoMode}">
+              :class="{'demo-mode-blur' : $currentUser.inDemoMode}"
+              class="student-name">
               {{ student.firstName }} {{ student.lastName }}
             </h3>
           </router-link>
         </div>
       </div>
-      <div class="d-flex student-sid" :class="{'demo-mode-blur' : user.inDemoMode}">
+      <div :class="{'demo-mode-blur' : $currentUser.inDemoMode}" class="d-flex student-sid">
         <div :id="`row-${rowIndex}-student-sid`">{{ student.sid }}</div>
         <div
           v-if="student.academicCareerStatus === 'Inactive'"
@@ -73,6 +74,13 @@
           {{ student.level }}
         </div>
         <div
+          v-if="student.matriculation"
+          :id="`row-${rowIndex}-student-matriculation`"
+          class="student-text"
+          aria-label="Entering term">
+          Entered {{ student.matriculation }}
+        </div>
+        <div
           v-if="student.expectedGraduationTerm"
           :id="`row-${rowIndex}-student-grad-term`"
           class="student-text"
@@ -87,6 +95,13 @@
         </div>
       </div>
       <div v-if="student.academicCareerStatus === 'Completed'">
+        <div
+          v-if="student.matriculation"
+          :id="`row-${rowIndex}-student-matriculation`"
+          class="student-text"
+          aria-label="Entering term">
+          Entered {{ student.matriculation }}
+        </div>
         <div v-if="get(student, 'degree.dateAwarded')">
           <span class="student-text">Graduated {{ student.degree.dateAwarded | moment('MMM DD, YYYY') }}</span>
         </div>
@@ -164,7 +179,7 @@
       <table class="cohort-course-activity-table">
         <tr>
           <th class="cohort-course-activity-header cohort-course-activity-course-name">CLASS</th>
-          <th v-if="user.canAccessCanvasData" class="cohort-course-activity-header">BCOURSES ACTIVITY</th>
+          <th v-if="$currentUser.canAccessCanvasData" class="cohort-course-activity-header">BCOURSES ACTIVITY</th>
           <th class="cohort-course-activity-header">MID</th>
           <th class="cohort-course-activity-header">FINAL</th>
         </tr>
@@ -176,10 +191,9 @@
               :id="`student-${student.uid}-waitlisted-for-${enrollment.sections.length ? enrollment.sections[0].ccn : enrollment.displayName}`"
               class="pl-1 red-flag-status">(W)</span>
           </td>
-          <td v-if="user.canAccessCanvasData" class="cohort-course-activity-data">
+          <td v-if="$currentUser.canAccessCanvasData" class="cohort-course-activity-data">
             <div
               v-for="(canvasSite, cIndex) in enrollment.canvasSites"
-              :id="`row-${rowIndex}-student-canvas-site-${cIndex}`"
               :key="cIndex"
               class="cohort-boxplot-container">
               <span
@@ -189,10 +203,8 @@
               </span>
               <span>{{ lastActivityDays(canvasSite.analytics) }}</span>
             </div>
-            <div
-              v-if="!get(enrollment, 'canvasSites').length"
-              :id="`row-${rowIndex}-student-canvas-sites-no-data`">
-              <span class="sr-only">No data</span>&mdash;
+            <div v-if="!get(enrollment, 'canvasSites').length">
+              <span class="sr-only">No data </span>&mdash;
             </div>
           </td>
           <td class="cohort-course-activity-data">
@@ -214,9 +226,9 @@
         </tr>
         <tr v-if="!termEnrollments.length">
           <td class="cohort-course-activity-data cohort-course-activity-course-name faint-text">
-            No {{ termNameForSisId(currentEnrollmentTermId) }} enrollments
+            No {{ termNameForSisId($config.currentEnrollmentTermId) }} enrollments
           </td>
-          <td v-if="user.canAccessCanvasData" class="cohort-course-activity-data">
+          <td v-if="$currentUser.canAccessCanvasData" class="cohort-course-activity-data">
             <span class="sr-only">No data</span>&mdash;
           </td>
           <td class="cohort-course-activity-data">
@@ -239,7 +251,6 @@ import StudentAnalytics from '@/mixins/StudentAnalytics';
 import StudentAvatar from '@/components/student/StudentAvatar';
 import StudentGpaChart from '@/components/student/StudentGpaChart';
 import StudentMetadata from '@/mixins/StudentMetadata';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
@@ -254,7 +265,6 @@ export default {
     Context,
     StudentAnalytics,
     StudentMetadata,
-    UserMetadata,
     Util
   ],
   props: {

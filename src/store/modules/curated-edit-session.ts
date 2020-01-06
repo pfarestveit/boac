@@ -5,14 +5,14 @@ import {addStudents, getCuratedGroup, removeFromCuratedGroup, renameCuratedGroup
 const $_goToPage = ({ commit, state }, pageNumber: number) => {
   return new Promise(resolve => {
     commit('setPageNumber', pageNumber);
-    const preferences = store.getters['user/preferences'];
+    const preferences = store.getters['currentUserExtras/preferences'];
     const offset = _.multiply(pageNumber - 1, state.itemsPerPage);
     getCuratedGroup(state.curatedGroupId, preferences.sortBy, offset, state.itemsPerPage).then(group => {
       if (group) {
         commit('setCuratedGroupName', group.name);
         commit('setOwnerId', group.ownerId);
         commit('setStudents', group.students);
-        commit('setTotalStudentCount', group.studentCount);
+        commit('setTotalStudentCount', group.totalStudentCount);
         return resolve(group);
       } else {
         return resolve(null);
@@ -86,7 +86,7 @@ const actions = {
     return new Promise(resolve => {
       commit('removeStudent', sid);
       removeFromCuratedGroup(state.curatedGroupId, sid).then(group => {
-        commit('setTotalStudentCount', group.studentCount);
+        commit('setTotalStudentCount', group.totalStudentCount);
         return resolve();
       });
     });

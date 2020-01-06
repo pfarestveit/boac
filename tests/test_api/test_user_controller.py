@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,14 +23,24 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from boac import std_commit
+from boac.merged import calnet
 from boac.models.authorized_user import AuthorizedUser
+from boac.models.json_cache import insert_row as insert_in_json_cache
 from boac.models.university_dept import UniversityDept
+from flask import current_app as app
 import simplejson as json
 from tests.util import override_config
 
 admin_uid = '2040'
 asc_advisor_uid = '1081940'
 coe_advisor_uid = '1133399'
+coe_scheduler_uid = '6972201'
+deleted_user_csid = '333333333'
+deleted_user_uid = '33333'
+l_s_college_scheduler_uid = '19735'
+l_s_college_advisor_uid = '188242'
+l_s_college_drop_in_advisor_uid = '53791'
 
 
 class TestUserProfile:
@@ -63,36 +73,36 @@ class TestUserProfile:
         fake_auth.login(admin_uid)
         api_json = self._api_my_profile(client)
         assert api_json['isAdmin'] is True
-        assert api_json['isAsc'] is False
-        assert api_json['isCoe'] is False
         assert not len(api_json['departments'])
 
-    def test_department_beyond_asc(self, client, fake_auth):
-        """Returns COENG advisor."""
-        fake_auth.login('1022796')
+    def test_user_with_scheduler_role(self, client, fake_auth):
+        """Returns COE scheduler profile."""
+        fake_auth.login(coe_scheduler_uid)
         api_json = self._api_my_profile(client)
         assert api_json['isAdmin'] is False
-        assert api_json['isCoe'] is True
-        assert api_json['canAccessCanvasData'] is True
+        assert api_json['canAccessCanvasData'] is False
+        assert not api_json['dropInAdvisorStatus']
         departments = api_json['departments']
         assert len(departments) == 1
         assert departments[0]['code'] == 'COENG'
         assert departments[0]['name'] == 'College of Engineering'
-        assert departments[0]['isAdvisor'] is True
+        assert departments[0]['isAdvisor'] is False
         assert departments[0]['isDirector'] is False
+        assert departments[0]['isScheduler'] is True
 
     def test_asc_advisor_exclude_cohorts(self, client, fake_auth):
-        """Returns Athletic Study Center advisor."""
+        """Returns Athletic Study Center drop-in advisor."""
         fake_auth.login(asc_advisor_uid)
         api_json = self._api_my_profile(client)
-        assert api_json['isAsc'] is True
         assert api_json['canAccessCanvasData'] is True
+        assert api_json['dropInAdvisorStatus'] == [{'deptCode': 'UWASC', 'available': True, 'supervisorOnCall': False}]
         departments = api_json['departments']
         assert len(departments) == 1
         assert departments[0]['code'] == 'UWASC'
         assert departments[0]['name'] == 'Athletic Study Center'
         assert departments[0]['isAdvisor'] is True
         assert departments[0]['isDirector'] is False
+        assert departments[0]['isScheduler'] is False
 
     def test_other_user_profile(self, client, fake_auth):
         fake_auth.login(admin_uid)
@@ -107,46 +117,91 @@ class TestUserProfile:
         assert response.status_code == 404
 
 
-class TestUserById:
-    """User Profile API."""
+class TestCalnetProfileById:
+    """Calnet Profile API."""
 
     def test_user_by_uid_not_authenticated(self, client):
         """Returns 401 when not authenticated."""
         user = AuthorizedUser.find_by_uid(asc_advisor_uid)
-        response = client.get(f'/api/user/by_uid/{user.uid}')
+        response = client.get(f'/api/user/calnet_profile/by_uid/{user.uid}')
         assert response.status_code == 401
 
     def test_user_by_uid(self, client, fake_auth):
         """Delivers CalNet profile."""
         fake_auth.login(admin_uid)
         user = AuthorizedUser.find_by_uid(asc_advisor_uid)
-        response = client.get(f'/api/user/by_uid/{user.uid}')
+        response = client.get(f'/api/user/calnet_profile/by_uid/{user.uid}')
         assert response.status_code == 200
         assert response.json['uid'] == asc_advisor_uid
 
     def test_user_by_csid_not_authenticated(self, client):
         """Returns 401 when not authenticated."""
-        response = client.get(f'/api/user/by_csid/{81067873}')
+        response = client.get(f'/api/user/calnet_profile/by_csid/{81067873}')
         assert response.status_code == 401
 
     def test_user_by_csid(self, client, fake_auth):
         """Delivers CalNet profile."""
         fake_auth.login(admin_uid)
-        response = client.get(f'/api/user/by_csid/{81067873}')
+        response = client.get(f'/api/user/calnet_profile/by_csid/{81067873}')
         assert response.status_code == 200
         assert response.json['csid'] == '81067873'
+
+
+class TestUserByUid:
+    """User by UID API."""
+
+    def test_not_authenticated(self, client):
+        """Returns 401 when not authenticated."""
+        user = AuthorizedUser.find_by_uid(asc_advisor_uid)
+        response = client.get(f'/api/user/by_uid/{user.uid}')
+        assert response.status_code == 401
+
+    def test_user_not_found(self, client, fake_auth):
+        """404 when user not found."""
+        fake_auth.login(admin_uid)
+        assert client.get('/api/user/by_uid/99999999999999999').status_code == 404
+
+    def test_deleted_user_not_found(self, client, fake_auth):
+        """404 is default if get deleted user by UID."""
+        fake_auth.login(admin_uid)
+        assert client.get(f'/api/user/by_uid/{deleted_user_uid}').status_code == 404
+        assert client.get(f'/api/user/by_uid/{deleted_user_uid}?ignoreDeleted=true').status_code == 404
+
+    def test_get_deleted_user_by_uid(self, client, fake_auth):
+        """Get deleted user by UID if specific param is passed."""
+        fake_auth.login(admin_uid)
+        response = client.get(f'/api/user/by_uid/{deleted_user_uid}?ignoreDeleted=false')
+        assert response.status_code == 200
+        assert response.json['uid'] == deleted_user_uid
+
+    def test_user_by_csid(self, client, fake_auth):
+        """Delivers CalNet profile."""
+        fake_auth.login(admin_uid)
+        response = client.get('/api/user/by_uid/1133399')
+        assert response.status_code == 200
+        assert response.json['csid'] == '800700600'
+        assert response.json['uid'] == '1133399'
 
 
 class TestUniversityDeptMember:
     """University Dept Member API."""
 
     @classmethod
-    def _api_add(cls, client, is_advisor=True, is_director=False, automate_membership=False, expected_status_code=200):
+    def _api_add(
+            cls,
+            client,
+            is_advisor=True,
+            is_director=False,
+            is_scheduler=False,
+            automate_membership=False,
+            expected_status_code=200,
+    ):
         params = {
             'deptCode': 'ZZZZZ',
             'uid': coe_advisor_uid,
             'isAdvisor': is_advisor,
             'isDirector': is_director,
+            'isScheduler': is_scheduler,
             'automateMembership': automate_membership,
         }
         response = client.post(
@@ -158,12 +213,21 @@ class TestUniversityDeptMember:
         return response.json
 
     @classmethod
-    def _api_update(cls, client, is_advisor=None, is_director=None, automate_membership=None, expected_status_code=200):
+    def _api_update(
+            cls,
+            client,
+            is_advisor=None,
+            is_director=None,
+            is_scheduler=None,
+            automate_membership=None,
+            expected_status_code=200,
+    ):
         params = {
             'deptCode': 'ZZZZZ',
             'uid': coe_advisor_uid,
             'isAdvisor': is_advisor,
             'isDirector': is_director,
+            'isScheduler': is_scheduler,
             'automateMembership': automate_membership,
         }
         response = client.post(
@@ -254,39 +318,187 @@ class TestUniversityDeptMember:
         )
 
 
-class TestUserGroups:
-    """User API."""
+class TestUsers:
+    """Users API."""
 
     def test_not_authenticated(self, client):
         """Returns 'unauthorized' response status if user is not authenticated."""
-        response = client.get('/api/users/authorized_groups')
+        response = client.post('/api/users')
+        assert response.status_code == 401
+        response = client.get('/api/users/departments')
         assert response.status_code == 401
 
     def test_unauthorized(self, client, fake_auth):
         """Returns 'unauthorized' response status if user is not admin."""
         fake_auth.login(coe_advisor_uid)
-        response = client.get('/api/users/authorized_groups')
+        response = client.post('/api/users')
+        assert response.status_code == 401
+        response = client.get('/api/users/departments')
+        assert response.status_code == 401
+
+    def test_unauthorized_scheduler(self, client, fake_auth):
+        """Returns 'unauthorized' response status if user is a scheduler."""
+        fake_auth.login(coe_scheduler_uid)
+        response = client.post('/api/users')
         assert response.status_code == 401
 
     def test_authorized(self, client, fake_auth):
-        """Returns a well-formed response including cached and uncached users."""
+        """Returns a well-formed response including cached, uncached, and deleted users."""
         fake_auth.login(admin_uid)
-        response = client.get('/api/users/authorized_groups')
+        response = client.post(
+            '/api/users',
+            data=json.dumps({
+                'deptCode': 'QCADV',
+            }),
+            content_type='application/json',
+        )
         assert response.status_code == 200
-        user_groups = response.json
-        assert len(user_groups) == 6
-        assert user_groups[0]['name'] == 'Admins'
-        assert len(user_groups[0]['users']) == 8
-        assert user_groups[1]['name'] == 'Athletic Study Center'
-        assert len(user_groups[1]['users']) == 3
-        assert user_groups[2]['name'] == 'College of Engineering'
-        assert len(user_groups[2]['users']) == 4
-        assert user_groups[3]['name'] == 'L&S College Advising'
-        assert len(user_groups[3]['users']) == 1
-        assert user_groups[4]['name'] == 'L&S Major Advising'
-        assert len(user_groups[5]['users']) == 2
-        assert user_groups[5]['name'] == 'Notes Only'
-        assert len(user_groups[5]['users']) == 2
+        users = response.json['users']
+        assert len(users) == 3
+
+    def test_drop_in_advisors_for_dept(self, client, fake_auth):
+        fake_auth.login(l_s_college_scheduler_uid)
+        response = client.get('/api/users/drop_in_advisors/qcadv')
+        assert response.status_code == 200
+        assert len(response.json) == 1
+        assert response.json[0]['dropInAdvisorStatus'][0] == {'available': True, 'deptCode': 'QCADV', 'supervisorOnCall': False}
+
+    def test_get_departments(self, client, fake_auth):
+        """Get all departments."""
+        fake_auth.login(admin_uid)
+        response = client.get('/api/users/departments')
+        assert response.status_code == 200
+
+
+class TestGetAdminUsers:
+    """Get Admin Users API."""
+
+    @classmethod
+    def _api_admin_users(
+            cls,
+            client,
+            ignore_deleted,
+            sort_by='lastName',
+            sort_descending=False,
+            expected_status_code=200,
+    ):
+        params = {
+            'ignoreDeleted': ignore_deleted,
+            'sortBy': sort_by,
+            'sortDescending': sort_descending,
+        }
+        response = client.post(
+            '/api/users/admins',
+            data=json.dumps(params),
+            content_type='application/json',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_not_authenticated(self, client):
+        """Returns 'unauthorized' response status if user is not authenticated."""
+        self._api_admin_users(client, ignore_deleted=True, expected_status_code=401)
+
+    def test_unauthorized(self, client, fake_auth):
+        """Returns 'unauthorized' response status if user is not admin."""
+        fake_auth.login(coe_advisor_uid)
+        self._api_admin_users(client, ignore_deleted=True, expected_status_code=401)
+
+    def test_get_admin_users(self, client, fake_auth):
+        """Get all admin users."""
+        fake_auth.login(admin_uid)
+        api_json = self._api_admin_users(client, ignore_deleted=False, expected_status_code=200)
+        users = api_json['users']
+        user_count = len(users)
+        assert user_count
+        assert user_count == api_json['totalUserCount']
+        assert next((u for u in users if u['deletedAt']), None) is not None
+
+    def test_get_admin_users_ignore_deleted(self, client, fake_auth):
+        """Get admin users, ignoring deleted users."""
+        fake_auth.login(admin_uid)
+        api_json = self._api_admin_users(client, ignore_deleted=True, expected_status_code=200)
+        users = api_json['users']
+        user_count = len(users)
+        assert user_count
+        assert user_count == api_json['totalUserCount']
+        assert next((u for u in users if u['deletedAt']), None) is None
+
+
+class TestUserSearch:
+
+    @classmethod
+    def _api_users_autocomplete(
+            cls,
+            client,
+            snippet=None,
+            expected_status_code=200,
+    ):
+        response = client.post(
+            f'/api/users/autocomplete',
+            data=json.dumps({'snippet': snippet}),
+            content_type='application/json',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_not_authenticated(self, client):
+        """Deny anonymous user."""
+        assert self._api_users_autocomplete(client, 'Jo', expected_status_code=401)
+
+    def test_unauthorized(self, client, fake_auth):
+        """Deny non-admin user."""
+        assert self._api_users_autocomplete(client, 'Jo', expected_status_code=401)
+
+    def test_user_search_by_uid(self, client, fake_auth):
+        """Search users by UID."""
+        fake_auth.login(admin_uid)
+        assert len(self._api_users_autocomplete(client, '339')) == 2
+
+    def test_search_for_deleted_user_by_uid(self, client, fake_auth):
+        """Search for deleted user by UID."""
+        fake_auth.login(admin_uid)
+        users = self._api_users_autocomplete(client, '3333')
+        assert len(users) == 1
+        assert users[0]['uid'] == '33333'
+
+    def test_search_for_deleted_user_by_name(self, client, fake_auth):
+        """Search for deleted user by name."""
+        fake_auth.login(admin_uid)
+        calnet_users = list(calnet.get_calnet_users_for_uids(app, ['33333']).values())
+        first_name = calnet_users[0]['firstName']
+        last_name = calnet_users[0]['lastName']
+        api_json = self._api_users_autocomplete(client, f'{first_name[:2]} {last_name[:3]}')
+        assert len(api_json) == 1
+
+    def test_space_separated_names_is_required(self, client, fake_auth):
+        """When search users, names must be separated by spaces."""
+        fake_auth.login(admin_uid)
+        calnet_users = list(calnet.get_calnet_users_for_uids(app, ['1081940']).values())
+        first_name = calnet_users[0]['firstName']
+        last_name = calnet_users[0]['lastName']
+        api_json = self._api_users_autocomplete(client, f'{first_name}{last_name}')
+        assert len(api_json) == 0
+
+    def test_user_search_by_last_name(self, client, fake_auth):
+        """Search users by last name."""
+        fake_auth.login(admin_uid)
+        calnet_users = list(calnet.get_calnet_users_for_uids(app, ['1081940']).values())
+        last_name = calnet_users[0]['lastName']
+        api_json = self._api_users_autocomplete(client, f' {last_name[:3]}  ')
+        assert len(api_json) == 1
+        assert api_json[0]['uid'] == calnet_users[0]['uid']
+
+    def test_user_search_by_name(self, client, fake_auth):
+        """Search users by UID."""
+        fake_auth.login(admin_uid)
+        calnet_users = list(calnet.get_calnet_users_for_uids(app, ['1081940']).values())
+        # Case-insensitive search
+        first_name = calnet_users[0]['firstName'].lower()
+        last_name = calnet_users[0]['lastName'].lower()
+        api_json = self._api_users_autocomplete(client, f' {first_name[:2]} {last_name[:3]}  ')
+        assert len(api_json) == 1
+        assert api_json[0]['uid'] == calnet_users[0]['uid']
 
 
 class TestDemoMode:
@@ -336,10 +548,367 @@ class TestDownloadUsers:
         response = client.get('/api/users/csv')
         assert response.status_code == 401
 
+    def test_unauthorized_scheduler(self, client, fake_auth):
+        """Returns 'unauthorized' response status if user is a scheduler."""
+        fake_auth.login(coe_scheduler_uid)
+        response = client.get('/api/users/csv')
+        assert response.status_code == 401
+
     def test_authorized(self, client, fake_auth):
         """Returns a well-formed response."""
         fake_auth.login(admin_uid)
         response = client.get('/api/users/csv')
         assert response.status_code == 200
         assert 'csv' in response.content_type
-        assert 'College of Engineering' in str(response.data)
+        assert 'COENG' in str(response.data)
+
+
+class TestToggleDropInAppointmentStatus:
+
+    def test_not_authenticated(self, client):
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/deactivate')
+        assert response.status_code == 401
+
+    def test_denies_non_drop_in_advisor(self, client, fake_auth):
+        fake_auth.login(l_s_college_advisor_uid)
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/deactivate')
+        assert response.status_code == 401
+
+    def test_denies_scheduler_in_other_department(self, client, fake_auth):
+        fake_auth.login(coe_scheduler_uid)
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/deactivate')
+        assert response.status_code == 403
+
+    def test_denies_advisor_toggling_another_advisor(self, client, fake_auth):
+        fake_auth.login(l_s_college_drop_in_advisor_uid)
+        response = client.post(f'/api/user/{asc_advisor_uid}/drop_in_status/UWASC/deactivate')
+        assert response.status_code == 403
+
+    def test_handles_drop_in_status_not_found(self, client, fake_auth):
+        fake_auth.login(l_s_college_drop_in_advisor_uid)
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/COENG/deactivate')
+        assert response.status_code == 404
+
+    def test_advisor_can_toggle_own_status(self, client, fake_auth):
+        fake_auth.login(l_s_college_drop_in_advisor_uid)
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/deactivate')
+        assert response.status_code == 200
+        response = client.get('/api/users/drop_in_advisors/QCADV')
+        assert len(response.json) == 1
+        assert response.json[0]['dropInAdvisorStatus'] == [{'deptCode': 'QCADV', 'available': False, 'supervisorOnCall': False}]
+        response = client.get('/api/profile/my')
+        assert response.json['dropInAdvisorStatus'] == [{'deptCode': 'QCADV', 'available': False, 'supervisorOnCall': False}]
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/activate')
+        assert response.status_code == 200
+        response = client.get('/api/profile/my')
+        assert response.json['dropInAdvisorStatus'] == [{'deptCode': 'QCADV', 'available': True, 'supervisorOnCall': False}]
+
+    def test_scheduler_can_toggle_advisor_status(self, client, fake_auth):
+        fake_auth.login(l_s_college_scheduler_uid)
+
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/deactivate')
+        assert response.status_code == 200
+
+        response = client.get('/api/users/drop_in_advisors/QCADV')
+        assert len(response.json) == 1
+        assert response.json[0]['available'] is False
+        assert response.json[0]['dropInAdvisorStatus'] == [{'deptCode': 'QCADV', 'available': False, 'supervisorOnCall': False}]
+
+        response = client.post(f'/api/user/{l_s_college_drop_in_advisor_uid}/drop_in_status/QCADV/activate')
+        assert response.status_code == 200
+
+        response = client.get('/api/users/drop_in_advisors/QCADV')
+        assert len(response.json) == 1
+        assert response.json[0]['available'] is True
+        assert response.json[0]['dropInAdvisorStatus'] == [{'deptCode': 'QCADV', 'available': True, 'supervisorOnCall': False}]
+
+
+class TestUserUpdate:
+
+    @classmethod
+    def _profile_object(
+            cls,
+            uid,
+            authorized_user_id=None,
+            is_admin=False,
+            is_blocked=False,
+            can_access_canvas_data=True,
+    ):
+        return {
+            'uid': uid,
+            'id': authorized_user_id,
+            'isAdmin': is_admin,
+            'isBlocked': is_blocked,
+            'canAccessCanvasData': can_access_canvas_data,
+        }
+
+    @classmethod
+    def _api_create_or_update(
+            cls,
+            client,
+            profile,
+            expected_status_code=200,
+            roles_per_dept_code=(),
+            delete_action=None,
+    ):
+        response = client.post(
+            f'/api/users/create_or_update',
+            data=json.dumps({
+                'profile': profile,
+                'rolesPerDeptCode': roles_per_dept_code,
+                'deleteAction': delete_action,
+            }),
+            content_type='application/json',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_not_authenticated(self, client):
+        """Authentication required."""
+        self._api_create_or_update(
+            client,
+            profile=self._profile_object(uid='2040'),
+            expected_status_code=401,
+        )
+
+    def test_unauthorized(self, client, fake_auth):
+        """Admin required."""
+        fake_auth.login(coe_advisor_uid)
+        self._api_create_or_update(
+            client,
+            profile=self._profile_object(uid='2040'),
+            expected_status_code=401,
+        )
+
+    def test_unrecognized_uid(self, client, fake_auth):
+        """Unrecognized UID."""
+        fake_auth.login(admin_uid)
+        self._api_create_or_update(
+            client,
+            profile=self._profile_object(uid='9999999999'),
+            expected_status_code=400,
+        )
+
+    def test_error_when_add_existing_uid(self, client, fake_auth):
+        """Raises error if UID exists."""
+        fake_auth.login(admin_uid)
+        self._api_create_or_update(
+            client,
+            profile=self._profile_object(uid=deleted_user_uid),
+            expected_status_code=400,
+        )
+
+    def test_create_drop_in_advisor(self, client, fake_auth):
+        """Admin creates new Drop-in Advisor."""
+        fake_auth.login(admin_uid)
+        uid = '900000001'
+        insert_in_json_cache(
+            f'calnet_user_for_uid_{uid}',
+            {
+                'uid': uid,
+                'csid': '100000009',
+            },
+        )
+        user = self._api_create_or_update(
+            client,
+            profile=self._profile_object(uid=uid),
+            roles_per_dept_code=[
+                {
+                    'code': 'QCADV',
+                    'role': 'dropInAdvisor',
+                    'automateMembership': True,
+                },
+                {
+                    'code': 'QCADVMAJ',
+                    'role': 'scheduler',
+                    'automateMembership': False,
+                },
+            ],
+        )
+        uid = user['uid']
+        assert user['id']
+        assert uid
+        assert user['isAdmin'] is False
+        assert user['isBlocked'] is False
+        assert user['canAccessCanvasData'] is True
+        assert len(user['departments']) == 2
+
+        assert len(user['dropInAdvisorStatus']) == 1
+        assert user['dropInAdvisorStatus'][0]['deptCode'] == 'QCADV'
+        assert user['dropInAdvisorStatus'][0]['supervisorOnCall'] is False
+
+        qcadv = next(d for d in user['departments'] if d['code'] == 'QCADV')
+        assert qcadv['isAdvisor'] is True
+        assert qcadv['isScheduler'] is False
+        assert qcadv['automateMembership'] is True
+
+        qcadvmaj = next(d for d in user['departments'] if d['code'] == 'QCADVMAJ')
+        assert qcadvmaj['isAdvisor'] is False
+        assert qcadvmaj['isScheduler'] is True
+        assert qcadvmaj['automateMembership'] is False
+
+        # Clean up
+        AuthorizedUser.delete_and_block(uid)
+
+    def test_update_advisor(self, client, fake_auth):
+        """Add Advisor to another department as a drop-in supervisor, assign Scheduler role."""
+        fake_auth.login(admin_uid)
+        # First, create advisor
+        uid = '9000000002'
+        insert_in_json_cache(
+            f'calnet_user_for_uid_{uid}',
+            {
+                'uid': uid,
+                'csid': '200000009',
+            },
+        )
+        user = self._api_create_or_update(
+            client,
+            profile=self._profile_object(uid=uid),
+            roles_per_dept_code=[
+                {
+                    'code': 'QCADV',
+                    'role': 'supervisorOnCall',
+                    'automateMembership': True,
+                },
+            ],
+        )
+        user_id = user['id']
+        assert user_id
+        assert user['uid'] == uid
+
+        departments = user['departments']
+        assert len(departments) == 1
+        assert departments[0]['code'] == 'QCADV'
+        assert departments[0]['isAdvisor'] is True
+        assert departments[0]['automateMembership'] is True
+
+        drop_in_statuses = user['dropInAdvisorStatus']
+        assert len(drop_in_statuses) == 1
+        assert drop_in_statuses[0]['deptCode'] == 'QCADV'
+        assert drop_in_statuses[0]['supervisorOnCall'] is True
+
+        # Next, remove advisor from 'QCADV' and add him to 'QCADVMAJ', as "Scheduler".
+        authorized_user_id = AuthorizedUser.get_id_per_uid(uid)
+        self._api_create_or_update(
+            client,
+            profile=self._profile_object(
+                uid=uid,
+                authorized_user_id=authorized_user_id,
+            ),
+            roles_per_dept_code=[
+                {
+                    'code': 'QCADVMAJ',
+                    'role': 'scheduler',
+                    'automateMembership': False,
+                },
+            ],
+        )
+        std_commit(allow_test_environment=True)
+
+        user = AuthorizedUser.find_by_uid(uid)
+        assert len(user.drop_in_departments) == 0
+        assert len(user.department_memberships) == 1
+        assert user.department_memberships[0].university_dept.dept_code == 'QCADVMAJ'
+        assert user.department_memberships[0].automate_membership is False
+
+    def test_update_deleted_user(self, client, fake_auth):
+        """Update and then un-delete user."""
+        fake_auth.login(admin_uid)
+        # First, create advisor
+        uid = '9000000003'
+        insert_in_json_cache(
+            f'calnet_user_for_uid_{uid}',
+            {
+                'uid': uid,
+                'csid': '300000009',
+            },
+        )
+        profile = self._profile_object(uid=uid, is_admin=True)
+        user = self._api_create_or_update(client, profile=profile, roles_per_dept_code=[])
+        profile['id'] = user['id']
+
+        # Next, delete the user.
+        self._api_create_or_update(client, profile=profile, delete_action=True)
+        std_commit(allow_test_environment=True)
+
+        user = AuthorizedUser.find_by_uid(uid, ignore_deleted=False)
+        assert user.deleted_at
+
+        # Finally, un-delete the user.
+        self._api_create_or_update(client, profile=profile, delete_action=False)
+        std_commit(allow_test_environment=True)
+
+        user = AuthorizedUser.find_by_uid(uid, ignore_deleted=False)
+        assert not user.deleted_at
+
+
+class TestSetDropInRole:
+
+    @classmethod
+    def _api_drop_in_role(
+            cls,
+            client,
+            dept_code,
+            role,
+            expected_status_code=200,
+    ):
+        response = client.post(
+            f'/api/user/drop_in_role/{dept_code}',
+            data=json.dumps({
+                'deptCode': dept_code,
+                'role': role,
+            }),
+            content_type='application/json',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_not_authenticated(self, client):
+        """Authentication required."""
+        self._api_drop_in_role(
+            client,
+            dept_code='COENG',
+            role='dropInAdvisor',
+            expected_status_code=401,
+        )
+
+    def test_invalid_params(self, client, fake_auth):
+        """Requires role."""
+        fake_auth.login(coe_advisor_uid)
+        self._api_drop_in_role(
+            client,
+            dept_code='COENG',
+            role=None,
+            expected_status_code=400,
+        )
+
+    def test_relinquish_supervisor_status(self, client, fake_auth):
+        """Allows supervisor on call to become a regular drop-in advisor."""
+        fake_auth.login(coe_advisor_uid)
+        user = AuthorizedUser.find_by_uid(coe_advisor_uid)
+        assert len(user.drop_in_departments) == 1
+        assert user.drop_in_departments[0].is_supervisor_on_call is True
+        self._api_drop_in_role(
+            client,
+            dept_code='COENG',
+            role='dropInAdvisor',
+        )
+        user = AuthorizedUser.find_by_uid(coe_advisor_uid)
+        assert len(user.drop_in_departments) == 1
+        assert user.drop_in_departments[0].is_supervisor_on_call is False
+
+    def test_become_drop_in_supervisor(self, client, fake_auth, app):
+        """Allows drop-in advisor to become a supervisor on call."""
+        fake_auth.login(l_s_college_drop_in_advisor_uid)
+        user = AuthorizedUser.find_by_uid(l_s_college_drop_in_advisor_uid)
+        assert len(user.drop_in_departments) == 1
+        assert user.drop_in_departments[0].is_supervisor_on_call is False
+        self._api_drop_in_role(
+            client,
+            dept_code='QCADV',
+            role='supervisorOnCall',
+        )
+        user = AuthorizedUser.find_by_uid(l_s_college_drop_in_advisor_uid)
+        assert len(user.drop_in_departments) == 1
+        assert user.drop_in_departments[0].is_supervisor_on_call is True

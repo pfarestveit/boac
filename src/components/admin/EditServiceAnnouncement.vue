@@ -21,16 +21,16 @@
         </div>
         <RichTextEditor
           id="textarea-update-service-announcement"
-          aria-label="Service announcement input"
           :initial-value="originalText"
           :disabled="isSaving"
-          :on-value-update="onEditorUpdate" />
+          :on-value-update="onEditorUpdate"
+          aria-label="Service announcement input" />
         <div>
           <b-btn
             id="button-update-service-announcement"
+            :disabled="text === originalText"
             variant="primary"
             class="btn-primary-color-override mt-2"
-            :disabled="text === originalText"
             @click="updateText">
             <span v-if="isSaving"><font-awesome icon="spinner" spin /> Update...</span>
             <span v-if="!isSaving">Update</span>

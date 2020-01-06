@@ -6,6 +6,7 @@ import App from './App.vue';
 import axios from 'axios';
 import BootstrapVue from 'bootstrap-vue';
 import CKEditor from '@ckeditor/ckeditor5-vue';
+import core from './core';
 import filters from './filters';
 import Highcharts from 'highcharts';
 import HighchartsMore from 'highcharts/highcharts-more';
@@ -27,18 +28,6 @@ Vue.component('font-awesome', FontAwesomeIcon);
 
 // Allow cookies in Access-Control requests
 axios.defaults.withCredentials = true;
-axios.interceptors.response.use(response => response, function(error) {
-  let status = _.get(error, 'response.status') || 'Unknown';
-  if (_.includes([404], status)) {
-    router.push({ path: '/404' });
-  } else {
-    store.dispatch('context/reportError', {
-      message: _.get(error.response, 'data.message') || error.message || `Request failed with status ${status}`,
-      status: status
-    });
-  }
-  return Promise.reject(error);
-});
 
 Vue.config.productionTip = false;
 Vue.use(BootstrapVue);
@@ -62,8 +51,32 @@ Vue.prototype.$eventHub = new Vue();
 Vue.use(routerHistory);
 router.afterEach(writeHistory);
 
-new Vue({
-  router,
-  store,
-  render: h => h(App)
-}).$mount('#app');
+const apiBaseUrl = process.env.VUE_APP_API_BASE_URL;
+axios.get(`${apiBaseUrl}/api/profile/my`).then(response => {
+  Vue.prototype.$currentUser = response.data;
+
+  axios.get(`${apiBaseUrl}/api/config`).then(response => {
+    Vue.prototype.$config = response.data;
+    Vue.prototype.$config.apiBaseUrl = apiBaseUrl;
+    Vue.prototype.$config.isVueAppDebugMode = _.trim(process.env.VUE_APP_DEBUG).toLowerCase() === 'true';
+
+    // Mount BOA
+    new Vue({
+      router,
+      store,
+      render: h => h(App)
+    }).$mount('#app');
+
+    if (Vue.prototype.$config.pingFrequency) {
+      // Keep session alive with periodic requests
+      setInterval(() => axios.get(`${apiBaseUrl}/api/ping`), Vue.prototype.$config.pingFrequency);
+    }
+    // The 'core' functions strictly manage state changes in $currentUser and other "prototype" objects.
+    // For example, core functions might be invoked after a successful dev-auth login.
+    Vue.prototype.$core = core;
+    Vue.prototype.$core.initializeCurrentUser().then(_.noop);
+    Vue.prototype.$core.mountGoogleAnalytics().then(_.noop);
+    // The following non-core function(s) do not involve "prototype" objects.
+    store.dispatch('context/loadServiceAnnouncement');
+  });
+});

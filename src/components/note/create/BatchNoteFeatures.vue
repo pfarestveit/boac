@@ -5,8 +5,8 @@
         <span
           v-if="targetStudentCount"
           id="target-student-count-alert"
-          class="font-italic"
-          :class="{'has-error': targetStudentCount >= 250, 'font-weight-bolder': targetStudentCount >= 500}">
+          :class="{'has-error': targetStudentCount >= 250, 'font-weight-bolder': targetStudentCount >= 500}"
+          class="font-italic">
           Note will be added to {{ 'student record' | pluralize(targetStudentCount) }}.
           <span v-if="targetStudentCount >= 500">Are you sure?</span>
         </span>
@@ -29,9 +29,9 @@
       <BatchNoteAddStudent
         :add-sid="addStudentBySid"
         :disabled="isSaving"
-        dropdown-class="position-relative"
         :on-esc-form-input="cancel"
-        :remove-sid="removeSid" />
+        :remove-sid="removeSid"
+        dropdown-class="position-relative" />
     </div>
     <div>
       <BatchNoteAddCohort
@@ -58,17 +58,17 @@
 import BatchNoteAddCohort from '@/components/note/create/BatchNoteAddCohort';
 import BatchNoteAddStudent from '@/components/note/create/BatchNoteAddStudent';
 import Context from '@/mixins/Context';
+import CurrentUserExtras from '@/mixins/CurrentUserExtras';
 import NoteEditSession from '@/mixins/NoteEditSession';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
-  name: 'NoteBatchFeatures',
+  name: 'BatchNoteFeatures',
   components: {
     BatchNoteAddCohort,
     BatchNoteAddStudent
   },
-  mixins: [Context, NoteEditSession, UserMetadata, Util],
+  mixins: [Context, CurrentUserExtras, NoteEditSession, Util],
   props: {
     cancel: Function
   },

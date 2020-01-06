@@ -4,12 +4,12 @@
       :id="`${id}-input`"
       ref="autocompleteInput"
       v-model="query"
-      name="autocomplete-name"
-      type="text"
-      autocomplete="off"
-      :class="{'obfuscate-form-input': demoModeBlur && user.inDemoMode}"
       :disabled="disabled"
       :placeholder="placeholder"
+      maxlength="56"
+      name="autocomplete-name"
+      :type="demoModeBlur && $currentUser.inDemoMode ? 'password': 'text'"
+      autocomplete="off"
       @input="onTextInput"
       @keypress.enter.prevent="onArrowDown"
       @keyup.esc="onEscFormInput"
@@ -19,10 +19,11 @@
       <ul
         :id="`${id}-suggestions`"
         ref="autocompleteSuggestions"
-        class="dropdown-menu"
-        :class="{'dropdown-menu-open': isOpen, dropdownClass: true}"
-        role="menu"
+        :class="isOpen ? `d-block ${dropdownClass}`: dropdownClass"
         aria-expanded="true"
+        class="dropdown-menu"
+        role="menu"
+        tabIndex="0"
         @keyup.down="onArrowDown"
         @keyup.up="onArrowUp"
         @keyup.esc="onEsc">
@@ -42,9 +43,9 @@
           :key="i">
           <a
             :id="`${id}-suggestion-${i}`"
+            :class="{'demo-mode-blur': demoModeBlur && $currentUser.inDemoMode}"
             role="menuitem"
             class="dropdown-item"
-            :class="{'demo-mode-blur': demoModeBlur && user.inDemoMode}"
             href="#"
             @click="selectSuggestion(suggestion)"
             @keyup.enter="selectSuggestion(suggestion)">
@@ -57,12 +58,11 @@
 </template>
 
 <script>
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'Autocomplete',
-  mixins: [UserMetadata, Util],
+  mixins: [Util],
   props: {
     demoModeBlur: {
       default: false,
@@ -75,7 +75,7 @@ export default {
       type: Boolean
     },
     dropdownClass: {
-      default: 'autocomplete-dropdown-menu',
+      default: '',
       required: false,
       type: String
     },
@@ -194,13 +194,7 @@ export default {
 </script>
 
 <style scoped>
-.autocomplete-dropdown-menu {
-  position: static;
-}
 .dropdown {
   z-index: 100;
-}
-.dropdown-menu-open {
-  display: block;
 }
 </style>

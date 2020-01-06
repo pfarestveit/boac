@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -39,6 +39,7 @@ from tests.util import mock_advising_note_s3_bucket, mock_legacy_note_attachment
 
 asc_advisor_uid = '6446'
 coe_advisor_uid = '1133399'
+coe_scheduler_uid = '6972201'
 l_s_major_advisor_uid = '242881'
 admin_uid = '2040'
 
@@ -130,6 +131,20 @@ class TestNoteCreation:
             subject='Rusholme Ruffians',
             body='This is the last night of the fair, And the grease in the hair',
             expected_status_code=403,
+        )
+
+    def test_scheduler_is_not_authorized(self, app, client, fake_auth):
+        """Returns 401 if user is a scheduler."""
+        fake_auth.login(coe_scheduler_uid)
+        admin = AuthorizedUser.find_by_uid(coe_scheduler_uid)
+        assert _api_note_create(
+            app,
+            client,
+            author_id=admin.id,
+            sid=coe_student['sid'],
+            subject='Gobbledygook',
+            body='Language made unintelligible by excessive use of abstruse technical terms.',
+            expected_status_code=401,
         )
 
     def test_create_note(self, app, client, fake_auth):
@@ -315,6 +330,11 @@ class TestBatchNoteCreation:
         """Deny anonymous access to batch note metadata."""
         _api_batch_distinct_student_count(client, sids=['11667051'], cohort_ids=[1, 2], expected_status_code=401)
 
+    def test_scheduler_is_not_authorized(self, app, client, fake_auth):
+        """Returns 401 if user is a scheduler."""
+        fake_auth.login(coe_scheduler_uid)
+        _api_batch_distinct_student_count(client, sids=['11667051'], cohort_ids=[1, 2], expected_status_code=401)
+
     def test_batch_student_count_not_owner(self, client, fake_auth):
         """Deny user access to cohort owned by some other dept."""
         user_id = AuthorizedUser.get_id_per_uid(coe_advisor_uid)
@@ -354,36 +374,6 @@ class TestBatchNoteCreation:
             sids=[some_other_sid],
         )
         assert len(sids) + 1 == count
-
-
-class TestNoteTopics:
-
-    @classmethod
-    def _api_all_note_topics(cls, client, include_deleted=None, expected_status_code=200):
-        api_path = '/api/notes/topics'
-        if include_deleted is not None:
-            api_path += f'?includeDeleted={str(include_deleted).lower()}'
-        response = client.get(api_path)
-        assert response.status_code == expected_status_code
-        return response.json
-
-    def test_get_all_topics_not_authenticated(self, client):
-        """Deny anonymous access to note topics."""
-        self._api_all_note_topics(client, expected_status_code=401)
-
-    def test_get_all_topics_including_deleted(self, client, fake_auth):
-        """Get all note topic options, including deleted."""
-        fake_auth.login(coe_advisor_uid)
-        api_json = self._api_all_note_topics(client, include_deleted=True)
-        assert 'Topic 1' in api_json
-        assert 'I am a deleted topic' in api_json
-
-    def test_get_all_topics(self, client, fake_auth):
-        """Get all note topic options, not including deleted."""
-        fake_auth.login(coe_advisor_uid)
-        api_json = self._api_all_note_topics(client)
-        assert 'Topic 1' in api_json
-        assert 'I am a deleted topic' not in api_json
 
 
 class TestNoteAttachments:
@@ -588,17 +578,27 @@ class TestUpdateNotes:
     def test_remove_note_topics(self, app, client, fake_auth, mock_asc_advising_note):
         """Delete note topics."""
         fake_auth.login(mock_asc_advising_note.author_uid)
-        expected_topics = []
+        original_topics = mock_asc_advising_note.topics
+        assert len(original_topics)
         api_json = self._api_note_update(
             app,
             client,
             note_id=mock_asc_advising_note.id,
             subject=mock_asc_advising_note.subject,
             body=mock_asc_advising_note.body,
-            topics=expected_topics,
+            topics=[],
         )
-        assert api_json['read'] is True
         assert not api_json['topics']
+        # Put those topics back
+        api_json = self._api_note_update(
+            app,
+            client,
+            note_id=mock_asc_advising_note.id,
+            subject=mock_asc_advising_note.subject,
+            body=mock_asc_advising_note.body,
+            topics=[t.topic for t in original_topics],
+        )
+        assert set(api_json['topics']) == set([t.topic for t in original_topics])
 
 
 class TestDeleteNote:

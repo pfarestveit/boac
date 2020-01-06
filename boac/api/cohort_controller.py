@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -26,7 +26,8 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from datetime import datetime
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import is_unauthorized_search, response_with_students_csv_download
+from boac.api.util import advisor_required, is_unauthorized_search, response_with_students_csv_download
+from boac.lib.berkeley import dept_codes_where_advising
 from boac.lib.http import tolerant_jsonify
 from boac.lib.util import get as get_param, get_benchmarker, to_bool_or_none as to_bool
 from boac.merged import calnet
@@ -35,11 +36,11 @@ from boac.merged.student import get_student_query_scope as get_query_scope, get_
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
 from flask import current_app as app, request
-from flask_login import current_user, login_required
+from flask_login import current_user
 
 
 @app.route('/api/cohorts/my')
-@login_required
+@advisor_required
 def my_cohorts():
     cohorts = []
     for cohort in CohortFilter.get_cohorts_of_user_id(current_user.get_id()):
@@ -49,7 +50,7 @@ def my_cohorts():
 
 
 @app.route('/api/cohorts/all')
-@login_required
+@advisor_required
 def all_cohorts():
     scope = get_query_scope(current_user)
     uids = AuthorizedUser.get_all_uids_in_scope(scope)
@@ -69,7 +70,7 @@ def all_cohorts():
 
 
 @app.route('/api/cohort/<cohort_id>/students_with_alerts')
-@login_required
+@advisor_required
 def students_with_alerts(cohort_id):
     benchmark = get_benchmarker(f'cohort {cohort_id} students_with_alerts')
     benchmark('begin')
@@ -102,7 +103,7 @@ def students_with_alerts(cohort_id):
 
 
 @app.route('/api/cohort/<cohort_id>')
-@login_required
+@advisor_required
 def get_cohort(cohort_id):
     benchmark = get_benchmarker(f'cohort {cohort_id} get_cohort')
     benchmark('begin')
@@ -133,7 +134,7 @@ def get_cohort(cohort_id):
 
 
 @app.route('/api/cohort/get_students_per_filters', methods=['POST'])
-@login_required
+@advisor_required
 def get_cohort_per_filters():
     benchmark = get_benchmarker('cohort get_students_per_filters')
     benchmark('begin')
@@ -165,11 +166,13 @@ def get_cohort_per_filters():
 
 
 @app.route('/api/cohort/download_csv_per_filters', methods=['POST'])
-@login_required
+@advisor_required
 def download_csv_per_filters():
     benchmark = get_benchmarker('cohort download_csv_per_filters')
     benchmark('begin')
-    filters = get_param(request.get_json(), 'filters', [])
+    params = request.get_json()
+    filters = get_param(params, 'filters', [])
+    fieldnames = get_param(params, 'csvColumnsSelected', [])
     if not filters:
         raise BadRequestError('API requires \'filters\'')
     filter_keys = list(map(lambda f: f['key'], filters))
@@ -183,11 +186,11 @@ def download_csv_per_filters():
         include_sids=True,
         include_students=False,
     )
-    return response_with_students_csv_download(sids=cohort['sids'], benchmark=benchmark)
+    return response_with_students_csv_download(sids=cohort['sids'], fieldnames=fieldnames, benchmark=benchmark)
 
 
 @app.route('/api/cohort/create', methods=['POST'])
-@login_required
+@advisor_required
 def create_cohort():
     params = request.get_json()
     name = get_param(params, 'name', None)
@@ -212,7 +215,7 @@ def create_cohort():
 
 
 @app.route('/api/cohort/update', methods=['POST'])
-@login_required
+@advisor_required
 def update_cohort():
     params = request.get_json()
     cohort_id = int(params.get('id'))
@@ -239,7 +242,7 @@ def update_cohort():
 
 
 @app.route('/api/cohort/delete/<cohort_id>', methods=['DELETE'])
-@login_required
+@advisor_required
 def delete_cohort(cohort_id):
     if cohort_id.isdigit():
         cohort_id = int(cohort_id)
@@ -253,7 +256,7 @@ def delete_cohort(cohort_id):
 
 
 @app.route('/api/cohort/filter_options/<cohort_owner_uid>', methods=['POST'])
-@login_required
+@advisor_required
 def all_cohort_filter_options(cohort_owner_uid):
     if cohort_owner_uid == 'me':
         cohort_owner_uid = current_user.get_uid()
@@ -262,7 +265,7 @@ def all_cohort_filter_options(cohort_owner_uid):
 
 
 @app.route('/api/cohort/translate_to_filter_options/<cohort_owner_uid>', methods=['POST'])
-@login_required
+@advisor_required
 def translate_cohort_filter_to_menu(cohort_owner_uid):
     if cohort_owner_uid == 'me':
         cohort_owner_uid = current_user.get_uid()
@@ -279,7 +282,11 @@ def _can_current_user_view_cohort(cohort):
     if current_user.is_admin or not cohort['owners']:
         return True
     cohort_dept_codes = {dept_code for o in cohort['owners'] for dept_code in o['deptCodes']}
-    return len(cohort_dept_codes) > 0 and set(current_user.dept_codes).issuperset(cohort_dept_codes)
+    if len(cohort_dept_codes):
+        user_dept_codes = dept_codes_where_advising(current_user)
+        return len([c for c in user_dept_codes if c in cohort_dept_codes])
+    else:
+        return False
 
 
 def _construct_phantom_cohort(filters, **kwargs):

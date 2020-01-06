@@ -5,16 +5,16 @@
     <b-pagination
       id="pagination-widget"
       v-model="currentPage"
+      :hide-goto-end-buttons="totalPages < 3"
+      :total-rows="totalRows"
+      :limit="limit"
+      :per-page="perPage"
       next-text="Next"
       prev-text="Prev"
       first-text="First"
       last-text="Last"
-      :hide-goto-end-buttons="totalPages < 3"
       hide-ellipsis
       size="md"
-      :total-rows="totalRows"
-      :limit="limit"
-      :per-page="perPage"
       @change="onClick">
     </b-pagination>
   </div>

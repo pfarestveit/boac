@@ -11,7 +11,7 @@ export function createCohort(
     .post(`${utils.apiBaseUrl()}/api/cohort/create`, {name, filters})
     .then(response => {
       const cohort = response.data;
-      store.dispatch('cohort/addCohort', cohort);
+      store.commit('currentUserExtras/cohortCreated', cohort);
       return cohort;
     }, () => null);
 }
@@ -24,16 +24,16 @@ export function deleteCohort(id) {
       }
     })
     .then(() => {
-      store.commit('cohort/deleteCohort', id);
+      store.commit('currentUserExtras/cohortDeleted', id);
     }, () => null);
 }
 
-export function downloadCsv(cohortName: string, filters: any[]) {
+export function downloadCsv(cohortName: string, filters: any[], csvColumnsSelected: any[]) {
   const fileDownload = require('js-file-download');
   const now = moment().format('YYYY-MM-DD_HH-mm-ss');
   const filename = cohortName ? `${cohortName}-students-${now}` : `students-${now}`;
   return axios
-    .post(`${utils.apiBaseUrl()}/api/cohort/download_csv_per_filters`, { filters })
+    .post(`${utils.apiBaseUrl()}/api/cohort/download_csv_per_filters`, { filters, csvColumnsSelected })
     .then(response => fileDownload(response.data, `${filename}.csv`), () => null);
 }
 
@@ -105,7 +105,7 @@ export function saveCohort(
     })
     .then(response => {
       const cohort = response.data;
-      store.dispatch('cohort/updateCohort', cohort);
+      store.commit('currentUserExtras/cohortUpdated', cohort);
       return cohort;
     }, () => null);
 }

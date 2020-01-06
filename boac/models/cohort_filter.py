@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -28,10 +28,10 @@ import json
 from boac import db, std_commit
 from boac.api.errors import InternalServerError
 from boac.lib import util
-from boac.lib.berkeley import current_term_id
 from boac.lib.util import get_benchmarker
 from boac.merged import athletics
 from boac.merged.calnet import get_csid_for_uid
+from boac.merged.sis_terms import current_term_id
 from boac.merged.student import query_students
 from boac.models.alert import Alert
 from boac.models.authorized_user import AuthorizedUser
@@ -258,6 +258,7 @@ class CohortFilter(Base):
         coe_probation = util.to_bool_or_none(c.get('coeProbation'))
         coe_underrepresented = util.to_bool_or_none(c.get('coeUnderrepresented'))
         cohort_owner_academic_plans = util.get(c, 'cohortOwnerAcademicPlans')
+        entering_terms = c.get('enteringTerms')
         ethnicities = c.get('ethnicities')
         expected_grad_terms = c.get('expectedGradTerms')
         genders = c.get('genders')
@@ -267,6 +268,7 @@ class CohortFilter(Base):
         is_inactive_asc = util.to_bool_or_none(c.get('isInactiveAsc'))
         is_inactive_coe = util.to_bool_or_none(c.get('isInactiveCoe'))
         last_name_ranges = c.get('lastNameRanges')
+        last_term_gpa_ranges = c.get('lastTermGpaRanges')
         levels = c.get('levels')
         majors = c.get('majors')
         midpoint_deficient_grade = util.to_bool_or_none(c.get('midpointDeficient'))
@@ -274,6 +276,7 @@ class CohortFilter(Base):
         transfer = util.to_bool_or_none(c.get('transfer'))
         underrepresented = util.to_bool_or_none(c.get('underrepresented'))
         unit_ranges = c.get('unitRanges')
+        visa_types = c.get('visaTypes')
         cohort_json.update({
             'criteria': {
                 'coeAdvisorLdapUids': coe_advisor_ldap_uids,
@@ -283,6 +286,7 @@ class CohortFilter(Base):
                 'coeProbation': coe_probation,
                 'coeUnderrepresented': coe_underrepresented,
                 'cohortOwnerAcademicPlans': cohort_owner_academic_plans,
+                'enteringTerms': entering_terms,
                 'ethnicities': ethnicities,
                 'expectedGradTerms': expected_grad_terms,
                 'genders': genders,
@@ -292,12 +296,14 @@ class CohortFilter(Base):
                 'isInactiveAsc': is_inactive_asc,
                 'isInactiveCoe': is_inactive_coe,
                 'lastNameRanges': last_name_ranges,
+                'lastTermGpaRanges': last_term_gpa_ranges,
                 'levels': levels,
                 'majors': majors,
                 'midpointDeficient': midpoint_deficient_grade,
                 'transfer': transfer,
                 'unitRanges': unit_ranges,
                 'underrepresented': underrepresented,
+                'visaTypes': visa_types,
             },
             'teamGroups': team_groups,
         })
@@ -332,6 +338,7 @@ class CohortFilter(Base):
             coe_prep_statuses=coe_prep_statuses,
             coe_probation=coe_probation,
             coe_underrepresented=coe_underrepresented,
+            entering_terms=entering_terms,
             ethnicities=ethnicities,
             expected_grad_terms=expected_grad_terms,
             genders=genders,
@@ -342,6 +349,7 @@ class CohortFilter(Base):
             is_active_asc=None if is_inactive_asc is None else not is_inactive_asc,
             is_active_coe=None if is_inactive_coe is None else not is_inactive_coe,
             last_name_ranges=last_name_ranges,
+            last_term_gpa_ranges=last_term_gpa_ranges,
             levels=levels,
             limit=limit,
             majors=majors,
@@ -352,6 +360,7 @@ class CohortFilter(Base):
             transfer=transfer,
             underrepresented=underrepresented,
             unit_ranges=unit_ranges,
+            visa_types=visa_types,
         )
         benchmark('end students query')
 

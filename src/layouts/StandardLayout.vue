@@ -1,47 +1,23 @@
 <template>
-  <b-container id="app" class="h-100 p-0" fluid>
-    <b-row class="header" no-gutters>
-      <b-col cols="auto" class="mr-auto m-3">
-        <a
-          id="skip-to-content-link"
-          href="#content"
-          class="sr-only sr-only-focusable"
-          tabindex="0">Skip to main content</a>
-        <router-link
-          id="home-header"
-          class="header-text"
-          to="/home"
-          tabindex="0">
-          <span class="sr-only">Return to </span>Home
-        </router-link>
-      </b-col>
-      <b-col cols="auto" class="p-0 mt-2">
-        <HeaderMenu />
-      </b-col>
-    </b-row>
+  <b-container class="h-100 p-0" fluid>
+    <StandardHeaderLayout role="banner" />
     <b-row class="row-content" no-gutters>
-      <b-col class="sidebar" sm="2">
+      <b-col class="sidebar" role="navigation" sm="2">
         <Sidebar />
       </b-col>
-      <b-col id="content" class="body-text h-100 pb-2" sm="10">
-        <div
-          v-if="announcement && announcement.isPublished"
-          style="display: inline-block"
-          class="service-announcement pl-3 pt-3 pr-3 pb-0 w-100">
-          <span
-            id="service-announcement-banner"
-            aria-live="polite"
-            role="alert"
-            v-html="announcement.text">
-          </span>
-        </div>
+      <b-col
+        id="content"
+        class="body-text h-100 pb-2"
+        role="main"
+        sm="10">
+        <ServiceAnnouncement />
         <div>
           <span
-            v-if="srAlert"
+            v-if="screenReaderAlert"
             class="sr-only"
             aria-live="polite"
             role="alert">
-            {{ srAlert }}
+            {{ screenReaderAlert }}
           </span>
           <router-view :key="stripAnchorRef($route.fullPath)"></router-view>
         </div>
@@ -49,7 +25,7 @@
     </b-row>
     <b-row class="row-footer" no-gutters>
       <b-col class="sidebar" sm="2"></b-col>
-      <b-col sm="10">
+      <b-col sm="10" role="contentinfo">
         <Footer v-if="!loading" class="mb-3 ml-3 mt-5" />
       </b-col>
     </b-row>
@@ -59,27 +35,23 @@
 <script>
 import Context from '@/mixins/Context';
 import Footer from '@/components/Footer';
-import HeaderMenu from '@/components/HeaderMenu';
 import Loading from '@/mixins/Loading';
-import Session from '@/mixins/Session';
+import ServiceAnnouncement from '@/layouts/shared/ServiceAnnouncement';
 import Sidebar from '@/components/sidebar/Sidebar';
+import StandardHeaderLayout from '@/layouts/shared/StandardHeaderLayout';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'StandardLayout',
   components: {
     Footer,
-    HeaderMenu,
-    Sidebar
+    ServiceAnnouncement,
+    Sidebar,
+    StandardHeaderLayout
   },
-  mixins: [Context, Loading, Session, Util],
+  mixins: [Context, Loading, Util],
   created() {
     this.putFocusNextTick('home-header');
-  },
-  methods: {
-    stripAnchorRef(fullPath) {
-      return this.split(fullPath, '#', 1)[0];
-    }
   }
 };
 </script>
@@ -88,38 +60,11 @@ export default {
 .body-text {
   font-size: 16px;
 }
-.header-text {
-  font-size: 16px;
-  color: #fff;
-}
-.header-text a:link,
-.header-text a:visited {
-  color: #fff;
-  text-decoration: none;
-  border: 0;
-  -moz-outline-style: none;
-}
-.header-text a:hover,
-.header-text a:focus,
-.header-text a:active {
-  color: #ddd;
-}
-.header-text h1 {
-  font-size: inherit;
-  font-weight: inherit;
-}
-.header {
-  background-color: #3b7ea5;
-}
 .row-content {
   min-height: 82%;
 }
 .row-footer {
   min-height: 18%;
-}
-.service-announcement {
-  background-color: #f0ad4e;
-  font-weight: 500;
 }
 .sidebar {
   background-color: #125074;

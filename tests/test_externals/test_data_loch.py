@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -33,6 +33,11 @@ import pytest
 
 @pytest.mark.usefixtures('db_session')
 class TestDataLoch:
+
+    def test_get_current_term_index(self):
+        index = data_loch.get_current_term_index()
+        assert index['current_term_name'] == 'Fall 2017'
+        assert index['future_term_name'] == 'Spring 2018'
 
     def test_get_student_profiles(self, app):
         import json

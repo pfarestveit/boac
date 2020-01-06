@@ -1,5 +1,5 @@
 /**
- * Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+ * Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
  *
  * Permission to use, copy, modify, and distribute this software and its documentation
  * for educational, research, and not-for-profit purposes, without fee and without a
@@ -37,8 +37,19 @@ SET row_security = off;
 ALTER TABLE IF EXISTS ONLY public.alert_views DROP CONSTRAINT IF EXISTS alert_views_alert_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.alert_views DROP CONSTRAINT IF EXISTS alert_views_viewer_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.alerts DROP CONSTRAINT IF EXISTS alerts_sid_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointments DROP CONSTRAINT IF EXISTS appointments_created_by_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointments DROP CONSTRAINT IF EXISTS appointments_deleted_by_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointments DROP CONSTRAINT IF EXISTS appointments_updated_by_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointment_events DROP CONSTRAINT IF EXISTS appointment_events_appointment_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointment_events DROP CONSTRAINT IF EXISTS appointment_events_user_id_updated_by_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointment_topics DROP CONSTRAINT IF EXISTS appointment_topics_appointment_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointment_topics DROP CONSTRAINT IF EXISTS appointment_topics_appointment_id_topic_unique_constraint;
+ALTER TABLE IF EXISTS ONLY public.appointments_read DROP CONSTRAINT IF EXISTS appointments_read_appointment_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.appointments_read DROP CONSTRAINT IF EXISTS appointments_read_viewer_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.cohort_filter_owners DROP CONSTRAINT IF EXISTS cohort_filter_owners_cohort_filter_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.cohort_filter_owners DROP CONSTRAINT IF EXISTS cohort_filter_owners_user_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.drop_in_advisors DROP CONSTRAINT IF EXISTS drop_in_advisors_authorized_user_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.drop_in_advisors DROP CONSTRAINT IF EXISTS drop_in_advisors_dept_code_fkey;
 ALTER TABLE IF EXISTS ONLY public.note_attachments DROP CONSTRAINT IF EXISTS note_attachments_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.note_attachments DROP CONSTRAINT IF EXISTS note_attachments_note_id_path_to_attachment_unique_constraint;
 ALTER TABLE IF EXISTS ONLY public.note_template_attachments DROP CONSTRAINT IF EXISTS note_template_attachments_note_template_id_fkey;
@@ -59,6 +70,16 @@ ALTER TABLE IF EXISTS ONLY public.user_logins DROP CONSTRAINT IF EXISTS user_log
 
 --
 
+DROP INDEX IF EXISTS public.idx_appointments_fts_index;
+DROP INDEX IF EXISTS public.appointment_events_appointment_id_idx;
+DROP INDEX IF EXISTS public.appointment_events_user_id_idx;
+DROP INDEX IF EXISTS public.appointment_topics_appointment_id_idx;
+DROP INDEX IF EXISTS public.appointment_topics_topic_idx;
+DROP INDEX IF EXISTS public.appointments_created_by_idx;
+DROP INDEX IF EXISTS public.appointments_advisor_uid_idx;
+DROP INDEX IF EXISTS public.appointments_student_sid_idx;
+DROP INDEX IF EXISTS public.appointments_read_appointment_id_idx;
+DROP INDEX IF EXISTS public.appointments_read_viewer_id_idx;
 DROP INDEX IF EXISTS public.alert_views_alert_id_idx;
 DROP INDEX IF EXISTS public.alert_views_viewer_id_idx;
 DROP INDEX IF EXISTS public.alerts_sid_idx;
@@ -83,10 +104,14 @@ ALTER TABLE IF EXISTS ONLY public.alembic_version DROP CONSTRAINT IF EXISTS alem
 ALTER TABLE IF EXISTS ONLY public.alert_views DROP CONSTRAINT IF EXISTS alert_views_pkey;
 ALTER TABLE IF EXISTS ONLY public.alerts DROP CONSTRAINT IF EXISTS alerts_pkey;
 ALTER TABLE IF EXISTS ONLY public.alerts DROP CONSTRAINT IF EXISTS alerts_sid_alert_type_key_unique_constraint;
+ALTER TABLE IF EXISTS ONLY public.appointment_topics DROP CONSTRAINT IF EXISTS appointment_topics_pkey;
+ALTER TABLE IF EXISTS ONLY public.appointments_read DROP CONSTRAINT IF EXISTS appointments_read_pkey;
+ALTER TABLE IF EXISTS ONLY public.appointments DROP CONSTRAINT IF EXISTS appointments_pkey;
 ALTER TABLE IF EXISTS ONLY public.authorized_users DROP CONSTRAINT IF EXISTS authorized_users_pkey;
 ALTER TABLE IF EXISTS ONLY public.authorized_users DROP CONSTRAINT IF EXISTS authorized_users_uid_key;
 ALTER TABLE IF EXISTS ONLY public.cohort_filter_owners DROP CONSTRAINT IF EXISTS cohort_filter_owners_pkey;
 ALTER TABLE IF EXISTS ONLY public.cohort_filters DROP CONSTRAINT IF EXISTS cohort_filters_pkey;
+ALTER TABLE IF EXISTS ONLY public.drop_in_advisors DROP CONSTRAINT IF EXISTS drop_in_advisors;
 ALTER TABLE IF EXISTS ONLY public.json_cache DROP CONSTRAINT IF EXISTS json_cache_key_key;
 ALTER TABLE IF EXISTS ONLY public.json_cache DROP CONSTRAINT IF EXISTS json_cache_pkey;
 ALTER TABLE IF EXISTS ONLY public.manually_added_advisees DROP CONSTRAINT IF EXISTS manually_added_advisees_pkey;
@@ -129,10 +154,19 @@ DROP TABLE IF EXISTS public.manually_added_advisees;
 DROP SEQUENCE IF EXISTS public.json_cache_id_seq;
 DROP TABLE IF EXISTS public.json_cache;
 DROP SEQUENCE IF EXISTS public.cohort_filters_id_seq;
+DROP TABLE IF EXISTS public.drop_in_advisors;
 DROP TABLE IF EXISTS public.cohort_filters;
 DROP TABLE IF EXISTS public.cohort_filter_owners;
 DROP SEQUENCE IF EXISTS public.authorized_users_id_seq;
 DROP TABLE IF EXISTS public.authorized_users;
+DROP MATERIALIZED VIEW IF EXISTS public.appointments_fts_index;
+DROP TABLE IF EXISTS public.appointment_events;
+DROP SEQUENCE IF EXISTS public.appointment_events_id_seq;
+DROP TABLE IF EXISTS public.appointment_topics;
+DROP SEQUENCE IF EXISTS public.appointment_topics_id_seq;
+DROP TABLE IF EXISTS public.appointments;
+DROP SEQUENCE IF EXISTS public.appointments_id_seq;
+DROP TABLE IF EXISTS public.appointments_read;
 DROP SEQUENCE IF EXISTS public.alerts_id_seq;
 DROP TABLE IF EXISTS public.alerts;
 DROP TABLE IF EXISTS public.alert_views;
@@ -149,3 +183,5 @@ DROP TABLE IF EXISTS public.university_depts;
 DROP SEQUENCE IF EXISTS public.university_depts_id_seq;
 DROP TABLE IF EXISTS public.user_logins;
 DROP SEQUENCE IF EXISTS public.user_logins_id_seq;
+
+DROP TYPE IF EXISTS public.appointment_event_types;

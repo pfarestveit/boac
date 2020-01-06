@@ -1,86 +1,29 @@
 <template>
   <div class="p-3">
-    <Spinner />
+    <Spinner alert-prefix="The Admin page" />
     <div v-if="!loading">
-      <h1>BOA Flight Deck</h1>
-      <div v-if="isDemoModeAvailable" class="d-flex flex-row mt-3 mb-3">
-        <div class="mr-3">
-          <img
-            id="avatar-verify-blur"
-            class="avatar student-avatar-large"
-            :class="{'img-blur': user.inDemoMode}"
-            :src="blurAvatarUrl" />
+      <div class="align-items-center d-flex pb-3">
+        <div class="pr-3">
+          <font-awesome :style="{ color: '#3b7ea5' }" icon="plane-departure" size="2x" />
         </div>
-        <div>
-          <div>
-            <DemoModeToggle />
-          </div>
-          <div class="faint-text pt-2">
-            In demo mode, student profile pictures and sensitive data will be blurred.
-          </div>
+        <div class="pt-2">
+          <h1 class="page-section-header">BOA Flight Deck</h1>
         </div>
       </div>
-      <div v-if="userGroups">
-        <h2 id="dept-users-section" class="page-section-header-sub pb-2">
-          Users
-          <span class="text-black-50 font-size-14">(<a id="download-boa-users-csv" :href="`${apiBaseUrl}/api/users/csv`">download</a>)</span>
-        </h2>
-        <b-card no-body>
-          <b-tabs pills card>
-            <b-tab
-              v-for="group in userGroups"
-              :id="`user-group-${group.code}`"
-              :key="group.name"
-              :title="group.name">
-              <b-container v-if="size(group.users)" fluid>
-                <b-row
-                  v-for="groupUser in group.users"
-                  :key="groupUser.id"
-                  class="users-row">
-                  <b-col
-                    sm="auto"
-                    class="pr-0"
-                    :class="{'pb-2': groupUser.uid === user.uid}">
-                    <a
-                      :id="`dept-${group.code}-${groupUser.uid}`"
-                      :class="{'faint-text pb-2': groupUser.uid === user.uid}"
-                      :aria-label="`Go to UC Berkeley Directory page of ${groupUser.name}`"
-                      :href="`https://www.berkeley.edu/directory/results?search-term=${groupUser.name}`"
-                      target="_blank">
-                      <span v-if="groupUser.name">{{ groupUser.name }}</span>
-                      <span v-if="!groupUser.name">UID: {{ groupUser.uid }}</span>
-                    </a>
-                  </b-col>
-                  <b-col v-if="devAuthEnabled">
-                    <div v-if="groupUser.uid !== user.uid">
-                      <div v-if="groupUser.isExpiredPerLdap">
-                        <font-awesome icon="exclamation-triangle" class="boac-exclamation mr-1"></font-awesome>
-                        <span class="text-muted">Expired account (according to CalNet)</span>
-                      </div>
-                      <b-btn
-                        v-if="!groupUser.isExpiredPerLdap"
-                        :id="'become-' + groupUser.uid"
-                        class="mb-1 p-0"
-                        :title="`Log in as ${groupUser.name}`"
-                        variant="link"
-                        @click="become(groupUser.uid)">
-                        <font-awesome icon="sign-in-alt" />
-                      </b-btn>
-                    </div>
-                  </b-col>
-                </b-row>
-              </b-container>
-              <div v-if="!size(group.users)">
-                No {{ group.name }} users are registered in BOA.
-              </div>
-            </b-tab>
-          </b-tabs>
-        </b-card>
+      <div class="pt-2">
+        <h2 class="page-section-header-sub">My Profile</h2>
+        <MyProfile class="mt-2" />
       </div>
-      <div v-if="user.isAdmin">
+      <div v-if="$config.isDemoModeAvailable">
+        <div class="pt-3">
+          <h2 class="mb-0 page-section-header-sub">Demo Mode</h2>
+        </div>
+        <DemoModeToggle />
+      </div>
+      <div v-if="$currentUser.isAdmin">
         <EditServiceAnnouncement />
       </div>
-      <div v-if="user.isAdmin">
+      <div v-if="$currentUser.isAdmin">
         <Status />
       </div>
     </div>
@@ -92,47 +35,23 @@ import Context from '@/mixins/Context';
 import DemoModeToggle from '@/components/admin/DemoModeToggle';
 import EditServiceAnnouncement from '@/components/admin/EditServiceAnnouncement';
 import Loading from '@/mixins/Loading';
+import MyProfile from '@/components/admin/MyProfile';
 import Spinner from '@/components/util/Spinner';
 import Status from '@/components/util/Status';
-import store from '@/store';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
-import { becomeUser } from '@/api/user';
 
 export default {
   name: 'Admin',
   components: {
     DemoModeToggle,
     EditServiceAnnouncement,
+    MyProfile,
     Spinner,
     Status
   },
-  mixins: [Context, Loading, UserMetadata, Util],
-  data: () => ({
-    active: [],
-    blurAvatarUrl: require('@/assets/sampleBlurAvatar.jpg'),
-    userGroups: null
-  }),
+  mixins: [Context, Loading, Util],
   mounted() {
-    if (this.user.isAdmin) {
-      store.dispatch('user/loadUserGroups').then(data => {
-        this.userGroups = data;
-        this.loaded();
-      });
-    } else {
-      this.loaded();
-    }
-  },
-  methods: {
-    become(uid) {
-      becomeUser(uid).then(() => (window.location.href = '/home'));
-    }
+    this.loaded('Flight Deck');
   }
 };
 </script>
-
-<style scoped>
-  .users-row {
-    height: 32px;
-  }
-</style>

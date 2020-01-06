@@ -1,5 +1,5 @@
 /**
- * Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+ * Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
  *
  * Permission to use, copy, modify, and distribute this software and its documentation
  * for educational, research, and not-for-profit purposes, without fee and without a
@@ -80,6 +80,128 @@ ALTER TABLE ONLY alerts
     ADD CONSTRAINT alerts_sid_alert_type_key_unique_constraint UNIQUE (sid, alert_type, key);
 CREATE INDEX alerts_sid_idx ON alerts USING btree (sid);
 
+--
+
+CREATE TABLE appointment_topics (
+    id INTEGER NOT NULL,
+    appointment_id INTEGER NOT NULL,
+    topic VARCHAR(50) NOT NULL,
+    deleted_at timestamp with time zone
+);
+ALTER TABLE appointment_topics OWNER TO boac;
+CREATE SEQUENCE appointment_topics_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE appointment_topics_id_seq OWNER TO boac;
+ALTER SEQUENCE appointment_topics_id_seq OWNED BY appointment_topics.id;
+ALTER TABLE ONLY appointment_topics ALTER COLUMN id SET DEFAULT nextval('appointment_topics_id_seq'::regclass);
+ALTER TABLE ONLY appointment_topics
+    ADD CONSTRAINT appointment_topics_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY appointment_topics
+    ADD CONSTRAINT appointment_topics_appointment_id_topic_unique_constraint UNIQUE (appointment_id, topic, deleted_at);
+CREATE INDEX appointment_topics_appointment_id_idx ON appointment_topics (appointment_id);
+CREATE INDEX appointment_topics_topic_idx ON appointment_topics (topic);
+
+--
+
+CREATE TYPE appointment_event_types AS ENUM ('cancelled', 'checked_in', 'reserved', 'waiting');
+
+--
+
+CREATE TABLE appointments (
+    id INTEGER NOT NULL,
+    advisor_uid character varying(255),
+    advisor_name character varying(255),
+    advisor_role character varying(255),
+    advisor_dept_codes character varying[],
+    student_sid character varying(80) NOT NULL,
+    details text,
+    appointment_type character varying(255) NOT NULL,
+    dept_code character varying(80) NOT NULL,
+    status appointment_event_types NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    created_by INTEGER NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    updated_by INTEGER NOT NULL,
+    deleted_at timestamp with time zone,
+    deleted_by INTEGER
+);
+ALTER TABLE appointments OWNER TO boac;
+CREATE SEQUENCE appointments_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE appointments_id_seq OWNER TO boac;
+ALTER SEQUENCE appointments_id_seq OWNED BY appointments.id;
+ALTER TABLE ONLY appointments ALTER COLUMN id SET DEFAULT nextval('appointments_id_seq'::regclass);
+ALTER TABLE ONLY appointments
+    ADD CONSTRAINT appointments_pkey PRIMARY KEY (id);
+CREATE INDEX appointments_created_by_idx ON appointments(created_by);
+CREATE INDEX appointments_advisor_uid_idx ON appointments(advisor_uid);
+CREATE INDEX appointments_student_sid_idx ON appointments(student_sid);
+
+--
+
+CREATE TABLE appointment_events (
+  id INTEGER NOT NULL,
+  appointment_id INTEGER NOT NULL,
+  user_id INTEGER,
+  event_type appointment_event_types NOT NULL,
+  cancel_reason VARCHAR(255),
+  cancel_reason_explained VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+ALTER TABLE appointment_events OWNER TO boac;
+CREATE SEQUENCE appointment_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+ALTER TABLE appointment_events_id_seq OWNER TO boac;
+ALTER SEQUENCE appointment_events_id_seq OWNED BY appointment_events.id;
+ALTER TABLE ONLY appointment_events ALTER COLUMN id SET DEFAULT nextval('appointment_events_id_seq'::regclass);
+ALTER TABLE ONLY appointment_events
+    ADD CONSTRAINT appointment_events_pkey PRIMARY KEY (id);
+CREATE INDEX appointment_events_appointment_id_idx ON appointment_events (appointment_id);
+CREATE INDEX appointment_events_user_id_idx ON appointment_events (user_id);
+
+--
+
+CREATE MATERIALIZED VIEW appointments_fts_index AS (
+  SELECT
+    a.id,
+    to_tsvector('english', trim(concat(a.details, ' ', e.cancel_reason, ' ', e.cancel_reason_explained))) AS fts_index
+  FROM (SELECT MAX(id) as id FROM appointment_events GROUP BY appointment_id) as recent_events
+  JOIN appointment_events e ON e.id = recent_events.id
+  JOIN appointments a ON a.id = e.appointment_id
+  WHERE
+    a.details IS NOT NULL
+    AND a.deleted_at IS NULL
+);
+
+CREATE INDEX idx_appointments_fts_index
+ON appointments_fts_index
+USING gin(fts_index);
+
+--
+
+CREATE TABLE appointments_read (
+    appointment_id INTEGER NOT NULL,
+    viewer_id INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+ALTER TABLE appointments_read OWNER TO boac;
+ALTER TABLE ONLY appointments_read
+    ADD CONSTRAINT appointments_read_pkey PRIMARY KEY (viewer_id, appointment_id);
+CREATE INDEX appointments_read_appointment_id_idx ON appointments_read USING btree (appointment_id);
+CREATE INDEX appointments_read_viewer_id_idx ON appointments_read USING btree (viewer_id);
 
 --
 
@@ -144,6 +266,21 @@ ALTER SEQUENCE cohort_filters_id_seq OWNED BY cohort_filters.id;
 ALTER TABLE ONLY cohort_filters ALTER COLUMN id SET DEFAULT nextval('cohort_filters_id_seq'::regclass);
 ALTER TABLE ONLY cohort_filters
     ADD CONSTRAINT cohort_filters_pkey PRIMARY KEY (id);
+
+--
+
+CREATE TABLE drop_in_advisors (
+    authorized_user_id INTEGER NOT NULL,
+    dept_code character varying(255) NOT NULL,
+    is_available BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    is_supervisor_on_call BOOLEAN DEFAULT false NOT NULL
+);
+ALTER TABLE drop_in_advisors OWNER TO boac;
+ALTER TABLE drop_in_advisors
+    ADD CONSTRAINT drop_in_advisors_pkey PRIMARY KEY (authorized_user_id, dept_code);
 
 --
 
@@ -334,7 +471,7 @@ ALTER TABLE ONLY note_topics ALTER COLUMN id SET DEFAULT nextval('note_topics_id
 ALTER TABLE ONLY note_topics
     ADD CONSTRAINT note_topics_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY note_topics
-    ADD CONSTRAINT note_topics_note_id_topic_unique_constraint UNIQUE (note_id, topic);
+    ADD CONSTRAINT note_topics_note_id_topic_unique_constraint UNIQUE (note_id, topic, deleted_at);
 CREATE INDEX note_topics_note_id_idx ON note_topics (note_id);
 CREATE INDEX note_topics_topic_idx ON note_topics (topic);
 
@@ -381,7 +518,9 @@ CREATE TABLE topics (
   id INTEGER NOT NULL,
   topic VARCHAR(50) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  deleted_at timestamp with time zone
+  deleted_at timestamp with time zone,
+  available_in_notes BOOLEAN NOT NULL,
+  available_in_appointments BOOLEAN NOT NULL
 );
 ALTER TABLE topics OWNER TO boac;
 CREATE SEQUENCE topics_id_seq
@@ -429,6 +568,7 @@ CREATE TABLE university_dept_members (
   authorized_user_id INTEGER,
   is_advisor BOOLEAN DEFAULT false NOT NULL,
   is_director BOOLEAN DEFAULT false NOT NULL,
+  is_scheduler BOOLEAN DEFAULT false NOT NULL,
   automate_membership boolean DEFAULT true NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL
@@ -505,6 +645,39 @@ ALTER TABLE ONLY user_logins ALTER COLUMN id SET DEFAULT nextval('user_logins_id
 ALTER TABLE ONLY user_logins
     ADD CONSTRAINT user_logins_pkey PRIMARY KEY (id);
 CREATE INDEX user_logins_uid_idx ON user_logins USING btree (uid);
+
+--
+
+ALTER TABLE ONLY appointment_topics
+    ADD CONSTRAINT appointment_topics_appointment_id_fkey FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY appointments
+    ADD CONSTRAINT appointments_created_by_fkey FOREIGN KEY (created_by) REFERENCES authorized_users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY appointments
+    ADD CONSTRAINT appointments_deleted_by_fkey FOREIGN KEY (deleted_by) REFERENCES authorized_users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY appointments
+    ADD CONSTRAINT appointments_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES authorized_users(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY appointment_events
+    ADD CONSTRAINT appointment_events_appointment_id_fkey FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE;
+ALTER TABLE ONLY appointment_events
+    ADD CONSTRAINT appointment_events_user_id_updated_by_fkey FOREIGN KEY (user_id) REFERENCES authorized_users(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY appointments_read
+    ADD CONSTRAINT appointments_read_appointment_id_fkey FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE;
+ALTER TABLE ONLY appointments_read
+    ADD CONSTRAINT appointments_read_viewer_id_fkey FOREIGN KEY (viewer_id) REFERENCES authorized_users(id) ON DELETE CASCADE;
+
+--
+
+ALTER TABLE ONLY drop_in_advisors
+    ADD CONSTRAINT drop_in_advisors_authorized_user_id_fkey FOREIGN KEY (authorized_user_id) REFERENCES authorized_users(id) ON DELETE CASCADE;
 
 --
 

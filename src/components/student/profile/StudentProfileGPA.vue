@@ -1,6 +1,5 @@
 <template>
   <div class="pt-2 pb-1">
-    <div id="screen-reader-alert" class="sr-only" aria-live="polite">{{ screenReaderAlert }}</div>
     <div class="d-flex flex-wrap">
       <div class="gpa text-center">
         <div id="cumulative-gpa" class="data-number">
@@ -12,15 +11,17 @@
       </div>
       <div id="gpa-trends" class="border-left">
         <div id="gpa-chart" class="ml-3">
-          <div class="gpa-trends-label-outer">
-            <div class="gpa-trends-label text-uppercase font-weight-bold">GPA Trends</div>
+          <div class="align-items-end d-flex justify-content-between pb-2">
+            <div class="gpa-trends-label text-uppercase font-weight-bold">
+              GPA Trends
+            </div>
             <b-btn
               v-if="!isEmpty(student.termGpa)"
               id="show-hide-term-gpa-button"
               class="gpa-trends-more-button col-auto"
               variant="link"
               @click="showHideTermGpa()">
-              More
+              {{ showTermGpa ? 'Less' : 'More' }}
             </b-btn>
           </div>
           <StudentGpaChart
@@ -32,8 +33,8 @@
           <div v-if="!isEmpty(student.termGpa)" id="current-term-gpa" class="current-term-gpa">
             <span class="gpa-label text-uppercase">{{ student.termGpa[0].name }} GPA:</span>
             <span
-              class="font-weight-bold"
-              :class="{'gpa-last-term': student.termGpa[0].gpa >= 2, 'gpa-alert': student.termGpa[0].gpa < 2}">
+              :class="{'gpa-last-term': student.termGpa[0].gpa >= 2, 'gpa-alert': student.termGpa[0].gpa < 2}"
+              class="font-weight-bold">
               {{ student.termGpa[0].gpa | round(3) }}
             </span>
           </div>
@@ -99,7 +100,6 @@ export default {
   },
   data: () => ({
     cumulativeGPA: undefined,
-    screenReaderAlert: undefined,
     showTermGpa: false
   }),
   created() {
@@ -108,9 +108,7 @@ export default {
   methods: {
     showHideTermGpa() {
       this.showTermGpa = !this.showTermGpa;
-      this.screenReaderAlert = `The table with GPA per term is now ${
-        this.showTermGpa ? 'visible' : 'hidden'
-      }.`;
+      this.alertScreenReader(`The table with GPA per term is now ${this.showTermGpa ? 'visible' : 'hidden'}.`);
     }
   }
 };
@@ -147,13 +145,9 @@ export default {
   color: #555;
   font-size: 11px;
 }
-.gpa-trends-label-outer {
-  display: flex;
-  justify-content: space-between;
-}
 .gpa-trends-more-button {
   border: 0;
-  font-size: 11px;
+  font-size: 12px;
   padding: 0;
   text-align: right;
 }

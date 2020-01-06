@@ -59,12 +59,27 @@
                     "primary": true,
                     "sectionNumber": "001",
                     "units": 2.0
+                },
+                {
+                    "canvasCourseIds": [],
+                    "ccn": 80101,
+                    "component": "TUT",
+                    "enrollmentStatus": "W",
+                    "grade": null,
+                    "gradingBasis": "Letter",
+                    "primary": true,
+                    "sectionNumber": "002",
+                    "units": 2.0
                 }
             ],
             "title": "Private Carillon Lessons for Advanced Students",
             "units": 2.0
         }
     ],
+    "termGpa": {
+        "gpa": 2.7,
+        "unitsTakenForGpa": 17.0
+    },
     "termId": "2172",
     "termName": "Spring 2017",
     "unmatchedCanvasSites": [

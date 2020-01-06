@@ -5,29 +5,17 @@ export default {
   name: 'Context',
   computed: {
     ...mapGetters('context', [
-      'apiBaseUrl',
-      'currentEnrollmentTerm',
-      'currentEnrollmentTermId',
-      'devAuthEnabled',
-      'errors',
-      'featureFlagAdvisorAppointments',
-      'isDemoModeAvailable',
-      'maxAttachmentsPerNote',
-      'pingFrequency',
       'announcement',
-      'srAlert',
-      'supportEmailAddress',
-      'timezone'
+      'hasUserDismissedFooterAlert',
+      'screenReaderAlert'
     ]),
     ...mapGetters('noteEditSession', ['disableNewNoteButton'])
   },
   methods: {
     ...mapActions('context', [
-      'clearAlertsInStore',
-      'dismissError',
-      'initUserSession',
-      'reportError',
-      'alertScreenReader'
+      'alertScreenReader',
+      'dismissFooterAlert',
+      'initUserSession'
     ])
   }
 };

@@ -1,138 +1,141 @@
 <template>
-  <div class="d-flex p-3">
-    <div class="text-center mb-2 mr-4">
-      <StudentAvatar class="mb-2" :student="student" size="large" />
-      <StudentGroupSelector :sid="student.sid" />
-    </div>
-    <div class="w-100">
-      <div class="d-flex flex-wrap">
-        <div class="flex-grow-1 mb-2">
-          <div>
-            <h1
-              id="student-name-header"
-              ref="pageHeader"
-              class="student-section-header"
-              tabindex="0"
-              :class="{'demo-mode-blur': user.inDemoMode}"
-              v-html="student.name"></h1>
-            <h2 class="sr-only">Profile</h2>
-            <div
-              v-if="student.sisProfile.preferredName !== student.name"
-              class="sr-only">
-              Preferred name
-            </div>
-            <div
-              v-if="student.sisProfile.preferredName !== student.name"
-              id="student-preferred-name"
-              class="font-size-20"
-              :class="{'demo-mode-blur': user.inDemoMode}"
-              v-html="student.sisProfile.preferredName"></div>
-            <div id="student-bio-sid" class="font-size-14 font-weight-bold mt-1 mb-1">
-              SID <span :class="{'demo-mode-blur': user.inDemoMode}">{{ student.sid }}</span>
-              <span
-                v-if="academicCareerStatus === 'Inactive'"
-                id="student-bio-inactive"
-                class="red-flag-status ml-1">
-                INACTIVE
-              </span>
-            </div>
-            <div v-if="student.sisProfile.emailAddress">
-              <font-awesome icon="envelope" />
-              <span class="sr-only">Email</span>
-              <a
-                id="student-mailto"
-                :href="`mailto:${student.sisProfile.emailAddress}`"
-                :class="{'demo-mode-blur': user.inDemoMode}"
-                target="_blank">
-                {{ student.sisProfile.emailAddress }}</a>
-            </div>
-            <div v-if="student.sisProfile.phoneNumber">
-              <font-awesome icon="phone" />
-              <span class="sr-only">Phone number</span>
-              <a
-                id="student-phone-number"
-                :href="`tel:${student.sisProfile.phoneNumber}`"
-                :class="{'demo-mode-blur': user.inDemoMode}"
-                tabindex="0">
-                {{ student.sisProfile.phoneNumber }}</a>
-            </div>
+  <div>
+    <div class="ml-4 mr-4 pb-2 pt-4 row">
+      <div class="col-sm bb-2 mr-2 text-center">
+        <StudentAvatar :student="student" class="mb-2" size="large" />
+        <StudentGroupSelector :student="student" />
+      </div>
+      <div class="col-sm mr-2 pr-2">
+        <div>
+          <h1
+            id="student-name-header"
+            ref="pageHeader"
+            :class="{'demo-mode-blur': $currentUser.inDemoMode}"
+            class="student-section-header"
+            tabindex="0"
+            v-html="student.name"></h1>
+          <h2 class="sr-only">Profile</h2>
+          <div
+            v-if="student.sisProfile.preferredName !== student.name"
+            id="student-preferred-name"
+            :class="{'demo-mode-blur': $currentUser.inDemoMode}">
+            <span class="sr-only">Preferred name</span>
+            <span v-html="student.sisProfile.preferredName"></span>
           </div>
-          <div v-if="isAscInactive" id="student-bio-inactive-asc" class="font-weight-bolder has-error">
-            ASC INACTIVE
+          <div id="student-bio-sid" class="font-size-14 font-weight-bold mb-1">
+            SID <span :class="{'demo-mode-blur': $currentUser.inDemoMode}">{{ student.sid }}</span>
+            <span
+              v-if="academicCareerStatus === 'Inactive'"
+              id="student-bio-inactive"
+              class="red-flag-status ml-1">
+              INACTIVE
+            </span>
           </div>
-          <div v-if="isCoeInactive" id="student-bio-inactive-coe" class="font-weight-bolder has-error">
-            CoE INACTIVE
-          </div>
-          <div v-if="student.athleticsProfile" id="student-bio-athletics">
-            <div v-for="membership in student.athleticsProfile.athletics" :key="membership.groupName">
-              {{ membership.groupName }}
-            </div>
+          <div v-if="student.sisProfile.emailAddress" class="mt-2">
+            <span class="sr-only">Email</span>
+            <a
+              id="student-mailto"
+              :href="`mailto:${student.sisProfile.emailAddress}`"
+              :class="{'demo-mode-blur': $currentUser.inDemoMode}"
+              target="_blank">
+              {{ student.sisProfile.emailAddress }}<span class="sr-only"> (will open new browser tab)</span>
+            </a>
           </div>
         </div>
-        <div class="mr-4">
-          <div v-if="academicCareerStatus !== 'Completed'">
-            <div id="student-bio-majors">
-              <h3 class="sr-only">Major</h3>
-              <div v-for="plan in sortedPlans" :key="plan.description" class="mb-2">
-                <div class="font-weight-bolder">
-                  <span v-if="!plan.degreeProgramUrl" class="no-wrap">{{ plan.description }}</span>
-                  <a
-                    v-if="plan.degreeProgramUrl"
-                    :href="plan.degreeProgramUrl"
-                    target="_blank"
-                    :aria-label="`Open ${plan.description} program page in new window`">
-                    {{ plan.description }}</a>
-                </div>
-                <div v-if="plan.program" class="text-muted">
-                  {{ plan.program }}
-                </div>
-                <div v-if="plan.status !== 'Active'" class="font-weight-bolder has-error small text-uppercase">
-                  {{ plan.status }}
-                </div>
-              </div>
-            </div>
-            <div id="student-bio-level">
-              <h3 class="sr-only">Level</h3>
-              <div class="font-weight-bolder">{{ get(student, 'sisProfile.level.description') }}</div>
-            </div>
-            <div class="text-muted">
-              <div v-if="student.sisProfile.transfer">
-                Transfer
-              </div>
-              <div v-if="student.sisProfile.termsInAttendance" id="student-bio-terms-in-attendance">
-                {{ 'Term' | pluralize(student.sisProfile.termsInAttendance) }} in Attendance
-              </div>
-              <div
-                v-if="student.sisProfile.expectedGraduationTerm && get(student.sisProfile, 'level.code') !== 'GR'"
-                id="student-bio-expected-graduation">
-                Expected graduation {{ student.sisProfile.expectedGraduationTerm.name }}
-              </div>
-            </div>
+        <div v-if="isAscInactive" id="student-bio-inactive-asc" class="font-weight-bolder has-error">
+          ASC INACTIVE
+        </div>
+        <div v-if="isCoeInactive" id="student-bio-inactive-coe" class="font-weight-bolder has-error">
+          CoE INACTIVE
+        </div>
+        <div id="student-bio-level" class="mt-2">
+          <h3 class="sr-only">Level</h3>
+          <div class="font-weight-bolder">{{ get(student, 'sisProfile.level.description') }}</div>
+        </div>
+        <div class="text-muted">
+          <div v-if="student.sisProfile.termsInAttendance" id="student-bio-terms-in-attendance">
+            {{ 'Term' | pluralize(student.sisProfile.termsInAttendance) }} in Attendance
           </div>
-          <div v-if="academicCareerStatus === 'Completed' && student.sisProfile.degree">
-            <h3 class="sr-only">Degree</h3>
-            <div id="student-bio-degree-type" class="font-weight-bolder">
-              <span v-if="!includes(degreePlanOwners, 'Graduate Division')">
-                {{ student.sisProfile.degree.description }} in
-              </span>
-              {{ degreePlans.join(', ') }}
-            </div>
-            <div id="student-bio-degree-date">
-              <span class="student-text">Awarded {{ student.sisProfile.degree.dateAwarded | moment('MMM DD, YYYY') }}</span>
-            </div>
-            <div v-for="owner in degreePlanOwners" :key="owner" class="student-text">
-              <span class="student-text">{{ owner }}</span>
-            </div>
-          </div>
-          <div class="no-wrap mt-1">
-            <a
-              id="link-to-calcentral"
-              :href="`https://calcentral.berkeley.edu/user/overview/${student.uid}`"
-              target="_blank"
-              aria-label="Open CalCentral in new window">Student profile in CalCentral <font-awesome icon="external-link-alt" class="pr-1" /></a>
+          <div
+            v-if="student.sisProfile.expectedGraduationTerm && get(student.sisProfile, 'level.code') !== 'GR'"
+            id="student-bio-expected-graduation">
+            Expected graduation {{ student.sisProfile.expectedGraduationTerm.name }}
           </div>
         </div>
       </div>
+      <div class="col-sm mr-2 pr-2">
+        <div v-if="academicCareerStatus !== 'Completed'">
+          <div v-if="plansPartitionedByStatus[0].length" id="student-bio-majors" class="mb-3">
+            <h3 class="student-profile-section-header">Major</h3>
+            <div v-for="plan in plansPartitionedByStatus[0]" :key="plan.description" class="mb-2">
+              <div class="font-weight-bolder">
+                <span v-if="!plan.degreeProgramUrl" class="no-wrap">{{ plan.description }}</span>
+                <a
+                  v-if="plan.degreeProgramUrl"
+                  :href="plan.degreeProgramUrl"
+                  :aria-label="`Open ${plan.description} program page in new window`"
+                  target="_blank">
+                  {{ plan.description }}</a>
+              </div>
+              <div v-if="plan.program" class="text-muted">
+                {{ plan.program }}
+              </div>
+            </div>
+          </div>
+          <div v-if="plansMinorPartitionedByStatus[0].length" id="student-bio-minors" class="mb-3">
+            <h3 class="student-profile-section-header">Minor</h3>
+            <div v-for="plan in plansMinorPartitionedByStatus[0]" :key="plan.description" class="mb-2">
+              <div class="font-weight-bolder">
+                <span v-if="!plan.degreeProgramUrl" class="no-wrap">{{ plan.description }}</span>
+                <a
+                  v-if="plan.degreeProgramUrl"
+                  :href="plan.degreeProgramUrl"
+                  :aria-label="`Open ${plan.description} program page in new window`"
+                  target="_blank">
+                  {{ plan.description }}</a>
+              </div>
+              <div v-if="plan.program" class="text-muted">
+                {{ plan.program }}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="academicCareerStatus === 'Completed' && student.sisProfile.degree" class="mb-3">
+          <h3 class="profile-section-header">Degree</h3>
+          <div id="student-bio-degree-type" class="font-weight-bolder">
+            <span v-if="!includes(degreePlanOwners, 'Graduate Division')">
+              {{ student.sisProfile.degree.description }} in
+            </span>
+            {{ degreePlans.join(', ') }}
+          </div>
+          <div id="student-bio-degree-date">
+            <span class="student-text">Awarded {{ student.sisProfile.degree.dateAwarded | moment('MMM DD, YYYY') }}</span>
+          </div>
+          <div v-for="owner in degreePlanOwners" :key="owner" class="student-text">
+            <span class="student-text">{{ owner }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="d-flex justify-content-center pb-2">
+      <div>
+        <b-btn
+          id="show-hide-personal-details"
+          :aria-label="isShowingPersonalDetails ? 'Hide personal details' : 'Show personal details'"
+          class="no-wrap"
+          variant="link"
+          @click="isShowingPersonalDetails = !isShowingPersonalDetails">
+          <font-awesome :icon="isShowingPersonalDetails ? 'caret-down' : 'caret-right'" :class="isShowingPersonalDetails ? 'mr-1' : 'ml-1 mr-1'" />
+          {{ isShowingPersonalDetails ? 'Hide' : 'Show' }} Personal Details
+        </b-btn>
+      </div>
+    </div>
+    <div>
+      <StudentPersonalDetails
+        :inactive-majors="plansPartitionedByStatus[1]"
+        :inactive-minors="plansMinorPartitionedByStatus[1]"
+        :is-open="isShowingPersonalDetails"
+        :student="student" />
     </div>
   </div>
 </template>
@@ -141,16 +144,17 @@
 import StudentAvatar from '@/components/student/StudentAvatar';
 import StudentGroupSelector from '@/components/student/profile/StudentGroupSelector';
 import StudentMetadata from '@/mixins/StudentMetadata';
-import UserMetadata from '@/mixins/UserMetadata';
+import StudentPersonalDetails from "@/components/student/profile/StudentPersonalDetails";
 import Util from '@/mixins/Util';
 
 export default {
   name: 'StudentProfileHeader',
   components: {
+    StudentAvatar,
     StudentGroupSelector,
-    StudentAvatar
+    StudentPersonalDetails
   },
-  mixins: [StudentMetadata, UserMetadata, Util],
+  mixins: [StudentMetadata, Util],
   props: {
     student: Object
   },
@@ -158,14 +162,18 @@ export default {
     degreePlans: [],
     degreePlanOwners: [],
     isAscInactive: undefined,
-    isCoeInactive: undefined
+    isCoeInactive: undefined,
+    isShowingPersonalDetails: false
   }),
   computed: {
     academicCareerStatus() {
       return this.get(this.student, 'sisProfile.academicCareerStatus');
     },
-    sortedPlans() {
-      return this.orderBy(this.student.sisProfile.plans, 'status');
+    plansPartitionedByStatus() {
+      return this.partition(this.student.sisProfile.plans, (p) => p.status === 'Active');
+    },
+    plansMinorPartitionedByStatus() {
+      return this.partition(this.student.sisProfile.plansMinor, (p) => p.status === 'Active');
     }
   },
   created() {
@@ -179,3 +187,15 @@ export default {
   }
 };
 </script>
+
+<style>
+.student-profile-section-header {
+  border-bottom: 1px #999 solid;
+  color: #999;
+  font-size: 12px;
+  font-weight: bold;
+  margin: 0 0 5px 0;
+  padding: 0 0 5px 0;
+  text-transform: uppercase;
+}
+</style>

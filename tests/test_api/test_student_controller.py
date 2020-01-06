@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -25,22 +25,31 @@ ENHANCEMENTS, OR MODIFICATIONS.
 
 import pytest
 import simplejson as json
-from tests.util import override_config
+
+admin_uid = '2040'
+asc_advisor_id = '1081940'
+coe_advisor_id = '1133399'
+coe_scheduler_id = '6972201'
 
 
 @pytest.fixture()
 def admin_login(fake_auth):
-    fake_auth.login('2040')
+    fake_auth.login(admin_uid)
 
 
 @pytest.fixture()
 def asc_advisor_login(fake_auth):
-    fake_auth.login('1081940')
+    fake_auth.login(asc_advisor_id)
 
 
 @pytest.fixture()
 def coe_advisor_login(fake_auth):
-    fake_auth.login('1133399')
+    fake_auth.login(coe_advisor_id)
+
+
+@pytest.fixture()
+def coe_scheduler_login(fake_auth):
+    fake_auth.login(coe_scheduler_id)
 
 
 @pytest.fixture()
@@ -96,6 +105,10 @@ class TestStudent:
         self._api_student_by_sid(client=client, sid=self.asc_student['sid'], expected_status_code=401)
         self._api_student_by_uid(client=client, uid=self.asc_student['uid'], expected_status_code=401)
 
+    def test_deny_scheduler(self, client, coe_scheduler_login):
+        """Returns 401 if user is scheduler."""
+        self._api_student_by_sid(client=client, sid=self.asc_student['sid'], expected_status_code=401)
+
     def test_user_with_no_enrollments_in_current_term(self, asc_advisor_login, client):
         """Identifies user with no enrollments in current term."""
         sid = self.asc_student['sid']
@@ -104,8 +117,8 @@ class TestStudent:
         student_by_uid = self._api_student_by_uid(client=client, uid=uid)
         for student in [student_by_sid, student_by_uid]:
             enrollment_terms = student['enrollmentTerms']
-            assert len(enrollment_terms) == 1
-            assert enrollment_terms[0]['termName'] == 'Spring 2017'
+            assert len(enrollment_terms) == 2
+            assert [t['termName'] for t in enrollment_terms] == ['Summer 2017', 'Spring 2017']
             assert student['hasCurrentTermEnrollments'] is False
 
     def test_user_analytics_authenticated(self, client, coe_advisor_login):
@@ -368,6 +381,7 @@ class TestStudent:
             music = self.get_course_for_code(student, '2172', 'MUSIC 41C')
             assert music['displayName'] == 'MUSIC 41C'
             assert music['title'] == 'Private Carillon Lessons for Advanced Students'
+            # Represses an obsolete waitlisted section.
             assert len(music['sections']) == 1
             assert music['sections'][0]['ccn'] == 80100
             assert music['sections'][0]['sectionNumber'] == '001'
@@ -408,7 +422,7 @@ class TestStudent:
             assert sis_profile['degreeProgress']['requirements']['americanHistory']['status'] == 'Not Satisfied'
             assert sis_profile['degreeProgress']['requirements']['americanInstitutions']['status'] == 'Not Satisfied'
             assert sis_profile['degreeProgress']['requirements']['entryLevelWriting']['status'] == 'Satisfied'
-            assert sis_profile['emailAddress'] == 'oski@berkeley.edu'
+            assert sis_profile['emailAddress'] == 'barnburner@berkeley.edu'
             assert sis_profile['level']['code'] == '30'
             assert sis_profile['level']['description'] == 'Junior'
             assert sis_profile['phoneNumber'] == '415/123-4567'
@@ -557,6 +571,42 @@ class TestStudent:
             assert athletics_profile['inIntensiveCohort'] is True
             assert len(athletics_profile['athletics']) == 2
 
+    def test_student_with_appointment(self, app, client, asc_advisor_login):
+        """Includes advising appointments."""
+        student = self._api_student_by_sid(client=client, sid='5678901234')
+        appointments = student['notifications']['appointment']
+        assert len(appointments) == 3
+
+    def test_appointment_marked_read(self, app, client, fake_auth):
+        """Includes advising appointments."""
+        sid = '3456789012'
+
+        fake_auth.login(coe_scheduler_id)
+        response = client.post(
+            '/api/appointments/create',
+            data=json.dumps({
+                'deptCode': 'COENG',
+                'sid': sid,
+                'appointmentType': 'Drop-in',
+                'topics': ['Topic for appointments, 4'],
+            }),
+            content_type='application/json',
+        )
+        assert response.status_code == 200
+        appointment_id = response.json['id']
+
+        def _is_appointment_read():
+            student = self._api_student_by_sid(client=client, sid=sid)
+            appointments = student['notifications']['appointment']
+            appointment = next((a for a in appointments if a['id'] == appointment_id), None)
+            assert appointment is not None
+            return appointment['read']
+
+        fake_auth.login(asc_advisor_id)
+        assert _is_appointment_read() is False
+        client.post(f'/api/appointments/{appointment_id}/mark_read')
+        assert _is_appointment_read() is True
+
 
 class TestAlerts:
 
@@ -583,13 +633,18 @@ class TestAlerts:
         assert not alerts[1]['dismissed']
         assert alerts[2]['alertType'] == 'midterm'
         assert alerts[2]['key'] == '2178_90100'
-        assert alerts[2]['message'] == 'BURMESE 1A midterm grade of D+.'
+        assert alerts[2]['message'] == 'BURMESE 1A midpoint deficient grade of D+.'
         assert not alerts[2]['dismissed']
 
 
 class TestPrefixSearch:
 
+    def test_require_login(self, client):
+        response = client.get('/api/students/find_by_name_or_sid?q=Paul')
+        assert response.status_code == 401
+
     def test_student_prefix_search_by_name(self, client, coe_advisor_login):
+        """When searching by name, results include current students only."""
         response = client.get('/api/students/find_by_name_or_sid?q=Paul')
         assert response.status_code == 200
         assert len(response.json) == 3
@@ -599,12 +654,19 @@ class TestPrefixSearch:
         assert "Wolfgang Pauli-O'Rourke (9000000000)" in labels
 
     def test_student_prefix_search_by_sid(self, client, coe_advisor_login):
+        """When searching by SID, results include both current and non-current students."""
         response = client.get('/api/students/find_by_name_or_sid?q=9')
         assert response.status_code == 200
-        assert len(response.json) == 2
+        assert len(response.json) == 3
         labels = [s['label'] for s in response.json]
         assert "Wolfgang Pauli-O'Rourke (9000000000)" in labels
         assert 'Nora Stanton Barney (9100000000)' in labels
+        assert 'Paul Tarsus (9191919191)' in labels
+
+    def test_allow_scheduler(self, client, coe_scheduler_login):
+        response = client.get('/api/students/find_by_name_or_sid?q=Paul')
+        assert response.status_code == 200
+        assert len(response.json) == 3
 
 
 class TestNotes:
@@ -647,24 +709,6 @@ class TestNotes:
         assert not len(author['departments'])
         advisor_sid = '800700600'
         assert author['sid'] == advisor_sid
-        # Lazy-load author info, as performed on front-end
-        response = client.get(f'/api/user/by_csid/{advisor_sid}')
-        assert response.status_code == 200
-        user = response.json
-        assert user['csid'] == advisor_sid
-        assert user['name'] == 'Roberta Joan Anderson'
-        assert user['departments'][0]['code'] == 'QCADV'
-        assert user['departments'][0]['name'] == 'L&S College Advising'
-
-
-class TestAdvisingAppointments:
-
-    def test_appointments(self, app, client, coe_advisor_login):
-        """Returns advising appointment(s)."""
-        with override_config(app, 'FEATURE_FLAG_ADVISOR_APPOINTMENTS', True):
-            response = client.get('/api/student/by_uid/61889')
-            assert response.status_code == 200
-            assert 'appointment' in response.json.get('notifications', {})
 
 
 class TestValidateSids:
@@ -684,6 +728,10 @@ class TestValidateSids:
 
     def test_validate_sids_not_authenticated(self, client):
         """Requires authentication."""
+        self._api_validate_sids(client, expected_status_code=401)
+
+    def test_scheduler_cannot_validate_sids(self, client, coe_scheduler_login):
+        """Scheduler cannot validate SIDs."""
         self._api_validate_sids(client, expected_status_code=401)
 
     def test_validate_sids_with_invalid_sid(self, client, coe_advisor_login):

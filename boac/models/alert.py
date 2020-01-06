@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -32,8 +32,9 @@ import time
 from boac import db, std_commit
 from boac.api.errors import BadRequestError
 from boac.externals import data_loch
-from boac.lib.berkeley import current_term_id, section_is_eligible_for_alerts, term_name_for_sis_id
+from boac.lib.berkeley import section_is_eligible_for_alerts, term_name_for_sis_id
 from boac.lib.util import camelize, unix_timestamp_to_localtime, utc_timestamp_to_localtime
+from boac.merged.sis_terms import current_term_id
 from boac.models.base import Base
 from boac.models.db_relationships import AlertView
 from flask import current_app as app
@@ -340,7 +341,7 @@ class Alert(Base):
     @classmethod
     def update_midterm_grade_alerts(cls, sid, term_id, section_id, class_name, grade):
         key = f'{term_id}_{section_id}'
-        message = f'{class_name} midterm grade of {grade}.'
+        message = f'{class_name} midpoint deficient grade of {grade}.'
         cls.create_or_activate(sid=sid, alert_type='midterm', key=key, message=message)
 
     @classmethod
@@ -364,7 +365,7 @@ class Alert(Base):
     @classmethod
     def update_withdrawal_cancel_alerts(cls, sid, term_id):
         key = f'{term_id}_withdrawal'
-        message = f'Withdrawal! Student has withdrawn from the {term_name_for_sis_id(term_id)} term.'
+        message = f'Student is no longer enrolled in the {term_name_for_sis_id(term_id)} term.'
         cls.create_or_activate(sid=sid, alert_type='withdrawal', key=key, message=message)
 
     @classmethod

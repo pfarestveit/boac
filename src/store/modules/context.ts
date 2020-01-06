@@ -1,124 +1,37 @@
-import _ from 'lodash';
-import router from '@/router';
-import store from '@/store';
 import Vue from 'vue';
-import VueAnalytics from 'vue-analytics';
-import { getConfig, getServiceAnnouncement } from '@/api/config';
+import { getServiceAnnouncement } from '@/api/config';
 
 const state = {
   announcement: undefined,
-  config: undefined,
-  errors: [],
+  hasUserDismissedFooterAlert: false,
   loading: undefined,
   screenReaderAlert: undefined
 };
 
 const getters = {
-  apiBaseUrl: (): any => process.env.VUE_APP_API_BASE_URL,
-  currentEnrollmentTerm: (state: any): boolean => _.get(state.config, 'currentEnrollmentTerm'),
-  currentEnrollmentTermId: (state: any): boolean => _.get(state.config, 'currentEnrollmentTermId'),
-  devAuthEnabled: (state: any): boolean => _.get(state.config, 'devAuthEnabled'),
-  disableMatrixViewThreshold: (state: any): string => _.get(state.config, 'disableMatrixViewThreshold'),
-  errors: (state: any): any => state.errors,
-  featureFlagAdvisorAppointments: (state: any): boolean => _.get(state.config, 'featureFlagAdvisorAppointments'),
-  googleAnalyticsId: (state: any): string => _.get(state.config, 'googleAnalyticsId'),
-  isDemoModeAvailable: (state: any): string => _.get(state.config, 'isDemoModeAvailable'),
-  maxAttachmentsPerNote: (state: any): string => _.get(state.config, 'maxAttachmentsPerNote'),
-  pingFrequency: (state: any): string => _.get(state.config, 'pingFrequency'),
-  loading: (state: any): boolean => state.loading,
   announcement: (state: any): string => state.announcement,
-  srAlert: (state: any): string => state.screenReaderAlert,
-  supportEmailAddress: (state: any): string => _.get(state.config, 'supportEmailAddress'),
-  timezone: (state: any): string => _.get(state.config, 'timezone')
+  hasUserDismissedFooterAlert: (): boolean => state.hasUserDismissedFooterAlert,
+  loading: (state: any): boolean => state.loading,
+  screenReaderAlert: (state: any): string => state.screenReaderAlert
 };
 
 const mutations = {
-  clearAlertsInStore: (state: any) => {
-    state.errors = [];
-    state.screenReaderAlert = undefined;
-  },
-  dismissError: (state: any, id: number) => {
-    const indexOf = state.errors.findIndex((e: any) => e.id === id);
-    if (indexOf > -1) {
-      state.errors.splice(indexOf, 1);
-    }
-  },
+  dismissFooterAlert: (state: any) => state.hasUserDismissedFooterAlert = true,
   loadingComplete: (state: any) => (state.loading = false),
   loadingStart: (state: any) => (state.loading = true),
-  reportError: (state: any, error: any) => {
-    error.id = new Date().getTime();
-    state.errors.push(error);
-    Vue.prototype.$eventHub.$emit('error-reported', error);
-  },
-  screenReaderAlert: (state: any, alert: any) => (state.screenReaderAlert = alert),
-  storeConfig: (state: any, config: any) => (state.config = config),
+  setScreenReaderAlert: (state: any, alert: any) => (state.screenReaderAlert = alert),
   storeAnnouncement: (state: any, data: any) => (state.announcement = data),
 };
 
 const actions = {
   alertScreenReader: ({ commit }, alert) => {
-    commit('screenReaderAlert', '');
-    Vue.nextTick(() => {
-      commit('screenReaderAlert', alert);
-    });
+    commit('setScreenReaderAlert', '');
+    Vue.nextTick(() => commit('setScreenReaderAlert', alert));
   },
-  clearAlertsInStore: ({ commit }) => commit('clearAlertsInStore'),
-  dismissError: ({ commit }, id) => commit('dismissError', id),
-  async initUserSession() {
-    store.dispatch('context/loadConfig').then(config => {
-      store.dispatch('user/loadUser').then(user => {
-        if (user.isAuthenticated) {
-          store.dispatch('cohort/loadMyCohorts');
-          store.dispatch('curated/loadMyCuratedGroups');
-          store.dispatch('context/loadServiceAnnouncement');
-          store.dispatch('note/loadNoteTemplates');
-          store.dispatch('note/loadSuggestedNoteTopics')
-        }
-        let googleAnalyticsId = _.get(config, 'googleAnalyticsId');
-        if (googleAnalyticsId) {
-          let options = {
-            id: googleAnalyticsId,
-            checkDuplicatedScript: true,
-            debug: {
-              // If debug.enabled is true then browser console gets GA debug info.
-              enabled: false
-            },
-            fields: {},
-            router
-          };
-          const uid = store.getters['user/uid'];
-          if (uid) {
-            options.fields['userId'] = uid;
-          }
-          Vue.use(VueAnalytics, options);
-        }
-      });
-    });
-  },
+  dismissFooterAlert: ({ commit }) => commit('dismissFooterAlert'),
   loadingComplete: ({ commit }) => commit('loadingComplete'),
   loadingStart: ({ commit }) => commit('loadingStart'),
-  loadConfig: ({ commit, state }) => {
-    return new Promise(resolve => {
-      if (state.config) {
-        resolve(state.config);
-      } else {
-        getConfig().then(config => {
-          commit('storeConfig', config);
-          resolve(config);
-        });
-      }
-    });
-  },
-  loadServiceAnnouncement: ({ commit, state }) => {
-    return new Promise(() => {
-      if (_.isUndefined(state.announcement)) {
-        getServiceAnnouncement().then(data => {
-          commit('storeAnnouncement', data);
-        });
-      }
-    });
-  },
-  reportError: ({ commit }, error) => commit('reportError', error)
+  loadServiceAnnouncement: ({ commit }) => new Promise(() => getServiceAnnouncement().then(data => commit('storeAnnouncement', data)))
 };
 
 export default {

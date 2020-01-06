@@ -1,29 +1,20 @@
 <template>
   <div class="d-flex flex-wrap-reverse mt-1 mr-3 mb-0 ml-3">
-    <div>
-      <b-btn
-        v-if="undocked && mode !== 'editTemplate'"
-        id="btn-save-as-template"
-        variant="link"
-        :disabled="isSaving || !trim(model.subject)"
-        @click="saveAsTemplate()">
-        Save as template
-      </b-btn>
-    </div>
     <div class="flex-grow-1">
       <b-btn
-        v-if="!undocked"
-        id="btn-to-advanced-note-options"
+        v-if="mode !== 'editTemplate'"
+        id="btn-save-as-template"
+        :disabled="isSaving || !trim(model.subject)"
         variant="link"
-        @click.prevent="enterAdvancedMode()">
-        Advanced note options
+        @click="saveAsTemplate()">
+        Save as template
       </b-btn>
     </div>
     <div v-if="mode === 'editTemplate'">
       <b-btn
         id="btn-update-template"
-        class="btn-primary-color-override"
         :disabled="isSaving || !model.subject"
+        class="btn-primary-color-override"
         aria-label="Update note template"
         variant="primary"
         @click.prevent="updateTemplate()">
@@ -33,8 +24,8 @@
     <div v-if="mode !== 'editTemplate'">
       <b-btn
         id="create-note-button"
-        class="btn-primary-color-override"
         :disabled="isSaving || !targetStudentCount || !trim(model.subject)"
+        class="btn-primary-color-override"
         aria-label="Create note"
         variant="primary"
         @click.prevent="createNote()">
@@ -44,9 +35,8 @@
     <div>
       <b-btn
         id="create-note-cancel"
-        variant="link"
         :disabled="isSaving"
-        :class="{'sr-only': !undocked}"
+        variant="link"
         @click.prevent="cancel()">
         Cancel
       </b-btn>
@@ -57,12 +47,11 @@
 <script>
 import Context from '@/mixins/Context';
 import NoteEditSession from '@/mixins/NoteEditSession';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
   name: 'CreateNoteFooter',
-  mixins: [Context, NoteEditSession, UserMetadata, Util],
+  mixins: [Context, NoteEditSession, Util],
   props: {
     cancel: {
       required: true,
@@ -76,23 +65,9 @@ export default {
       required: true,
       type: Function
     },
-    minimize: {
-      required: true,
-      type: Function
-    },
     updateTemplate: {
       required: true,
       type: Function
-    },
-    undocked: {
-      required: true,
-      type: Boolean
-    }
-  },
-  methods: {
-    enterAdvancedMode() {
-      this.setMode('advanced');
-      this.putFocusNextTick('create-note-subject');
     }
   }
 }

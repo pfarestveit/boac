@@ -1,8 +1,7 @@
 <template>
   <div class="ml-3 mt-3">
-    <Spinner />
+    <Spinner :alert-prefix="!cohortId && totalStudentCount === undefined ? 'Create cohort page' : cohortName" />
     <div v-if="!loading">
-      <div class="sr-only" aria-live="polite">{{ screenReaderAlert }}</div>
       <CohortPageHeader />
       <b-collapse
         id="show-hide-filters"
@@ -11,25 +10,26 @@
         <FilterRow
           v-for="(filter, index) in filters"
           :key="filterRowUniqueKey(filter, index)"
-          class="filter-row"
-          :index="index" />
+          :index="index"
+          class="filter-row" />
         <FilterRow v-if="isOwnedByCurrentUser" />
         <ApplyAndSaveButtons v-if="isOwnedByCurrentUser" />
       </b-collapse>
-      <SectionSpinner name="Students" :loading="editMode === 'apply'" />
+      <SectionSpinner :loading="editMode === 'apply'" name="Students" />
       <div v-if="showStudentsSection" class="pt-2">
         <a
           v-if="totalStudentCount > 50"
           id="skip-to-pagination-widget"
           class="sr-only"
           href="#pagination-widget"
-          @click="screenReaderAlert = 'Go to another page of search results'">Skip to bottom, other pages of search results</a>
+          @click="alertScreenReader('Go to another page of search results')"
+          @keyup.enter="alertScreenReader('Go to another page of search results')">Skip to bottom, other pages of search results</a>
         <div class="cohort-column-results">
           <hr class="filters-section-separator mr-2" />
           <div class="d-flex justify-content-between align-items-center p-2">
             <CuratedGroupSelector
               :context-description="`Cohort ${cohortName || ''}`"
-              :ga-event-tracker="gaCohortEvent"
+              :ga-event-tracker="$ga.cohortEvent"
               :students="students" />
             <SortBy v-if="showSortBy" />
           </div>
@@ -42,10 +42,10 @@
                   :key="student.sid"
                   :row-index="index"
                   :student="student"
-                  list-type="cohort"
                   :sorted-by="preferences.sortBy"
-                  class="list-group-item border-left-0 border-right-0"
-                  :class="{'list-group-item-info' : anchor === `#${student.uid}`}" />
+                  :class="{'list-group-item-info' : anchor === `#${student.uid}`}"
+                  list-type="cohort"
+                  class="list-group-item border-left-0 border-right-0" />
               </div>
             </div>
             <div v-if="totalStudentCount > pagination.itemsPerPage" class="p-3">
@@ -67,7 +67,9 @@
 import ApplyAndSaveButtons from '@/components/cohort/ApplyAndSaveButtons';
 import CohortEditSession from '@/mixins/CohortEditSession';
 import CohortPageHeader from '@/components/cohort/CohortPageHeader';
+import Context from '@/mixins/Context';
 import CuratedGroupSelector from '@/components/curated/CuratedGroupSelector';
+import CurrentUserExtras from '@/mixins/CurrentUserExtras';
 import FilterRow from '@/components/cohort/FilterRow';
 import Loading from '@/mixins/Loading';
 import Pagination from '@/components/util/Pagination';
@@ -76,7 +78,6 @@ import SectionSpinner from '@/components/util/SectionSpinner';
 import SortBy from '@/components/student/SortBy';
 import Spinner from '@/components/util/Spinner';
 import StudentRow from '@/components/student/StudentRow';
-import UserMetadata from '@/mixins/UserMetadata';
 import Util from '@/mixins/Util';
 
 export default {
@@ -94,14 +95,14 @@ export default {
   },
   mixins: [
     CohortEditSession,
+    Context,
     Loading,
     Scrollable,
-    UserMetadata,
+    CurrentUserExtras,
     Util
   ],
   data: () => ({
     pageNumber: undefined,
-    screenReaderAlert: undefined,
     showFilters: undefined
   }),
   computed: {
@@ -122,7 +123,7 @@ export default {
       this.showFilters = !this.isCompactView;
       this.pageNumber = this.pagination.currentPage;
       this.setPageTitle(this.cohortName);
-      this.loaded();
+      this.loaded(this.cohortName);
     } else {
       const id = this.toInt(this.get(this.$route, 'params.id'));
       this.init({
@@ -131,16 +132,13 @@ export default {
       }).then(() => {
         this.showFilters = !this.isCompactView;
         this.pageNumber = this.pagination.currentPage;
-        this.setPageTitle(this.cohortId ? this.cohortName : 'Create Cohort');
-        this.loaded();
+        const pageTitle = this.cohortId ? this.cohortName : 'Create Cohort';
+        this.setPageTitle(pageTitle);
+        this.loaded(pageTitle);
         this.putFocusNextTick(
           this.cohortId ? 'cohort-name' : 'create-cohort-h1'
         );
-        this.gaCohortEvent({
-          id: this.cohortId || '',
-          name: this.cohortName || '',
-          action: 'view'
-        });
+        this.$ga.cohortEvent(this.cohortId || '', this.cohortName || '', 'view');
       });
     }
   },
@@ -151,12 +149,9 @@ export default {
     this.$eventHub.$on('sortBy-user-preference-change', sortBy => {
       if (!this.loading) {
         this.goToPage(1);
-        this.screenReaderAlert = `Sort students by ${sortBy}`;
-        this.gaCohortEvent({
-          id: this.cohortId || '',
-          name: this.cohortName || '',
-          action: this.screenReaderAlert
-        });
+        const action = `Sort students by ${sortBy}`;
+        this.alertScreenReader(action);
+        this.$ga.cohortEvent(this.cohortId || '', this.cohortName || '', action);
       }
     });
   },
@@ -164,12 +159,9 @@ export default {
     filterRowUniqueKey: (filter, index) => `${filter.key}-${index}`,
     goToPage(page) {
       if (page > 1) {
-        this.screenReaderAlert = `Go to page ${page}`;
-        this.gaCohortEvent({
-          id: this.cohortId || '',
-          name: this.cohortName || '',
-          action: this.screenReaderAlert
-        });
+        const action = `Go to page ${page}`;
+        this.alertScreenReader(action);
+        this.$ga.cohortEvent(this.cohortId || '', this.cohortName || '', action);
       }
       this.setPagination(page);
       this.onPageNumberChange().then(this.scrollToTop);

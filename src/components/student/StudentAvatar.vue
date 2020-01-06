@@ -1,16 +1,16 @@
 <template>
   <div class="position-relative">
     <img
-      class="avatar"
       :class="avatarStyle"
       :aria-label="`Photo of ${student.firstName} ${student.lastName}`"
       :alt="`Photo of ${student.firstName} ${student.lastName}`"
-      tabindex="0"
       :src="avatarUrl"
+      class="avatar"
+      tabindex="0"
       @error="avatarError" />
     <div
       v-if="alertCount"
-      class="student-avatar-alert-count home-inactive-info-icon">
+      class="inactive-info-icon student-avatar-alert-count">
       <span
         v-b-tooltip.hover.bottom
         :title="`${alertCount} alert${alertCount === 1 ? '' : 's'}`">
@@ -22,11 +22,10 @@
 
 <script>
 import Context from '@/mixins/Context';
-import UserMetadata from '@/mixins/UserMetadata';
 
 export default {
   name: 'StudentAvatar',
-  mixins: [Context, UserMetadata],
+  mixins: [Context],
   props: {
     size: String,
     student: Object,
@@ -39,7 +38,7 @@ export default {
   created() {
     this.avatarUrl = this.student.photoUrl;
     this.avatarStyle = `student-avatar-${this.size} ${
-      this.user.inDemoMode ? 'img-blur' : ''
+      this.$currentUser.inDemoMode ? 'img-blur' : ''
     }`;
   },
   methods: {

@@ -1,5 +1,5 @@
 """
-Copyright ©2019. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,7 +27,7 @@ from boac import db, std_commit
 from boac.lib.util import utc_now
 from boac.models.base import Base
 from boac.models.db_relationships import cohort_filter_owners
-from sqlalchemy import text
+from sqlalchemy import and_, text
 
 
 class AuthorizedUser(Base):
@@ -40,11 +40,16 @@ class AuthorizedUser(Base):
     can_access_canvas_data = db.Column(db.Boolean, nullable=False)
     created_by = db.Column(db.String(255), nullable=False)
     deleted_at = db.Column(db.DateTime, nullable=True)
+    # When True, is_blocked prevents a deleted user from being revived by the automated refresh.
     is_blocked = db.Column(db.Boolean, nullable=False, default=False)
     department_memberships = db.relationship(
         'UniversityDeptMember',
         back_populates='authorized_user',
         lazy='joined',
+    )
+    drop_in_departments = db.relationship(
+        'DropInAdvisor',
+        primaryjoin='and_(AuthorizedUser.id==DropInAdvisor.authorized_user_id, DropInAdvisor.deleted_at==None)',
     )
     cohort_filters = db.relationship(
         'CohortFilter',
@@ -58,10 +63,11 @@ class AuthorizedUser(Base):
         lazy='joined',
     )
 
-    def __init__(self, uid, created_by, is_admin=False, in_demo_mode=False, can_access_canvas_data=True):
+    def __init__(self, uid, created_by, is_admin=False, is_blocked=False, in_demo_mode=False, can_access_canvas_data=True):
         self.uid = uid
         self.created_by = created_by
         self.is_admin = is_admin
+        self.is_blocked = is_blocked
         self.in_demo_mode = in_demo_mode
         self.can_access_canvas_data = can_access_canvas_data
 
@@ -87,7 +93,21 @@ class AuthorizedUser(Base):
         return user
 
     @classmethod
-    def create_or_restore(cls, uid, created_by, is_admin=False, can_access_canvas_data=True):
+    def un_delete(cls, uid):
+        user = cls.query.filter_by(uid=uid).first()
+        user.deleted_at = None
+        std_commit()
+        return user
+
+    @classmethod
+    def create_or_restore(
+            cls,
+            uid,
+            created_by,
+            is_admin=False,
+            is_blocked=False,
+            can_access_canvas_data=True,
+    ):
         existing_user = cls.query.filter_by(uid=uid).first()
         if existing_user:
             if existing_user.is_blocked:
@@ -95,6 +115,7 @@ class AuthorizedUser(Base):
             # If restoring a previously deleted user, respect passed-in attributes.
             if existing_user.deleted_at:
                 existing_user.is_admin = is_admin
+                existing_user.is_blocked = is_blocked
                 existing_user.can_access_canvas_data = can_access_canvas_data
                 existing_user.created_by = created_by
                 existing_user.deleted_at = None
@@ -105,6 +126,8 @@ class AuthorizedUser(Base):
                     existing_user.can_access_canvas_data = True
                 if is_admin and not existing_user.is_admin:
                     existing_user.is_admin = True
+                if is_blocked and not existing_user.is_blocked:
+                    existing_user.is_blocked = True
                 existing_user.created_by = created_by
             user = existing_user
         else:
@@ -112,29 +135,79 @@ class AuthorizedUser(Base):
                 uid=uid,
                 created_by=created_by,
                 is_admin=is_admin,
+                is_blocked=is_blocked,
                 in_demo_mode=False,
                 can_access_canvas_data=can_access_canvas_data,
             )
+            db.session.add(user)
         std_commit()
         return user
 
     @classmethod
-    def get_id_per_uid(cls, uid):
-        query = text(f'SELECT id FROM authorized_users WHERE uid = :uid AND deleted_at IS NULL')
+    def get_id_per_uid(cls, uid, include_deleted=False):
+        sql = 'SELECT id FROM authorized_users WHERE uid = :uid'
+        if not include_deleted:
+            sql += ' AND deleted_at IS NULL'
+        query = text(sql)
         result = db.session.execute(query, {'uid': uid}).first()
         return result and result['id']
 
     @classmethod
-    def find_by_id(cls, db_id):
-        return AuthorizedUser.query.filter_by(id=db_id, deleted_at=None).first()
+    def get_uid_per_id(cls, user_id):
+        query = text(f'SELECT uid FROM authorized_users WHERE id = :user_id AND deleted_at IS NULL')
+        result = db.session.execute(query, {'user_id': user_id}).first()
+        return result and result['uid']
 
     @classmethod
-    def find_by_uid(cls, uid):
-        return AuthorizedUser.query.filter_by(uid=uid, deleted_at=None).first()
+    def find_by_id(cls, db_id, include_deleted=False):
+        query = cls.query.filter_by(id=db_id) if include_deleted else cls.query.filter_by(id=db_id, deleted_at=None)
+        return query.first()
 
     @classmethod
-    def get_all_active_users(cls):
-        return cls.query.filter_by(deleted_at=None).all()
+    def users_with_uid_like(cls, uid_snippet, include_deleted=False):
+        like_uid_snippet = cls.uid.like(f'%{uid_snippet}%')
+        criteria = like_uid_snippet if include_deleted else and_(like_uid_snippet, cls.deleted_at == None)  # noqa: E711
+        return cls.query.filter(criteria).all()
+
+    @classmethod
+    def find_by_uid(cls, uid, ignore_deleted=True):
+        query = cls.query.filter_by(uid=uid, deleted_at=None) if ignore_deleted else cls.query.filter_by(uid=uid)
+        return query.first()
+
+    @classmethod
+    def get_all_active_users(cls, include_deleted=False):
+        return cls.query.all() if include_deleted else cls.query.filter_by(deleted_at=None).all()
+
+    @classmethod
+    def get_admin_users(cls, ignore_deleted=True):
+        if ignore_deleted:
+            query = cls.query.filter(and_(cls.is_admin, cls.deleted_at == None))  # noqa: E711
+        else:
+            query = cls.query.filter(cls.is_admin)
+        return query.all()
+
+    @classmethod
+    def get_users(
+            cls,
+            deleted=None,
+            blocked=None,
+            dept_code=None,
+            role=None,
+    ):
+        query_tables, query_filter, query_bindings = _users_sql(
+            blocked=blocked,
+            deleted=deleted,
+            dept_code=dept_code,
+            role=role,
+        )
+        query = text(f"""
+            SELECT u.id
+            {query_tables}
+            {query_filter}
+        """)
+        results = db.session.execute(query, query_bindings)
+        user_ids = [row['id'] for row in results]
+        return cls.query.filter(cls.id.in_(user_ids)).all(), len(user_ids)
 
     @classmethod
     def get_all_uids_in_scope(cls, scope=()):
@@ -153,3 +226,93 @@ class AuthorizedUser(Base):
             """
         results = db.session.execute(sql, {'scope': scope})
         return [row['uid'] for row in results]
+
+    @classmethod
+    def update_user(cls, user_id, can_access_canvas_data=False, is_admin=False, is_blocked=False, include_deleted=False):
+        user = AuthorizedUser.find_by_id(user_id, include_deleted)
+        user.can_access_canvas_data = can_access_canvas_data
+        user.is_admin = is_admin
+        user.is_blocked = is_blocked
+        std_commit()
+        return user
+
+
+def _users_sql(
+        blocked=None,
+        deleted=None,
+        dept_code=None,
+        role=None,
+):
+    query_tables = 'FROM authorized_users u '
+    query_filter = _users_sql_where_clause(blocked, deleted, role == 'admin')
+    query_bindings = {}
+
+    if dept_code and role:
+        if role == 'dropInAdvisor':
+            query_tables += """
+                JOIN drop_in_advisors a ON
+                    a.dept_code = :dept_code
+                    AND a.authorized_user_id = u.id
+                    AND a.deleted_at IS NULL
+            """
+        elif role == 'noCanvasDataAccess':
+            query_filter += 'AND u.can_access_canvas_data IS FALSE '
+            query_tables += f"""
+                JOIN university_depts d ON
+                    d.dept_code = :dept_code
+                JOIN university_dept_members m ON
+                    m.university_dept_id = d.id
+                    AND m.authorized_user_id = u.id
+            """
+        elif role in ['advisor', 'director', 'scheduler']:
+            query_tables += f"""
+                JOIN university_depts d ON
+                    d.dept_code = :dept_code
+                JOIN university_dept_members m ON
+                    m.university_dept_id = d.id
+                    AND m.authorized_user_id = u.id
+                    AND m.is_{role} IS TRUE
+            """
+        query_bindings['dept_code'] = dept_code
+    elif not dept_code and role:
+        if role == 'dropInAdvisor':
+            query_tables += """
+                JOIN drop_in_advisors a ON
+                    a.authorized_user_id = u.id
+                    AND a.deleted_at IS NULL
+            """
+        elif role == 'noCanvasDataAccess':
+            query_filter += 'AND u.can_access_canvas_data IS FALSE '
+        else:
+            query_tables += f"""
+                JOIN university_dept_members m ON
+                    m.authorized_user_id = u.id
+                    AND m.is_{role} IS TRUE
+            """
+    elif dept_code and not role:
+        query_tables += f"""
+            JOIN university_depts d ON d.dept_code = :dept_code
+            JOIN university_dept_members m ON
+                m.university_dept_id = d.id
+                AND m.authorized_user_id = u.id
+        """
+        query_bindings['dept_code'] = dept_code
+    return query_tables, query_filter, query_bindings
+
+
+def _users_sql_where_clause(blocked, deleted, is_admin):
+    query_filter = 'WHERE TRUE '
+    if blocked is True:
+        query_filter += 'AND u.is_blocked IS TRUE '
+    elif blocked is False:
+        query_filter += 'AND u.is_blocked IS FALSE '
+
+    if deleted is True:
+        query_filter += 'AND u.deleted_at IS NOT NULL '
+    elif deleted is False:
+        query_filter += 'AND u.deleted_at IS NULL '
+
+    if is_admin:
+        query_filter += 'AND u.is_admin IS TRUE '
+
+    return query_filter
