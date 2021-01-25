@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -26,6 +26,16 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from boac import db, std_commit
 from boac.models.base import Base
 from boac.models.university_dept import UniversityDept
+from sqlalchemy.dialects.postgresql import ENUM
+
+
+university_dept_member_role_type = ENUM(
+    'advisor',
+    'director',
+    'scheduler',
+    name='university_dept_member_role_types',
+    create_type=False,
+)
 
 
 class UniversityDeptMember(Base):
@@ -33,9 +43,7 @@ class UniversityDeptMember(Base):
 
     university_dept_id = db.Column(db.Integer, db.ForeignKey('university_depts.id'), primary_key=True)
     authorized_user_id = db.Column(db.Integer, db.ForeignKey('authorized_users.id'), primary_key=True)
-    is_advisor = db.Column(db.Boolean, nullable=False)
-    is_director = db.Column(db.Boolean, nullable=False)
-    is_scheduler = db.Column(db.Boolean, nullable=False)
+    role = db.Column(university_dept_member_role_type, nullable=True)
     automate_membership = db.Column(db.Boolean, nullable=False)
     authorized_user = db.relationship('AuthorizedUser', back_populates='department_memberships')
     # Pre-load UniversityDept below to avoid 'failed to locate', as seen during routes.py init phase
@@ -45,16 +53,12 @@ class UniversityDeptMember(Base):
             self,
             university_dept_id,
             authorized_user_id,
-            is_advisor,
-            is_director,
-            is_scheduler,
+            role,
             automate_membership=True,
     ):
         self.university_dept_id = university_dept_id
         self.authorized_user_id = authorized_user_id
-        self.is_advisor = is_advisor
-        self.is_director = is_director
-        self.is_scheduler = is_scheduler
+        self.role = role
         self.automate_membership = automate_membership
 
     @classmethod
@@ -62,9 +66,7 @@ class UniversityDeptMember(Base):
             cls,
             university_dept_id,
             authorized_user_id,
-            is_advisor,
-            is_director,
-            is_scheduler,
+            role=None,
             automate_membership=True,
     ):
         existing_membership = cls.query.filter_by(
@@ -73,17 +75,13 @@ class UniversityDeptMember(Base):
         ).first()
         if existing_membership:
             membership = existing_membership
-            membership.is_advisor = is_advisor
-            membership.is_director = is_director
-            membership.is_scheduler = is_scheduler
+            membership.role = role
             membership.automate_membership = automate_membership
         else:
             membership = cls(
                 university_dept_id=university_dept_id,
                 authorized_user_id=authorized_user_id,
-                is_advisor=is_advisor,
-                is_director=is_director,
-                is_scheduler=is_scheduler,
+                role=role,
                 automate_membership=automate_membership,
             )
         db.session.add(membership)
@@ -99,20 +97,35 @@ class UniversityDeptMember(Base):
             cls,
             university_dept_id,
             authorized_user_id,
-            is_advisor,
-            is_director,
-            is_scheduler,
+            role,
             automate_membership,
     ):
         membership = cls.query.filter_by(university_dept_id=university_dept_id, authorized_user_id=authorized_user_id).first()
         if membership:
-            membership.is_advisor = membership.is_advisor if is_advisor is None else is_advisor
-            membership.is_director = membership.is_director if is_director is None else is_director
-            membership.is_scheduler = membership.is_scheduler if is_scheduler is None else is_scheduler
+            membership.role = membership.role if role is None else role
             membership.automate_membership = membership.automate_membership if automate_membership is None else automate_membership
             std_commit()
             return membership
         return None
+
+    @classmethod
+    def get_distinct_departments(
+            cls,
+            authorized_user_id=None,
+            role=None,
+    ):
+        sql = """
+            SELECT DISTINCT dept_code FROM university_depts d
+            JOIN university_dept_members m ON m.university_dept_id = d.id
+            WHERE TRUE
+        """
+        if authorized_user_id:
+            sql += ' AND m.authorized_user_id = :authorized_user_id'
+        else:
+            sql += ' AND d.id IN (SELECT DISTINCT university_dept_id FROM university_depts)'
+        if role is not None:
+            sql += f" AND m.role = '{role}'"
+        return [row['dept_code'] for row in db.session.execute(sql, {'authorized_user_id': authorized_user_id})]
 
     @classmethod
     def delete_membership(cls, university_dept_id, authorized_user_id):
@@ -127,8 +140,6 @@ class UniversityDeptMember(Base):
         return {
             'universityDeptId': self.university_dept_id,
             'authorizedUserId': self.authorized_user_id,
-            'isAdvisor': self.is_advisor,
-            'isDirector': self.is_director,
-            'isScheduler': self.is_scheduler,
+            'role': self.role,
             'automateMembership': self.automate_membership,
         }

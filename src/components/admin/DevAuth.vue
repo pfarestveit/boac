@@ -1,6 +1,6 @@
 <template>
-  <form @submit.prevent="logIn()">
-    <div class="flex-container dev-auth">
+  <form @submit.prevent="logIn">
+    <div class="d-flex dev-auth">
       <div>
         <input
           id="dev-auth-uid"
@@ -10,7 +10,8 @@
           type="text"
           aria-required="true"
           aria-label="Input UID of an authorized user"
-          size="8">
+          size="8"
+        >
       </div>
       <div class="ml-1">
         <input
@@ -23,15 +24,16 @@
           aria-required="true"
           aria-label="Password"
           autocomplete="off"
-          size="8">
+          size="8"
+        >
       </div>
       <div class="ml-1">
         <b-btn
           id="dev-auth-submit"
           class="btn-dev-auth btn-primary-color-override"
           variant="primary"
-          aria-label="Log in to BOA with dev-auth"
-          type="submit">
+          type="submit"
+        >
           DevAuth!
         </b-btn>
       </div>
@@ -40,9 +42,9 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { devAuthLogIn } from '@/api/auth';
+import Context from '@/mixins/Context'
+import Util from '@/mixins/Util'
+import { devAuthLogIn } from '@/api/auth'
 
 export default {
   name: 'DevAuth',
@@ -58,31 +60,31 @@ export default {
     password: null
   }),
   created() {
-    this.putFocusNextTick('dev-auth-uid');
+    this.putFocusNextTick('dev-auth-uid')
   },
   methods: {
     logIn() {
-      let uid = this.trim(this.uid);
-      let password = this.trim(this.password);
+      let uid = this.$_.trim(this.uid)
+      let password = this.$_.trim(this.password)
       if (uid && password) {
         devAuthLogIn(uid, password).then(user => {
           if (user.isAuthenticated) {
-            const redirect = this.get(this.$router, 'currentRoute.query.redirect');
-            this.$router.push({ path: redirect || '/home' }, this.noop);
+            const redirect = this.$_.get(this.$router, 'currentRoute.query.redirect')
+            this.$router.push({ path: redirect || '/' }, this.$_.noop)
           } else {
-            this.reportError('Sorry, user is not authorized to use BOA.');
+            this.reportError('Sorry, user is not authorized to use BOA.')
           }
-        });
+        })
       } else if (uid) {
-        this.reportError('Password required');
-        this.putFocusNextTick('dev-auth-password');
+        this.reportError('Password required')
+        this.putFocusNextTick('dev-auth-password')
       } else {
-        this.reportError('Both UID and password are required');
-        this.putFocusNextTick('dev-auth-uid');
+        this.reportError('Both UID and password are required')
+        this.putFocusNextTick('dev-auth-uid')
       }
     }
   }
-};
+}
 </script>
 
 <style scoped>

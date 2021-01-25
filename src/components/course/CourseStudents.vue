@@ -6,24 +6,31 @@
     :small="true"
     :tbody-tr-class="rowClass"
     stacked="md"
-    thead-class="sortable-table-header border-bottom">
+    thead-class="sortable-table-header border-bottom"
+    @row-hovered="rowHovered"
+    @row-unhovered="rowUnhovered"
+  >
     <template v-slot:cell(curated)="row">
-      <div>
-        <CuratedStudentCheckbox :student="row.item" class="curated-checkbox" />
+      <div class="pt-2">
+        <StudentCheckbox :student="row.item" />
       </div>
     </template>
-
     <template v-slot:cell(avatar)="row">
-      <StudentAvatar :key="row.item.sid" :student="row.item" size="medium" />
+      <div>
+        <StudentAvatar :key="row.item.sid" :student="row.item" size="medium" />
+      </div>
+      <div class="manage-curated-student mb-1 text-center">
+        <ManageStudent :is-button-variant-link="true" :sr-only="hoverSid !== row.item.sid" :student="row.item" />
+      </div>
     </template>
-
     <template v-slot:cell(profile)="row">
       <div>
         <router-link :id="`link-to-student-${row.item.uid}`" :to="studentRoutePath(row.item.uid, $currentUser.inDemoMode)">
           <h3
             :class="{'demo-mode-blur': $currentUser.inDemoMode}"
-            class="student-name m-0 p-0">
-            <span v-if="row.item.firstName" v-html="`${row.item.lastName}, ${row.item.firstName}`"></span>
+            class="student-name m-0 p-0"
+          >
+            <span v-if="row.item.firstName" v-html="lastNameFirst(row.item)"></span>
             <span v-if="!row.item.firstName" v-html="row.item.lastName"></span>
           </h3>
         </router-link>
@@ -33,22 +40,34 @@
         <span
           v-if="row.item.enrollment.enrollmentStatus === 'W'"
           :id="`student-${row.item.uid}-waitlisted-for-${section.termId}-${section.sectionId}`"
-          class="red-flag-status">WAITLISTED</span>
+          class="red-flag-status"
+        >WAITLISTED</span>
         <span
           v-if="row.item.academicCareerStatus === 'Inactive'"
           :id="`student-${row.item.uid}-inactive-for-${section.termId}-${section.sectionId}`"
-          class="red-flag-status">INACTIVE</span>
+          class="red-flag-status"
+        >INACTIVE</span>
+        <span
+          v-if="row.item.academicCareerStatus === 'Completed'"
+          class="ml-1"
+          uib-tooltip="Graduated"
+          tooltip-placement="bottom"
+        >
+          <font-awesome icon="graduation-cap" />
+        </span>
       </div>
       <div
         v-if="displayAsAscInactive(row.item)"
         :id="`student-${row.item.uid}-asc-inactive-for-${section.termId}-${section.sectionId}`"
-        class="student-sid red-flag-status">
+        class="student-sid red-flag-status"
+      >
         ASC INACTIVE
       </div>
       <div
         v-if="displayAsCoeInactive(row.item)"
         :id="`student-${row.item.uid}-coe-inactive-for-${section.termId}-${section.sectionId}`"
-        class="student-sid red-flag-status">
+        class="student-sid red-flag-status"
+      >
         CoE INACTIVE
       </div>
       <div v-if="row.item.academicCareerStatus !== 'Completed'">
@@ -60,7 +79,7 @@
         </div>
       </div>
       <div v-if="row.item.academicCareerStatus === 'Completed'">
-        <div v-if="get(row.item, 'degree.dateAwarded')" :id="`student-${row.item.uid}-graduated-date`">
+        <div v-if="$_.get(row.item, 'degree.dateAwarded')" :id="`student-${row.item.uid}-graduated-date`">
           <span class="student-text">Graduated {{ row.item.degree.dateAwarded | moment('MMM DD, YYYY') }}</span>
         </div>
         <div :id="`student-${row.item.uid}-graduated-colleges`">
@@ -82,7 +101,8 @@
       <div class="course-sites flex-col font-size-14 pl-2">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
-          :key="canvasSite.courseCode">
+          :key="canvasSite.courseCode"
+        >
           <strong>{{ canvasSite.courseCode }}</strong>
         </div>
         <div v-if="!row.item.enrollment.canvasSites.length">
@@ -95,14 +115,17 @@
       <div v-if="row.item.enrollment.canvasSites.length" class="flex-col">
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
-          :key="canvasSite.canvasCourseId">
+          :key="canvasSite.canvasCourseId"
+        >
           <span v-if="row.item.enrollment.canvasSites.length > 1" class="sr-only">
             {{ canvasSite.courseCode }}
           </span>
           <StudentBoxplot
             v-if="canvasSite.analytics.assignmentsSubmitted.boxPlottable"
+            :chart-description="`Chart of ${row.item.firstName} ${row.item.lastName}'s assignments submitted in ${canvasSite.courseCode}`"
             :dataset="canvasSite.analytics.assignmentsSubmitted"
-            :numeric-id="`${row.item.uid}-${canvasSite.canvasCourseId.toString()}-assignments`"></StudentBoxplot>
+            :numeric-id="`${row.item.uid}-${canvasSite.canvasCourseId}-assignments`"
+          />
           <div v-if="canvasSite.analytics.assignmentsSubmitted.boxPlottable" class="sr-only">
             <div>User score: {{ canvasSite.analytics.assignmentsSubmitted.student.raw }}</div>
             <div>Maximum:  {{ canvasSite.analytics.assignmentsSubmitted.courseDeciles[10] }}</div>
@@ -125,7 +148,8 @@
         </div>
       </div>
       <span
-        v-if="!row.item.enrollment.canvasSites.length"><span class="sr-only">No data</span>&mdash;</span>
+        v-if="!row.item.enrollment.canvasSites.length"
+      ><span class="sr-only">No data</span>&mdash;</span>
     </template>
 
     <template v-slot:cell(assignmentGrades)="row">
@@ -133,14 +157,17 @@
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
           :key="canvasSite.canvasCourseId"
-          class="profile-boxplot-container">
+          class="profile-boxplot-container"
+        >
           <span v-if="row.item.enrollment.canvasSites.length > 1" class="sr-only">
             {{ canvasSite.courseCode }}
           </span>
           <StudentBoxplot
             v-if="canvasSite.analytics.currentScore.boxPlottable"
+            :chart-description="`Chart of ${row.item.firstName} ${row.item.lastName}'s assignment grades in ${canvasSite.courseCode}`"
             :dataset="canvasSite.analytics.currentScore"
-            :numeric-id="row.item.uid + '-' + canvasSite.canvasCourseId.toString()"></StudentBoxplot>
+            :numeric-id="`${row.item.uid}-${canvasSite.canvasCourseId}`"
+          />
           <div v-if="canvasSite.analytics.currentScore.boxPlottable" class="sr-only">
             <div>User score: {{ canvasSite.analytics.currentScore.student.raw }}</div>
             <div>Maximum:  {{ canvasSite.analytics.currentScore.courseDeciles[10] }}</div>
@@ -170,7 +197,8 @@
         <div
           v-for="canvasSite in row.item.enrollment.canvasSites"
           :key="canvasSite.canvasCourseId"
-          class="profile-boxplot-container">
+          class="profile-boxplot-container"
+        >
           <span v-if="row.item.enrollment.canvasSites.length > 1" class="sr-only">
             {{ canvasSite.courseCode }}
           </span>
@@ -197,20 +225,22 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import CuratedStudentCheckbox from '@/components/curated/CuratedStudentCheckbox';
-import StudentAnalytics from '@/mixins/StudentAnalytics';
-import StudentAvatar from '@/components/student/StudentAvatar';
-import StudentBoxplot from '@/components/student/StudentBoxplot';
-import StudentMetadata from '@/mixins/StudentMetadata';
-import Util from '@/mixins/Util';
+import Context from '@/mixins/Context'
+import ManageStudent from '@/components/curated/dropdown/ManageStudent'
+import StudentAnalytics from '@/mixins/StudentAnalytics'
+import StudentAvatar from '@/components/student/StudentAvatar'
+import StudentBoxplot from '@/components/student/StudentBoxplot'
+import StudentCheckbox from '@/components/curated/dropdown/StudentCheckbox'
+import StudentMetadata from '@/mixins/StudentMetadata'
+import Util from '@/mixins/Util'
 
 export default {
-  name: "CourseStudents",
+  name: 'CourseStudents',
   components: {
-    CuratedStudentCheckbox,
+    ManageStudent,
     StudentAvatar,
-    StudentBoxplot
+    StudentBoxplot,
+    StudentCheckbox
   },
   mixins: [
     Context,
@@ -223,7 +253,8 @@ export default {
     section: Object
   },
   data: () => ({
-    fields: undefined
+    fields: undefined,
+    hoverSid: undefined
   }),
   created() {
     let cols = [
@@ -233,30 +264,36 @@ export default {
       {key: 'courseSites', label: 'Course Site(s)'},
       {key: 'assignmentsSubmitted', label: 'Assignments Submitted'},
       {key: 'assignmentGrades', label: 'Assignment Grades'}
-    ];
+    ]
     if (this.$config.currentEnrollmentTermId === parseInt(this.section.termId)) {
       cols.push(
         {key: 'bCourses', label: 'bCourses Activity'}
-      );
+      )
     }
     cols = cols.concat([
-          {key: 'midtermGrade', label: 'Mid'},
-          {key: 'finalGrade', label: 'Final', class: 'pr-3'}
-        ]);
-    this.fields = cols;
+      {key: 'midtermGrade', label: 'Mid'},
+      {key: 'finalGrade', label: 'Final', class: 'pr-3'}
+    ])
+    this.fields = cols
   },
   methods: {
     degreePlanOwners(student) {
-      const plans = this.get(student, 'degree.plans');
+      const plans = this.$_.get(student, 'degree.plans')
       if (plans) {
-        return this.uniq(this.map(plans, 'group'));
+        return this.$_.uniq(this.$_.map(plans, 'group'))
       } else {
-        return [];
+        return []
       }
     },
     rowClass(item) {
-      const clazz = 'border-bottom pb-3 pt-3';
-      return this.featured === item.uid ? `${clazz} list-group-item-info` : clazz;
+      const clazz = 'border-bottom pb-3 pt-3'
+      return this.featured === item.uid ? `${clazz} list-group-item-info` : clazz
+    },
+    rowHovered(item) {
+      this.hoverSid = item.sid
+    },
+    rowUnhovered() {
+      this.hoverSid = null
     }
   }
 }
@@ -266,15 +303,16 @@ export default {
 .course-sites {
   border-left: 1px solid #ddd;
 }
-.curated-checkbox {
-  padding-top: 36px;
-}
 .course-list-view-column-profile button {
   padding: 2px 0 0 5px;
 }
 .flex-col > div {
   align-items: flex-start;
   flex: 0 0 50px;
+}
+.manage-curated-student {
+  height: 24px;
+  width: 92px;
 }
 .student-name {
   color: #49b;

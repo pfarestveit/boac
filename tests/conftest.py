@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,7 +27,6 @@ from datetime import datetime
 import glob
 import json
 import os
-os.environ['BOAC_ENV'] = 'test'  # noqa
 
 from boac import std_commit
 import boac.factory
@@ -37,6 +36,8 @@ from boac.models.note_template import NoteTemplate
 from moto import mock_sts
 import pytest
 from tests.util import mock_advising_note_s3_bucket, override_config
+
+os.environ['BOAC_ENV'] = 'test'  # noqa
 
 
 class FakeAuth(object):
@@ -81,19 +82,17 @@ def app(request):
 
 # TODO Perform DB schema creation and deletion outside an app context, enabling test-specific app configurations.
 @pytest.fixture(scope='session')
-def db(app, request):
+def db(app):
     """Fixture database object, shared by all tests."""
     from boac.models import development_db
     # Drop all tables before re-loading the schemas.
     # If we dropped at teardown instead, an interrupted test run would block the next test run.
     development_db.clear()
-    _db = development_db.load(cohort_test_data=True)
-
-    return _db
+    return development_db.load(load_test_data=True)
 
 
 @pytest.fixture(scope='function', autouse=True)
-def db_session(db, request):
+def db_session(db):
     """Fixture database session used for the scope of a single test.
 
     All executions are wrapped in a session and then rolled back to keep individual tests isolated.
@@ -131,11 +130,11 @@ def fake_loch(app):
     from sqlalchemy import create_engine
     from sqlalchemy.sql import text
     fixture_path = f"{app.config['BASE_DIR']}/fixtures"
-    with open(f'{fixture_path}/loch.sql', 'r') as ddlfile:
+    with open(f'{fixture_path}/loch/loch.sql', 'r') as ddlfile:
         ddltext = ddlfile.read()
     params = {}
-    for fixture in glob.glob(f'{fixture_path}/loch_student_*.json'):
-        key = fixture.replace(f'{fixture_path}/loch_student_', '').replace('.json', '')
+    for fixture in glob.glob(f'{fixture_path}/loch/student_*.json'):
+        key = fixture.replace(f'{fixture_path}/loch/student_', '').replace('.json', '')
         with open(fixture, 'r') as f:
             params[key] = f.read()
     data_loch_db = create_engine(app.config['DATA_LOCH_RDS_URI'])
@@ -194,7 +193,7 @@ def mock_advising_note(app, db):
         with open(path_to_file, 'r') as file:
             note = Note.create(
                 author_uid=note_author_uid,
-                author_name='Joni Mitchell',
+                author_name='Joni Mitchell CC',
                 author_role='Director',
                 author_dept_codes=['UWASC'],
                 sid='11667051',
@@ -229,7 +228,7 @@ def mock_note_template(app, db):
                 creator_id=AuthorizedUser.get_id_per_uid('242881'),
                 title=f'Potholes in my lawn ({timestamp})',
                 subject=f'It\'s unwise to leave my garden untended ({timestamp})',
-                body=f"""
+                body="""
                     See, I've found that everyone's sayin'
                     What to do when suckers are preyin'
                 """,

@@ -48,6 +48,32 @@
   color: #333;
   background-color: #eee;
 }
+.cohort-admitted-students {
+  border-top: 1px solid rgba(0,0,0,.125);
+  padding: 2px;
+}
+.cohort-column-results {
+  flex: 0 0 70%;
+  flex-grow: 1;
+}
+.cohort-create-input-name {
+  border: 1px solid #d9d9d9;
+  border-color: #66afe9;
+  border-radius: 4px;
+  box-sizing: border-box;
+  padding: 10px 10px 10px 10px;
+  width: 100%;
+}
+.cohort-grading-basis {
+  color: #666;
+  font-size: 14px;
+  font-style: italic;
+}
+.cohort-student-bio-container {
+  flex: 0.8;
+  margin-left: 20px;
+  min-width: 200px;
+}
 .curated-checkbox-label {
   padding: 10px;
 }
@@ -62,6 +88,26 @@
   color: transparent !important;
   text-shadow: 0 0 20px rgba(0, 0, 0, 0.5) !important;
 }
+.drawer-enter-active {
+   -webkit-transition-duration: 0.3s;
+   transition-duration: 0.3s;
+   -webkit-transition-timing-function: ease-in;
+   transition-timing-function: ease-in;
+}
+.drawer-leave-active {
+   -webkit-transition-duration: 0.3s;
+   transition-duration: 0.5s;
+   -webkit-transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
+   transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
+}
+.drawer-enter-to, .drawer-leave {
+  max-height: 280px;
+  overflow: hidden;
+}
+.drawer-enter, .drawer-leave-to {
+  overflow: hidden;
+  max-height: 0;
+}
 .faint-text {
   color: grey;
 }
@@ -69,15 +115,13 @@
   height: 100%;
   font-size: 14px;
 }
+.filters-section-separator {
+  border-top: 2px solid #eee;
+  margin: 5px 0 0 0;
+}
 .flex-col {
   display: flex;
   flex-direction: column;
-}
-.flex-container {
-  display: flex;
-  list-style: none;
-  margin: 0;
-  padding: 0;
 }
 .flex-row {
   display: flex;
@@ -146,6 +190,28 @@
 .panel-group .panel + .panel {
   margin-top: 5px;
 }
+.pill {
+  background-color: #fff;
+  border: 1px solid #999;
+  border-radius: 5px;
+  color: #666;
+  font-size: 12px;
+  height: 24px;
+  margin-top: 2px;
+  padding-top: 2px;
+  width: auto;
+}
+.pill-attachment {
+  height: 26px;
+  padding: 6px;
+}
+.pill-list {
+  list-style-type: none;
+}
+.pill-list-header {
+  font-size: 16px;
+  font-weight: 800;
+}
 .pill-alerts {
   border-radius: 10px;
   color: #fff;
@@ -179,10 +245,44 @@
   background-color: #f0ad4e;
   font-weight: 500;
 }
+.sidebar {
+  background-color: #125074;
+}
+.student-column {
+  flex: 0 0 120px;
+  margin-left: 15px;
+}
+.student-name {
+  color: #49b;
+  font-size: 16px;
+  margin: 0;
+}
+.student-section-header {
+  font-size: 24px;
+  font-weight: bold;
+}
+.student-sid {
+  font-size: 11px;
+  font-weight: bold;
+  margin: 5px 0;
+}
+.student-teams-container {
+  margin-top: 5px;
+}
+.student-text {
+  color: #aaa;
+  font-size: 13px;
+}
 .table-full-width {
   margin: 10px 0;
   table-layout: fixed;
   width: 100%;
+}
+.truncate {
+  height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 html,
@@ -238,28 +338,4 @@ select.form-control {
 #content .list-group-item-info {
   color: #31708f;
   background-color: #d9edf7;
-}
-#content .tab-button {
-  background-color: #6bd;
-  border: 1px solid transparent;
-  color: #fff;
-  font-size: 14px;
-  opacity: 1;
-}
-#content .tab-button:hover {
-  color: #cef;
-}
-#content .tab-button:disabled {
-  cursor: not-allowed;
-}
-#content .tab-btn-group {
-  padding: 0 0 5px 0;
-}
-#content .tab-button-selected {
-  background-color: #49b;
-}
-#content .tab-button-selected:active,
-#content .tab-button-selected:focus {
-  color: #fff;
-  outline: none !important;
 }

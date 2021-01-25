@@ -1,5 +1,5 @@
 <script>
-import { mapActions, mapGetters } from 'vuex';
+import { mapActions, mapGetters } from 'vuex'
 
 export default {
   name: 'CohortEditSession',
@@ -8,12 +8,13 @@ export default {
       'cohortId',
       'cohortName',
       'cohortOwner',
+      'domain',
       'editMode',
+      'filterOptionGroups',
       'filters',
       'isCompactView',
       'isModifiedSinceLastSearch',
       'isOwnedByCurrentUser',
-      'menu',
       'pagination',
       'showApplyButton',
       'showSaveButton',
@@ -41,5 +42,5 @@ export default {
       'updateExistingFilter'
     ])
   }
-};
+}
 </script>

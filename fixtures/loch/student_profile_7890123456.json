@@ -1,0 +1,83 @@
+{
+    "canvasUserId": "10000004",
+    "canvasUserName": "Paul Farestveit",
+    "firstName": "Paul",
+    "lastName": "Farestveit",
+    "name": "Paul Farestveit",
+    "sid": "7890123456",
+    "sisProfile": {
+        "academicCareer": "UGRD",
+        "academicCareerStatus": "Inactive",
+        "cumulativeGPA": 3.9,
+        "cumulativeUnits": 110,
+        "degreeProgress": {
+            "reportDate": "2017-03-03",
+            "requirements": {
+                "americanCultures": {
+                    "name": "American Cultures",
+                    "status": "In Progress"
+                },
+                "americanHistory": {
+                    "name": "American History",
+                    "status": "Not Satisfied"
+                },
+                "americanInstitutions": {
+                    "name": "American Institutions",
+                    "status": "Not Satisfied"
+                },
+                "entryLevelWriting": {
+                    "name": "Entry Level Writing",
+                    "status": "Satisfied"
+                }
+            }
+        },
+        "emailAddress": "qadept@berkeley.edu",
+        "expectedGraduationTerm": {
+            "id": "2202",
+            "name": "Spring 2020"
+        },
+        "intendedMajors": [],
+        "level": {
+            "code": "40",
+            "description": "Senior"
+        },
+        "matriculation": "Summer 2015",
+        "phoneNumber": "415/123-4567",
+        "plans": [
+            {
+                "description": "Nuclear Engineering BS",
+                "program": "Undergrad Engineering",
+                "status": "Active"
+            }
+        ],
+        "preferredName": "Paul Farestveit",
+        "primaryName": "Paul Farestveit",
+        "termsInAttendance": 2,
+        "transfer": false
+    },
+    "uid": "1049291",
+    "advisors": [
+        {
+            "uid": "1",
+            "sid": "2",
+            "firstName": "Real",
+            "lastName": "Advisor",
+            "email": "ARealLiveAdvisor@b.e",
+            "role": "College Advisor",
+            "title": "Director of Advising",
+            "program": "Undergrad Business",
+            "plan": "Business Administration BS"
+        },
+        {
+            "uid": null,
+            "sid": "UCBUGADHAAS",
+            "firstName": null,
+            "lastName": null,
+            "email": null,
+            "role": "Major Advisor",
+            "title": null,
+            "program": "Undergrad Business",
+            "plan": "Business Administration BS"
+        }
+    ]
+}

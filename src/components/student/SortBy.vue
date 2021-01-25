@@ -1,71 +1,183 @@
 <template>
-  <div class="d-flex align-items-center">
+  <div v-if="isReady" class="align-items-center d-flex pb-1">
     <div>
-      <label class="text-nowrap" for="students-sort-by">Sort by</label>
+      <label id="sort-by" class="mb-0 pr-2 text-nowrap" for="students-sort-by">
+        Sort<span class="sr-only"> students</span> by
+      </label>
     </div>
-    <div class="pl-2 pb-1">
-      <select
+    <div class="dropdown">
+      <b-dropdown
         id="students-sort-by"
-        v-model="selected"
-        class="form-control w-auto">
-        <option
-          v-for="o in options"
-          :key="o.value"
-          :value="o.value">
-          {{ o.name }}
-        </option>
-      </select>
+        aria-labelledby="sort-by"
+        block
+        no-caret
+        right
+        toggle-class="dd-override"
+        variant="link"
+        @hidden="alertScreenReader('Sort-by menu closed')"
+        @shown="alertScreenReader('Sort-by menu opened')"
+      >
+        <template slot="button-content">
+          <div class="d-flex dropdown-width justify-content-between text-dark">
+            <div v-if="dropdownLabel">
+              <span class="sr-only">Students sorted by </span>{{ dropdownLabel }}<span class="sr-only">. Hit enter to open menu</span>
+            </div>
+            <div v-if="!dropdownLabel">Select...</div>
+            <div class="ml-2">
+              <font-awesome icon="angle-down" class="menu-caret" />
+            </div>
+          </div>
+        </template>
+        <b-dropdown-group
+          v-for="(group, gIndex) in optionGroups"
+          :id="`sort-by-option-group-${group.label}`"
+          :key="`group-${gIndex}`"
+          :header="group.label"
+        >
+          <b-dropdown-item-button
+            v-for="(option, index) in group.options"
+            :id="`sort-by-option-${option.value}`"
+            :key="`group-option-${index}`"
+            class="pl-3"
+            @click="onSelect(option.value)"
+          >
+            &nbsp;&nbsp;{{ option.label }}
+          </b-dropdown-item-button>
+        </b-dropdown-group>
+      </b-dropdown>
     </div>
   </div>
 </template>
 
 <script>
-import Berkeley from '@/mixins/Berkeley';
-import Context from '@/mixins/Context';
-import CurrentUserExtras from '@/mixins/CurrentUserExtras';
-import store from '@/store';
-import Util from '@/mixins/Util';
+import Berkeley from '@/mixins/Berkeley'
+import Context from '@/mixins/Context'
+import CurrentUserExtras from '@/mixins/CurrentUserExtras'
+import store from '@/store'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'SortBy',
   mixins: [Berkeley, Context, CurrentUserExtras, Util],
-  data: () => ({
-    selected: undefined,
-    options: []
-  }),
-  watch: {
-    selected(value) {
-      if (value && value !== this.preferences.sortBy) {
-        store.commit('currentUserExtras/setUserPreference', {
-          key: 'sortBy',
-          value
-        });
-      }
+  props: {
+    domain: {
+      type: String,
+      required: false
     }
   },
+  data: () => ({
+    dropdownLabel: undefined,
+    isReady: false,
+    optionGroups: undefined,
+    sortBy: undefined,
+    sortByKey: undefined
+  }),
   created() {
-    this.$eventHub.$on('sortBy-user-preference-change', sortBy => this.selected = sortBy);
-    this.selected = this.preferences.sortBy;
-    const gpa_term_id_1 = this.previousSisTermId(this.$config.currentEnrollmentTermId);
-    const gpa_term_id_2 = this.previousSisTermId(gpa_term_id_1);
-    let options = [
-      { name: 'First Name', value: 'first_name', available: true },
-      { name: 'Last Name', value: 'last_name', available: true },
-      { name: 'GPA (Cumulative)', value: 'gpa', available: true },
-      { name: `GPA (${this.termNameForSisId(gpa_term_id_2)})`, value: `term_gpa_${gpa_term_id_2}`, available: true },
-      { name: `GPA (${this.termNameForSisId(gpa_term_id_1)})`, value: `term_gpa_${gpa_term_id_1}`, available: true },
-      { name: 'Level', value: 'level', available: true },
-      { name: 'Major', value: 'major', available: true },
-      { name: 'Entering Term', value: 'entering_term', available: true },
-      {
-        name: 'Team',
-        value: 'group_name',
-        available: this.$currentUser.isAdmin || this.includes(this.myDeptCodes(['isAdvisor', 'isDirector']), 'UWASC')
-      },
-      { name: 'Units (In Progress)', value: 'enrolled_units', available: true },
-      { name: 'Units (Completed)', value: 'units', available: true },
-    ];
-    this.options = this.filterList(options, 'available');
+    this.optionGroups = this.getSortByOptionGroups(this.domain)
+    this.sortByKey = this.domain === 'admitted_students' ? 'admitSortBy' : 'sortBy'
+    this.$eventHub.on(`${this.sortByKey}-user-preference-change`, v => this.sortBy = v)
+    this.sortBy = this.$_.get(this.preferences, this.sortByKey)
+    this.dropdownLabel = this.getSortByOptionLabel(this.optionGroups, this.sortBy)
+    this.isReady = true
+  },
+  methods: {
+    getSortByOptionGroups(domain) {
+      const optionGroups = []
+      if (domain === 'admitted_students') {
+        optionGroups.push({
+          label: 'Profile',
+          options: [
+            {label: 'First Name', value: 'first_name'},
+            {label: 'Last Name', value: 'last_name'},
+            {label: 'CS ID', value: 'cs_empl_id'}
+          ]
+        })
+      } else {
+        const previousTermId = this.previousSisTermId(this.$config.currentEnrollmentTermId)
+        const previousPreviousTermId = this.previousSisTermId(previousTermId)
+        optionGroups.push({
+          label: 'Profile',
+          options: [
+            {label: 'First Name', value: 'first_name'},
+            {label: 'Last Name', value: 'last_name'},
+            {label: 'Level', value: 'level'},
+            {label: 'Major', value: 'major'}
+          ]
+        })
+        if (this.$currentUser.isAdmin || this.$_.includes(this.myDeptCodes(['advisor', 'director']), 'UWASC')) {
+          optionGroups[0].options.push({label: 'Team', value: 'group_name'})
+        }
+        optionGroups.push({
+          label: 'Terms',
+          options: [
+            {label: 'Entering Term', value: 'entering_term'},
+            {label: 'Terms in Attendance, ascending', value: 'terms_in_attendance'},
+            {label: 'Terms in Attendance, descending', value: 'terms_in_attendance desc'}
+          ]
+        })
+        optionGroups.push({
+          label: 'GPA',
+          options: [
+            {label: `${this.termNameForSisId(previousPreviousTermId)}, ascending`, value: `term_gpa_${previousPreviousTermId}`},
+            {label: `${this.termNameForSisId(previousPreviousTermId)}, descending`, value: `term_gpa_${previousPreviousTermId} desc`},
+            {label: `${this.termNameForSisId(previousTermId)}, ascending`, value: `term_gpa_${previousTermId}`},
+            {label: `${this.termNameForSisId(previousTermId)}, descending`, value: `term_gpa_${previousTermId} desc`},
+            {label: 'Cumulative, ascending', value: 'gpa'},
+            {label: 'Cumulative, descending', value: 'gpa desc'}
+          ]
+        })
+        optionGroups.push({
+          label: 'Units',
+          options: [
+            {label: 'In Progress, ascending', value: 'enrolled_units'},
+            {label: 'In Progress, descending', value: 'enrolled_units desc'},
+            {label: 'Completed, ascending', value: 'units'},
+            {label: 'Completed, descending', value: 'units desc'}
+          ]
+        })
+      }
+      return optionGroups
+    },
+    getSortByOptionLabel(optionGroups, value) {
+      let label = undefined
+      if (this.optionGroups) {
+        this.$_.each(optionGroups, group => {
+          this.$_.each(group.options, option => {
+            if (value === option.value) {
+              label = option.label
+            }
+            return !label
+          })
+          return !label
+        })
+      }
+      return label
+    },
+    onSelect(value) {
+      if (value !== this.$_.get(this.preferences, this.sortByKey)) {
+        this.sortBy = value
+        this.dropdownLabel = this.getSortByOptionLabel(this.optionGroups, this.sortBy)
+        this.alertScreenReader(`${this.dropdownLabel} selected`)
+        store.commit('currentUserExtras/setUserPreference', {
+          key: this.sortByKey,
+          value: this.sortBy
+        })
+      }
+    }
   }
-};
+}
 </script>
+
+<style scoped>
+.dropdown {
+  background-color: #fefefe;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  color: #000;
+  height: 42px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  width: 280px;
+}
+</style>

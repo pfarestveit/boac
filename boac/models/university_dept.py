@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,6 +23,10 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+
+from functools import reduce
+from itertools import groupby
+from operator import itemgetter
 
 from boac import db, std_commit
 from boac.externals import data_loch
@@ -84,7 +88,21 @@ class UniversityDept(Base):
         program_affiliations = BERKELEY_DEPT_CODE_TO_PROGRAM_AFFILIATIONS.get(self.dept_code)
         if not program_affiliations:
             return []
-        return data_loch.get_advisor_uids_for_affiliations(
+        advisors = data_loch.get_advisor_uids_for_affiliations(
             program_affiliations.get('program'),
             program_affiliations.get('affiliations'),
         )
+
+        def _resolve(uid, rows):
+            rows = list(rows)
+            if len(rows) == 1:
+                return rows[0]
+            can_access_advising_data = reduce((lambda r, s: r['can_access_advising_data'] or s['can_access_advising_data']), rows)
+            can_access_canvas_data = reduce((lambda r, s: r['can_access_canvas_data'] or s['can_access_canvas_data']), rows)
+            return {
+                'uid': uid,
+                'can_access_advising_data': can_access_advising_data,
+                'can_access_canvas_data': can_access_canvas_data,
+            }
+        advisors.sort(key=itemgetter('uid'))
+        return [_resolve(uid, rows) for (uid, rows) in groupby(advisors, itemgetter('uid'))]

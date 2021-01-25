@@ -1,5 +1,5 @@
 <script>
-import { mapActions, mapGetters } from 'vuex';
+import { mapActions, mapGetters } from 'vuex'
 
 export default {
   name: 'CuratedEditSession',
@@ -11,6 +11,7 @@ export default {
       'mode',
       'ownerId',
       'pageNumber',
+      'referencingCohortIds',
       'students',
       'totalStudentCount'
     ])
@@ -25,5 +26,5 @@ export default {
       'setMode'
     ])
   }
-};
+}
 </script>

@@ -2,25 +2,17 @@
   <b-container class="h-100 p-0" fluid>
     <StandardHeaderLayout role="banner" />
     <b-row class="row-content" no-gutters>
-      <b-col class="sidebar" role="navigation" sm="2">
+      <b-col class="sidebar" sm="2">
         <Sidebar />
       </b-col>
       <b-col
         id="content"
         class="body-text h-100 pb-2"
         role="main"
-        sm="10">
+        sm="10"
+      >
         <ServiceAnnouncement />
-        <div>
-          <span
-            v-if="screenReaderAlert"
-            class="sr-only"
-            aria-live="polite"
-            role="alert">
-            {{ screenReaderAlert }}
-          </span>
-          <router-view :key="stripAnchorRef($route.fullPath)"></router-view>
-        </div>
+        <router-view :key="stripAnchorRef($route.fullPath)"></router-view>
       </b-col>
     </b-row>
     <b-row class="row-footer" no-gutters>
@@ -33,13 +25,13 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Footer from '@/components/Footer';
-import Loading from '@/mixins/Loading';
-import ServiceAnnouncement from '@/layouts/shared/ServiceAnnouncement';
-import Sidebar from '@/components/sidebar/Sidebar';
-import StandardHeaderLayout from '@/layouts/shared/StandardHeaderLayout';
-import Util from '@/mixins/Util';
+import Context from '@/mixins/Context'
+import Footer from '@/components/Footer'
+import Loading from '@/mixins/Loading'
+import ServiceAnnouncement from '@/layouts/shared/ServiceAnnouncement'
+import Sidebar from '@/components/sidebar/Sidebar'
+import StandardHeaderLayout from '@/layouts/shared/StandardHeaderLayout'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'StandardLayout',
@@ -51,9 +43,9 @@ export default {
   },
   mixins: [Context, Loading, Util],
   created() {
-    this.putFocusNextTick('home-header');
+    this.putFocusNextTick('home-header')
   }
-};
+}
 </script>
 
 <style scoped>
@@ -65,8 +57,5 @@ export default {
 }
 .row-footer {
   min-height: 18%;
-}
-.sidebar {
-  background-color: #125074;
 }
 </style>

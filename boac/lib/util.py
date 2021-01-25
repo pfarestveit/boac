@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -39,6 +39,8 @@ from titlecase import titlecase
 
 
 """Generic utilities."""
+
+TEXT_SEARCH_PATTERN = r'(\w*[.:/-@]\w+([.:/-]\w+)*)|[^\s?!(),;:.`]+'
 
 
 def camelize(string):
@@ -81,8 +83,8 @@ def localize_datetime(dt):
     return dt.astimezone(pytz.timezone(app.config['TIMEZONE']))
 
 
-def localized_timestamp_to_utc(_str):
-    naive_datetime = datetime.strptime(_str, '%Y-%m-%dT%H:%M:%S')
+def localized_timestamp_to_utc(_str, date_format='%Y-%m-%dT%H:%M:%S'):
+    naive_datetime = datetime.strptime(_str, date_format)
     localized_datetime = pytz.timezone(app.config['TIMEZONE']).localize(naive_datetime)
     return localized_datetime.astimezone(pytz.utc)
 

@@ -1,43 +1,66 @@
 <template>
   <div>
     <div>
-      <SearchForm
-        :domain="$currentUser.canAccessCanvasData ? ['students', 'courses', 'notes'] : ['students', 'notes']"
-        context="sidebar" />
+      <SearchForm :domain="domain" />
     </div>
-    <div v-if="myCohorts">
-      <Cohorts />
-      <hr class="ml-2 mr-2 section-divider" />
-    </div>
-    <div v-if="myCuratedGroups">
-      <CuratedGroups />
-      <hr class="ml-2 mr-2 section-divider" />
-    </div>
-    <div class="mb-2 sidebar-row-link">
-      <div class="ml-2 mr-2">
-        <router-link id="cohorts-all" to="/cohorts/all">Everyone's Cohorts</router-link>
+    <div role="navigation" aria-label="Cohorts and Curated Groups">
+      <div v-if="myCohorts">
+        <Cohorts />
+        <hr class="ml-2 mr-2 section-divider" />
+      </div>
+      <div v-if="myCuratedGroups">
+        <CuratedGroups />
+        <hr class="ml-2 mr-2 section-divider" />
+      </div>
+      <div v-if="$config.featureFlagAdmittedStudents && myAdmitCohorts">
+        <MyAdmitCohorts />
+        <hr class="ml-2 mr-2 section-divider" />
+      </div>
+      <div class="mb-2 sidebar-row-link">
+        <div class="ml-2 mr-2">
+          <router-link id="cohorts-all" to="/cohorts/all">Everyone's Cohorts</router-link>
+        </div>
+      </div>
+      <div class="mb-2 sidebar-row-link">
+        <div class="ml-2 mr-2">
+          <router-link id="groups-all" to="/groups/all">Everyone's Groups</router-link>
+        </div>
       </div>
     </div>
-    <div class="mb-2 sidebar-row-link">
-      <div class="ml-2 mr-2">
-        <router-link id="groups-all" to="/groups/all">Everyone's Groups</router-link>
-      </div>
-    </div>
-    <div v-if="!$currentUser.isAdmin">
-      <div class="batch-note-button fixed-bottom mb-3">
-        <CreateNoteModal id="batch-note-button" />
-      </div>
+    <div
+      v-if="!$currentUser.isAdmin && $currentUser.canAccessAdvisingData"
+      class="batch-note-button d-flex fixed-bottom justify-content-center mb-3 pl-3 pr-3"
+    >
+      <b-btn
+        id="batch-note-button"
+        :disabled="!!mode"
+        class="btn-primary-color-override btn-primary-color-override-opaque mr-2 mt-1 w-100"
+        variant="primary"
+        @click="isCreateNoteModalOpen = true"
+      >
+        <span class="m-1">
+          <font-awesome icon="file-alt" />
+          New Note
+        </span>
+      </b-btn>
+      <CreateNoteModal
+        v-if="isCreateNoteModalOpen"
+        :is-batch-feature="true"
+        :on-close="onCreateNoteModalClose"
+      />
     </div>
   </div>
 </template>
 
 <script>
-import Cohorts from '@/components/sidebar/Cohorts.vue';
-import Context from '@/mixins/Context';
-import CreateNoteModal from '@/components/note/create/CreateNoteModal.vue';
-import CuratedGroups from '@/components/sidebar/CuratedGroups.vue';
-import CurrentUserExtras from '@/mixins/CurrentUserExtras';
-import SearchForm from '@/components/sidebar/SearchForm.vue';
+import Cohorts from '@/components/sidebar/Cohorts.vue'
+import Context from '@/mixins/Context'
+import CreateNoteModal from '@/components/note/create/CreateNoteModal.vue'
+import CuratedGroups from '@/components/sidebar/CuratedGroups.vue'
+import CurrentUserExtras from '@/mixins/CurrentUserExtras'
+import MyAdmitCohorts from '@/components/sidebar/MyAdmitCohorts.vue'
+import Util from '@/mixins/Util.vue'
+import SearchForm from '@/components/sidebar/SearchForm.vue'
 
 export default {
   name: 'Sidebar',
@@ -45,10 +68,34 @@ export default {
     Cohorts,
     CreateNoteModal,
     CuratedGroups,
+    MyAdmitCohorts,
     SearchForm
   },
-  mixins: [Context, CurrentUserExtras]
-};
+  mixins: [Context, CurrentUserExtras, Util],
+  data: () => ({
+    isCreateNoteModalOpen: false
+  }),
+  computed: {
+    domain() {
+      let domain = ['students']
+      if (this.$currentUser.canAccessCanvasData) {
+        domain.push('courses')
+      }
+      if (this.$currentUser.canAccessAdvisingData) {
+        domain.push('notes')
+      }
+      if (this.includeAdmits) {
+        domain.push('admits')
+      }
+      return domain
+    }
+  },
+  methods: {
+    onCreateNoteModalClose() {
+      this.isCreateNoteModalOpen = false
+    }
+  }
+}
 </script>
 
 <style>

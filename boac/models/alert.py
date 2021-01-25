@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,8 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import re
 import time
@@ -32,13 +31,15 @@ import time
 from boac import db, std_commit
 from boac.api.errors import BadRequestError
 from boac.externals import data_loch
-from boac.lib.berkeley import section_is_eligible_for_alerts, term_name_for_sis_id
+from boac.lib.berkeley import ACADEMIC_STANDING_DESCRIPTIONS, section_is_eligible_for_alerts, term_name_for_sis_id
 from boac.lib.util import camelize, unix_timestamp_to_localtime, utc_timestamp_to_localtime
 from boac.merged.sis_terms import current_term_id
+from boac.merged.student import get_academic_standing_by_sid
 from boac.models.base import Base
 from boac.models.db_relationships import AlertView
 from flask import current_app as app
-from sqlalchemy import text
+from sqlalchemy import and_, text
+from sqlalchemy.sql import desc
 
 
 def _get_current_term_start():
@@ -54,7 +55,7 @@ class Alert(Base):
     alert_type = db.Column(db.String(80), nullable=False)
     key = db.Column(db.String(255), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    active = db.Column(db.Boolean, nullable=False)
+    deleted_at = db.Column(db.DateTime)
     views = db.relationship(
         'AlertView',
         back_populates='alert',
@@ -65,11 +66,12 @@ class Alert(Base):
         'sid',
         'alert_type',
         'key',
-        name='alerts_sid_alert_type_key_unique_constraint',
+        'created_at',
+        name='alerts_sid_alert_type_key_created_at_unique_constraint',
     ),)
 
     @classmethod
-    def create(cls, sid, alert_type, key=None, message=None, active=True):
+    def create(cls, sid, alert_type, key=None, message=None, deleted_at=None, created_at=None):
         # Alerts must contain a key, unique per SID and alert type, which will allow them to be located
         # and modified on updates to the data that originally generated the alert. The key defaults
         # to a string representation of today's date, but will more often (depending on the alert type)
@@ -81,16 +83,19 @@ class Alert(Base):
             key = key.strip()
             if not key:
                 raise ValueError('Blank string submitted for alert key')
-        alert = cls(sid, alert_type, key, message, active)
+        alert = cls(sid, alert_type, key, message, deleted_at)
+        if created_at:
+            alert.created_at = created_at
+            alert.updated_at = created_at
         db.session.add(alert)
         std_commit()
 
-    def __init__(self, sid, alert_type, key, message=None, active=True):
+    def __init__(self, sid, alert_type, key, message=None, deleted_at=None):
         self.sid = sid
         self.alert_type = alert_type
         self.key = key
         self.message = message
-        self.active = active
+        self.deleted_at = deleted_at
 
     def __repr__(self):
         return f"""<Alert {self.id},
@@ -98,7 +103,7 @@ class Alert(Base):
                     alert_type={self.alert_type},
                     key={self.key},
                     message={self.message},
-                    active={self.active},
+                    deleted_at={self.deleted_at},
                     updated={self.updated_at},
                     created={self.created_at}>
                 """
@@ -123,7 +128,7 @@ class Alert(Base):
             FROM alerts LEFT JOIN alert_views
                 ON alert_views.alert_id = alerts.id
                 AND alert_views.viewer_id = :viewer_id
-            WHERE alerts.active = true
+            WHERE alerts.deleted_at IS NULL
                 AND alerts.key LIKE :key
                 AND alert_views.dismissed_at IS NULL
             GROUP BY alerts.sid
@@ -138,7 +143,7 @@ class Alert(Base):
             FROM alerts LEFT JOIN alert_views
                 ON alert_views.alert_id = alerts.id
                 AND alert_views.viewer_id = :viewer_id
-            WHERE alerts.active = true
+            WHERE alerts.deleted_at IS NULL
                 AND alerts.key LIKE :key
                 AND alerts.sid = ANY(:sids)
                 AND alert_views.dismissed_at IS NULL
@@ -187,7 +192,7 @@ class Alert(Base):
             FROM alerts LEFT JOIN alert_views
                 ON alert_views.alert_id = alerts.id
                 AND alert_views.viewer_id = :viewer_id
-            WHERE alerts.active = true
+            WHERE alerts.deleted_at IS NULL
                 AND alerts.key LIKE :key
                 AND alerts.sid = :sid
             ORDER BY alerts.created_at
@@ -210,22 +215,45 @@ class Alert(Base):
             feed.append(alert)
         return feed
 
-    def activate(self):
-        self.active = True
+    def activate(self, preserve_creation_date=False):
+        self.deleted_at = None
+        # Some alert types, such as withdrawals and midpoint deficient grades, don't include a time-shifted message
+        # and shouldn't be treated as updated after creation.
+        if preserve_creation_date:
+            self.updated_at = self.created_at
         std_commit()
 
     def deactivate(self):
-        self.active = False
+        self.deleted_at = datetime.now()
         std_commit()
 
     @classmethod
-    def create_or_activate(cls, sid, alert_type, key, message):
-        existing_alert = cls.query.filter_by(sid=sid, alert_type=alert_type, key=key).first()
-        if existing_alert:
+    def create_or_activate(
+            cls,
+            alert_type,
+            key,
+            message,
+            sid,
+            created_at=None,
+            force_use_existing=False,
+            preserve_creation_date=False,
+    ):
+        # If any previous alerts exist with the same type, key and sid, grab the most recently updated one.
+        existing_alert = cls.query.filter_by(sid=sid, alert_type=alert_type, key=key).order_by(desc(cls.updated_at)).first()
+        # If the existing alert was only just deactivated in the last two hours, assume that the deactivation was part of the
+        # current refresh cycle, and go ahead and reactivate it. But if the alert was deactivated farther back in the past,
+        # assume that it represents a previous state of affairs, and create a new alert for current conditions.
+        if existing_alert and (force_use_existing or (datetime.now(timezone.utc) - existing_alert.updated_at).total_seconds() < (2 * 3600)):
             existing_alert.message = message
-            existing_alert.activate()
+            existing_alert.activate(preserve_creation_date=preserve_creation_date)
         else:
-            cls.create(sid=sid, alert_type=alert_type, key=key, message=message)
+            cls.create(
+                alert_type=alert_type,
+                created_at=created_at,
+                key=key,
+                message=message,
+                sid=sid,
+            )
 
     @classmethod
     def deactivate_all(cls, sid, term_id, alert_types):
@@ -233,11 +261,20 @@ class Alert(Base):
             cls.query.
             filter(cls.sid == sid).
             filter(cls.alert_type.in_(alert_types)).
-            filter(cls.key.startswith(f'{term_id}_%'))
+            filter(cls.key.startswith(f'{term_id}_%')).
+            filter(cls.deleted_at == None)  # noqa: E711
         )
-        results = query.update({cls.active: False}, synchronize_session='fetch')
+        results = query.update({cls.deleted_at: datetime.now()}, synchronize_session='fetch')
         std_commit()
         return results
+
+    @classmethod
+    def get_alerts_per_date_range(cls, from_date_utc, to_date_utc):
+        criterion = and_(
+            cls.created_at >= from_date_utc,
+            cls.created_at <= to_date_utc,
+        )
+        return cls.query.filter(criterion).order_by(cls.created_at).all()
 
     @classmethod
     def infrequent_activity_alerts_enabled(cls):
@@ -261,9 +298,10 @@ class Alert(Base):
     def deactivate_all_for_term(cls, term_id):
         query = (
             cls.query.
-            filter(cls.key.startswith(f'{term_id}_%'))
+            filter(cls.key.startswith(f'{term_id}_%')).
+            filter(cls.deleted_at == None)  # noqa: E711
         )
-        results = query.update({cls.active: False}, synchronize_session='fetch')
+        results = query.update({cls.deleted_at: datetime.now()}, synchronize_session='fetch')
         std_commit()
         return results
 
@@ -276,14 +314,47 @@ class Alert(Base):
         for row in enrollments_for_term:
             enrollments = json.loads(row['enrollment_term']).get('enrollments', [])
             for enrollment in enrollments:
-                cls.update_alerts_for_enrollment(row['sid'], term_id, enrollment, no_activity_alerts_enabled, infrequent_activity_alerts_enabled)
+                cls.update_alerts_for_enrollment(
+                    sid=row['sid'],
+                    term_id=term_id,
+                    enrollment=enrollment,
+                    no_activity_alerts_enabled=no_activity_alerts_enabled,
+                    infrequent_activity_alerts_enabled=infrequent_activity_alerts_enabled,
+                )
+        profiles = data_loch.get_student_profiles()
         if app.config['ALERT_WITHDRAWAL_ENABLED'] and str(term_id) == current_term_id():
-            profiles = data_loch.get_student_profiles()
             for row in profiles:
                 profile_feed = json.loads(row['profile'])
                 if 'withdrawalCancel' in (profile_feed.get('sisProfile') or {}):
                     cls.update_withdrawal_cancel_alerts(row['sid'], term_id)
+
+        sids = [p['sid'] for p in profiles]
+        for sid, academic_standing_list in get_academic_standing_by_sid(sids).items():
+            standing = next((s for s in academic_standing_list if s['termId'] == str(term_id)), None)
+            if standing and standing['status'] in ('DIS', 'PRO', 'SUB'):
+                cls.update_academic_standing_alerts(
+                    action_date=standing['actionDate'],
+                    sid=standing['sid'],
+                    status=standing['status'],
+                    term_id=term_id,
+                )
         app.logger.info('Alert update complete')
+
+    @classmethod
+    def update_academic_standing_alerts(cls, action_date, sid, status, term_id):
+        key = f'{term_id}_{action_date}_academic_standing_{status}'
+        status_description = ACADEMIC_STANDING_DESCRIPTIONS.get(status, status)
+        message = f"Student's academic standing is '{status_description}'."
+        datetime.strptime(action_date, '%Y-%m-%d')
+        cls.create_or_activate(
+            alert_type='academic_standing',
+            created_at=action_date,
+            force_use_existing=True,
+            key=key,
+            message=message,
+            preserve_creation_date=True,
+            sid=sid,
+        )
 
     @classmethod
     def update_alerts_for_enrollment(cls, sid, term_id, enrollment, no_activity_alerts_enabled, infrequent_activity_alerts_enabled):
@@ -342,7 +413,7 @@ class Alert(Base):
     def update_midterm_grade_alerts(cls, sid, term_id, section_id, class_name, grade):
         key = f'{term_id}_{section_id}'
         message = f'{class_name} midpoint deficient grade of {grade}.'
-        cls.create_or_activate(sid=sid, alert_type='midterm', key=key, message=message)
+        cls.create_or_activate(sid=sid, alert_type='midterm', key=key, message=message, preserve_creation_date=True)
 
     @classmethod
     def update_no_activity_alerts(cls, sid, term_id, class_name):
@@ -355,7 +426,7 @@ class Alert(Base):
         key = f'{term_id}_{class_name}'
         message = f'Infrequent activity! Last {class_name} bCourses activity was {days_since} days ago.'
         # If an active infrequent activity alert already exists and is more recent, skip the update.
-        existing_alert = cls.query.filter_by(sid=sid, alert_type='infrequent_activity', key=key, active=True).first()
+        existing_alert = cls.query.filter_by(sid=sid, alert_type='infrequent_activity', key=key, deleted_at=None).first()
         if existing_alert:
             match = re.search('(\d+) days ago.$', message)
             if match and match[1] and int(match[1]) < days_since:
@@ -366,7 +437,7 @@ class Alert(Base):
     def update_withdrawal_cancel_alerts(cls, sid, term_id):
         key = f'{term_id}_withdrawal'
         message = f'Student is no longer enrolled in the {term_name_for_sis_id(term_id)} term.'
-        cls.create_or_activate(sid=sid, alert_type='withdrawal', key=key, message=message)
+        cls.create_or_activate(sid=sid, alert_type='withdrawal', key=key, message=message, preserve_creation_date=True)
 
     @classmethod
     def include_alert_counts_for_students(cls, viewer_user_id, group, count_only=False, offset=None, limit=None):

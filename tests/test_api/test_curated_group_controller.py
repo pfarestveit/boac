@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -28,6 +28,8 @@ from boac.models.curated_group import CuratedGroup
 from boac.models.manually_added_advisee import ManuallyAddedAdvisee
 import pytest
 import simplejson as json
+from tests.test_api.api_test_utils import api_curated_group_add_students, api_curated_group_create, \
+    api_curated_group_remove_student
 
 
 admin_uid = '2040'
@@ -128,7 +130,7 @@ class TestGetCuratedGroup:
             assert isinstance(student.get('alertCount'), int)
         student_with_alerts = next((s for s in students if s['sid'] == '11667051'), None)
         assert student_with_alerts
-        assert student_with_alerts['alertCount'] == 3
+        assert student_with_alerts['alertCount'] == 4
 
     def test_curated_group_includes_term_gpa(self, asc_advisor, asc_curated_groups, client):
         api_json = self._api_get_curated_group(client, asc_curated_groups[0].id)
@@ -137,6 +139,26 @@ class TestGetCuratedGroup:
         assert len(deborah['termGpa']) == 4
         assert deborah['termGpa'][0] == {'termName': 'Spring 2018', 'gpa': 2.9}
         assert deborah['termGpa'][3] == {'termName': 'Spring 2016', 'gpa': 3.8}
+
+    def test_curated_group_includes_academic_standing(self, asc_advisor, asc_curated_groups, client):
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id)
+        students = api_json['students']
+        deborah = next(s for s in students if s['firstName'] == 'Deborah')
+        assert len(deborah['academicStanding']) == 5
+        assert deborah['academicStanding'][0] == {
+            'actionDate': '2018-05-31',
+            'sid': '11667051',
+            'status': 'GST',
+            'termId': '2182',
+            'termName': 'Spring 2018',
+        }
+        assert deborah['academicStanding'][1] == {
+            'actionDate': '2017-12-30',
+            'termId': '2178',
+            'termName': 'Fall 2017',
+            'sid': '11667051',
+            'status': 'PRO',
+        }
 
     def test_view_permitted_shared_dept(self, asc_curated_groups, asc_and_coe_advisor, client):
         """Advisor can view group if they share the group owner's department memberships."""
@@ -157,22 +179,94 @@ class TestGetCuratedGroup:
         last_names = [s.get('lastName') for s in api_json['students']]
         assert last_names == ['Davies', 'Farestveit', 'Kerschen', 'Jayaprakash']
         alert_counts = [s.get('alertCount') for s in api_json['students']]
-        assert alert_counts == [3, 0, 1, 0]
+        assert alert_counts == [4, 0, 1, 0]
 
     def test_order_by_level(self, asc_advisor, asc_curated_groups, client):
-        """Includes students in response."""
+        """Includes students in response, ordered by level."""
         api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='level', offset=1, limit=2)
         names = [f"{s.get('level')} ({s.get('lastName')})" for s in api_json['students']]
         assert names == ['Junior (Kerschen)', 'Senior (Farestveit)']
 
     def test_order_by_major(self, asc_advisor, asc_curated_groups, client):
-        """Includes students in response."""
+        """Includes students in response, ordered by major."""
         api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='major', offset=1)
-        majors = [f"{s.get('majors')[0]} ({s.get('lastName')})" for s in api_json['students']]
+        majors = [f"{s.get('majors')[0] if len(s.get('majors')) else None} ({s.get('lastName')})" for s in api_json['students']]
         assert majors == [
             'English BA (Kerschen)',
             'Letters & Sci Undeclared UG (Jayaprakash)',
             'Nuclear Engineering BS (Farestveit)',
+        ]
+
+    def test_order_by_gpa_desc(self, asc_advisor, asc_curated_groups, client):
+        """Includes students in response, ordered by cumulative GPA descending."""
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='gpa desc')
+        gpas = [f"{s.get('cumulativeGPA')} ({s.get('lastName')})" for s in api_json['students']]
+        assert gpas == [
+            '3.9 (Farestveit)',
+            '3.8 (Davies)',
+            '3.501 (Jayaprakash)',
+            '3.005 (Kerschen)',
+        ]
+
+    def test_order_by_term_gpa(self, asc_advisor, asc_curated_groups, client):
+        """Includes students in response, ordered by term GPA, nulls last."""
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='term_gpa_2178')
+
+        def _fall_2017_gpa(student):
+            return next((t['gpa'] for t in student['termGpa'] if t['termName'] == 'Fall 2017'), None) if student['termGpa'] else None
+        gpas = [f"{_fall_2017_gpa(s)} ({s.get('lastName')})" for s in api_json['students']]
+        assert gpas == [
+            '1.8 (Davies)',
+            '2.1 (Jayaprakash)',
+            '3.2 (Kerschen)',
+            'None (Farestveit)',
+        ]
+
+    def test_order_by_term_gpa_desc(self, asc_advisor, asc_curated_groups, client):
+        """Includes students in response, ordered by term GPA descending, nulls last."""
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='term_gpa_2178 desc')
+
+        def _fall_2017_gpa(student):
+            return next((t['gpa'] for t in student['termGpa'] if t['termName'] == 'Fall 2017'), None) if student['termGpa'] else None
+        gpas = [f"{_fall_2017_gpa(s)} ({s.get('lastName')})" for s in api_json['students']]
+        assert gpas == [
+            '3.2 (Kerschen)',
+            '2.1 (Jayaprakash)',
+            '1.8 (Davies)',
+            'None (Farestveit)',
+        ]
+
+    def test_order_by_units_enrolled(self, asc_advisor, asc_curated_groups, client):
+        """Includes students in response, ordered by units in progress, nulls first."""
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='enrolled_units')
+        units = [f"{s['term'].get('enrolledUnits') if s.get('term') else None} ({s.get('lastName')})" for s in api_json['students']]
+        assert units == [
+            'None (Farestveit)',
+            '5 (Kerschen)',
+            '7 (Jayaprakash)',
+            '12.5 (Davies)',
+        ]
+
+    def test_order_by_units_enrolled_desc(self, asc_advisor, asc_curated_groups, client):
+        """Includes students in response, ordered by units in progress descending, nulls last."""
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='enrolled_units desc')
+        units = [f"{s['term'].get('enrolledUnits') if s.get('term') else None} ({s.get('lastName')})" for s in api_json['students']]
+        assert units == [
+            'None (Farestveit)',
+            '12.5 (Davies)',
+            '7 (Jayaprakash)',
+            '5 (Kerschen)',
+        ]
+
+    def test_order_by_terms_in_attendance(self, asc_advisor, asc_curated_groups, client):
+        """Includes students in response, ordered by terms completed, nulls last."""
+        api_json = self._api_get_curated_group(client, asc_curated_groups[0].id, order_by='terms_in_attendance')
+        units = [f"{s['termsInAttendance']} ({s.get('lastName')})" for s in api_json['students']]
+        assert units == [
+            '2 (Farestveit)',
+            '5 (Kerschen)',
+            'None (Davies)',
+            'None (Jayaprakash)',
         ]
 
     def test_curated_group_detail_includes_profiles(self, asc_advisor, asc_curated_groups, client, create_alerts):
@@ -208,12 +302,12 @@ class TestGetCuratedGroup:
         assert 'statusAsc' not in student['athleticsProfile']
 
     def test_curated_group_detail_includes_canvas_data(self, client, coe_advisor):
-        group = _api_create_group(client, name='The Awkward Age', sids=['5678901234'])
+        group = api_curated_group_create(client, name='The Awkward Age', sids=['5678901234'])
         student_feed = self._api_get_curated_group(client, group['id'])['students'][0]
         assert 'analytics' in student_feed['term']['enrollments'][0]['canvasSites'][0]
 
     def test_curated_group_detail_suppresses_canvas_data_when_unauthorized(self, client, no_canvas_data_access_advisor):
-        group = _api_create_group(client, name='The Awkward Age', sids=['5678901234'])
+        group = api_curated_group_create(client, name='The Awkward Age', sids=['5678901234'])
         student_feed = self._api_get_curated_group(client, group['id'])['students'][0]
         assert student_feed['term']['enrollments'][0]['canvasSites'] == []
 
@@ -221,18 +315,19 @@ class TestGetCuratedGroup:
         """Students with alerts per group id."""
         api_json = self._api_students_with_alerts(client, asc_curated_groups[0].id)
         assert len(api_json) == 2
-        assert api_json[0]['alertCount'] == 3
+        assert api_json[0]['alertCount'] == 4
         assert api_json[1]['alertCount'] == 1
 
         student = client.get('/api/student/by_uid/61889').json
         alert_to_dismiss = student['notifications']['alert'][0]['id']
         client.get('/api/alerts/' + str(alert_to_dismiss) + '/dismiss')
         students_with_alerts = client.get(f'/api/curated_group/{asc_curated_groups[0].id}/students_with_alerts').json
-        assert students_with_alerts[0]['alertCount'] == 2
+        assert students_with_alerts[0]['alertCount'] == 3
 
     def test_group_includes_student_summary(self, asc_advisor, asc_curated_groups, client, create_alerts):
         """Returns summary details but not full term and analytics data."""
         api_json = self._api_students_with_alerts(client, asc_curated_groups[0].id)
+        assert api_json[0]['academicStanding'][0]['status'] == 'GST'
         assert api_json[0]['cumulativeGPA'] == 3.8
         assert api_json[0]['cumulativeUnits'] == 101.3
         assert api_json[0]['expectedGraduationTerm']['name'] == 'Fall 2019'
@@ -245,7 +340,6 @@ class TestGetCuratedGroup:
         response = client.get('/api/curated_groups/all')
         assert response.status_code == 200
         api_json = response.json
-        print(api_json)
         count = len(api_json)
         for index, entry in enumerate(api_json):
             user = entry['user']
@@ -278,13 +372,13 @@ class TestMyCuratedGroups:
         self._api_my_curated_groups(client, expected_status_code=401)
 
     def test_coe_scheduler_not_allowed(self, client, coe_scheduler):
-        """User who is_scheduler will be denied."""
+        """User with scheduler role will be denied."""
         self._api_my_curated_groups(client, expected_status_code=401)
 
     def test_coe_curated_groups(self, client, coe_advisor):
         """Returns curated groups of COE advisor."""
         api_json = self._api_my_curated_groups(client)
-        assert len(api_json) == 1
+        assert len(api_json)
         group = api_json[0]
         assert 'id' in group
         assert 'alertCount' in group
@@ -312,35 +406,21 @@ class TestMyCuratedGroups:
 class TestAddStudents:
     """Curated Group API."""
 
-    @staticmethod
-    def _api_add_students(client, curated_group_id, expected_status_code=200, return_student_profiles=False, sids=()):
-        response = client.post(
-            '/api/curated_group/students/add',
-            data=json.dumps({
-                'curatedGroupId': curated_group_id,
-                'returnStudentProfiles': return_student_profiles,
-                'sids': sids,
-            }),
-            content_type='application/json',
-        )
-        assert response.status_code == expected_status_code
-        return response.json
-
     def test_not_authenticated(self, asc_curated_groups, client):
         """Anonymous user is rejected."""
-        assert self._api_add_students(client, asc_curated_groups[0].id, expected_status_code=401, sids=['2345678901'])
+        assert api_curated_group_add_students(client, asc_curated_groups[0].id, expected_status_code=401, sids=['2345678901'])
 
     def test_unauthorized(self, asc_curated_groups, admin_user_session, client):
         """403 if user does not own the group."""
-        assert self._api_add_students(client, asc_curated_groups[0].id, expected_status_code=403, sids=['2345678901'])
+        assert api_curated_group_add_students(client, asc_curated_groups[0].id, expected_status_code=403, sids=['2345678901'])
 
     def test_add_student(self, asc_advisor, client):
         """Create a group and add a student."""
         group_name = 'Trams of Old London'
-        group = _api_create_group(client, name=group_name)
+        group = api_curated_group_create(client, name=group_name)
         assert group['totalStudentCount'] == 0
         sid = '2345678901'
-        updated_group = self._api_add_students(client, group['id'], sids=[sid])
+        updated_group = api_curated_group_add_students(client, group['id'], sids=[sid])
         assert updated_group['name'] == group_name
         assert updated_group['totalStudentCount'] == 1
         assert updated_group['students'][0]['sid'] == sid
@@ -348,11 +428,11 @@ class TestAddStudents:
     def test_add_students(self, asc_advisor, client):
         """Create group and add students."""
         name = 'Cheap Tricks'
-        group = _api_create_group(client, name=name, sids=['2345678901', '11667051'])
+        group = api_curated_group_create(client, name=name, sids=['2345678901', '11667051'])
         assert group['name'] == name
         assert group['totalStudentCount'] == 2
         # Add students
-        updated_group = self._api_add_students(
+        updated_group = api_curated_group_add_students(
             client,
             group['id'],
             return_student_profiles=True,
@@ -363,7 +443,7 @@ class TestAddStudents:
         sids = [s['sid'] for s in students]
         assert sids == ['11667051', '2345678901', '7890123456']
         # Add more and ask for FULL student profiles in payload
-        updated_group = self._api_add_students(
+        updated_group = api_curated_group_add_students(
             client,
             group['id'],
             return_student_profiles=True,
@@ -375,7 +455,7 @@ class TestAddStudents:
         student = students[0]
         assert student['sid'] == '11667051'
         assert student['canvasUserId'] == '9000100'
-        for expected_key in ('cumulativeGPA', 'cumulativeGPA', 'cumulativeUnits', 'majors', 'termGpa'):
+        for expected_key in ('academicStanding', 'cumulativeGPA', 'cumulativeGPA', 'cumulativeUnits', 'majors', 'termGpa'):
             assert expected_key in student, f'Failed to find {expected_key} in student'
 
 
@@ -384,33 +464,25 @@ class TestRemoveStudent:
 
     def test_not_authenticated(self, asc_curated_groups, client):
         """Anonymous user is rejected."""
-        response = client.delete(f'/api/curated_group/{asc_curated_groups[0].id}/remove_student/2345678901')
-        assert response.status_code == 401
+        api_curated_group_remove_student(client, asc_curated_groups[0].id, '2345678901', expected_status_code=401)
 
     def test_unauthorized(self, asc_curated_groups, admin_user_session, client):
         """403 if user does not own the group."""
-        response = client.delete(f'/api/curated_group/{asc_curated_groups[0].id}/remove_student/2345678901')
-        assert response.status_code == 403
+        api_curated_group_remove_student(client, asc_curated_groups[0].id, '2345678901', expected_status_code=403)
 
     def test_remove_student(self, asc_advisor, client):
         """Remove student from a curated group."""
         name = 'Furry Green Atom Bowl'
-        group = _api_create_group(client, name=name)
-        group_id = group['id']
         sid = '2345678901'
-        response = client.post(
-            '/api/curated_group/students/add',
-            data=json.dumps({'curatedGroupId': group_id, 'sids': [sid]}),
-            content_type='application/json',
-        )
-        assert response.status_code == 200
-        assert response.json['name'] == name
-        assert response.json['totalStudentCount'] == 1
-        response = client.delete(f'/api/curated_group/{group_id}/remove_student/{sid}')
-        assert response.status_code == 200
-        empty_group = response.json
-        assert empty_group['name'] == name
-        assert empty_group['totalStudentCount'] == 0
+        curated_group = api_curated_group_create(client, name=name)
+        curated_group_id = curated_group['id']
+        curated_group = api_curated_group_add_students(client, curated_group_id, sids=[sid])
+        assert curated_group['name'] == name
+        assert curated_group['totalStudentCount'] == 1
+        # Remove the SID
+        curated_group = api_curated_group_remove_student(client, curated_group_id, sid)
+        assert curated_group['name'] == name
+        assert curated_group['totalStudentCount'] == 0
 
 
 class TestUpdateCuratedGroup:
@@ -418,7 +490,7 @@ class TestUpdateCuratedGroup:
 
     def test_rename_group(self, asc_advisor, client):
         """Rename curated group."""
-        group = _api_create_group(client, name='The Bones In The Ground')
+        group = api_curated_group_create(client, name='The Bones In The Ground')
         new_name = 'My Favourite Buildings'
         group_id = group['id']
         response = client.post(
@@ -448,7 +520,7 @@ class TestDeleteCuratedGroup:
 
     def test_delete_group(self, asc_advisor, client):
         """Delete curated group."""
-        group = _api_create_group(client, name='Mellow Together')
+        group = api_curated_group_create(client, name='Mellow Together')
         group_id = group['id']
         assert client.delete(f'/api/curated_group/delete/{group_id}').status_code == 200
         assert client.get(f'/api/curated_group/{group_id}').status_code == 404
@@ -460,7 +532,7 @@ class TestCuratedGroupWithInactives:
     completed_sid = '2718281828'
 
     def test_create_group_with_inactives(self, asc_advisor, client):
-        group = _api_create_group(
+        group = api_curated_group_create(
             client,
             200,
             "Brenda's Iron Sledge",
@@ -487,14 +559,14 @@ class TestCuratedGroupWithInactives:
         assert group_feed['students'][2]['fullProfilePending'] is True
 
     def test_add_inactive_to_group(self, asc_advisor, client):
-        group = _api_create_group(
+        group = api_curated_group_create(
             client,
             200,
             'Listening to the Higsons',
             [self.active_sid],
         )
         assert group['totalStudentCount'] == 1
-        updated_group = TestAddStudents._api_add_students(
+        updated_group = api_curated_group_add_students(
             client,
             group['id'],
             return_student_profiles=True,
@@ -505,9 +577,10 @@ class TestCuratedGroupWithInactives:
         assert updated_group['students'][1]['sid'] == self.inactive_sid
 
     def test_inactive_group_creation_creates_manually_added_advisee(self, client, fake_auth):
+        ManuallyAddedAdvisee.query.delete()
         assert len(ManuallyAddedAdvisee.query.all()) == 0
         fake_auth.login('2040')
-        _api_create_group(
+        api_curated_group_create(
             client,
             200,
             'Madonna of the Wasps',
@@ -564,17 +637,19 @@ class TestDownloadCuratedGroupCSV:
                 'email',
                 'phone',
                 'majors',
-                'level',
+                'level_by_units',
                 'terms_in_attendance',
-                'expected_graduation_date',
+                'expected_graduation_term',
                 'units_completed',
                 'term_gpa',
                 'cumulative_gpa',
                 'program_status',
             ],
         }
+        curated_group = next((g for g in asc_curated_groups if g.name == 'Four students'), None)
+        assert curated_group
         response = client.post(
-            f'/api/curated_group/{asc_curated_groups[0].id}/download_csv',
+            f'/api/curated_group/{curated_group.id}/download_csv',
             data=json.dumps(data),
             content_type='application/json',
         )
@@ -582,12 +657,11 @@ class TestDownloadCuratedGroupCSV:
         assert 'csv' in response.content_type
         csv = str(response.data)
         for snippet in [
-            'first_name,last_name,sid,email,phone,majors,level,terms_in_attendance,expected_graduation_date,units_completed,term_gpa,cumulative_gpa,\
-program_status',
-            'Deborah,Davies,11667051,barnburner@berkeley.edu,415/123-4567,English BA;Nuclear Engineering BS,Junior,5,Fall 2019,101.3,2.900,3.8,',
-            'Paul,Kerschen,3456789012,doctork@berkeley.edu,415/123-4567,English BA;Political Economy BA,Junior,5,Fall 2019,70,3.200,3.005,',
-            'Sandeep,Jayaprakash,5678901234,ilovela@berkeley.edu,415/123-4567,Letters & Sci Undeclared UG,Senior,5,Fall 2019,102,2.100,3.501,',
-            'Paul,Farestveit,7890123456,qadept@berkeley.edu,415/123-4567,Nuclear Engineering BS,Senior,5,Spring 2020,110,,3.9,',
+            'first_name,last_name,sid,email,phone,majors,level_by_units,terms_in_attendance,expected_graduation_term,units_completed,term_gpa,cumulative_gpa,program_status',  # noqa: E501
+            'Deborah,Davies,11667051,barnburner@berkeley.edu,415/123-4567,English BA;Nuclear Engineering BS,Junior,,Fall 2019,101.3,2.900,3.8,Active',
+            'Paul,Kerschen,3456789012,doctork@berkeley.edu,415/123-4567,English BA;Political Economy BA,Junior,5,Fall 2019,70,3.200,3.005,Active',
+            'Sandeep,Jayaprakash,5678901234,ilovela@berkeley.edu,415/123-4567,Letters & Sci Undeclared UG,Senior,,Fall 2019,102,2.100,3.501,Active',
+            'Paul,Farestveit,7890123456,qadept@berkeley.edu,415/123-4567,Nuclear Engineering BS,Senior,2,Spring 2020,110,,3.9,Active',
         ]:
             assert str(snippet) in csv
 
@@ -600,8 +674,10 @@ program_status',
                 'sid',
             ],
         }
+        curated_group = next((g for g in asc_curated_groups if g.name == 'Four students'), None)
+        assert curated_group
         response = client.post(
-            f'/api/curated_group/{asc_curated_groups[0].id}/download_csv',
+            f'/api/curated_group/{curated_group.id}/download_csv',
             data=json.dumps(data),
             content_type='application/json',
         )
@@ -613,17 +689,19 @@ program_status',
         data = {
             'csvColumnsSelected': [
                 'majors',
-                'level',
+                'level_by_units',
                 'terms_in_attendance',
-                'expected_graduation_date',
+                'expected_graduation_term',
                 'units_completed',
                 'term_gpa',
                 'cumulative_gpa',
                 'program_status',
             ],
         }
+        curated_group = next((g for g in asc_curated_groups if g.name == 'Four students'), None)
+        assert curated_group
         response = client.post(
-            f'/api/curated_group/{asc_curated_groups[0].id}/download_csv',
+            f'/api/curated_group/{curated_group.id}/download_csv',
             data=json.dumps(data),
             content_type='application/json',
         )
@@ -631,23 +709,10 @@ program_status',
         assert 'csv' in response.content_type
         csv = str(response.data)
         for snippet in [
-            'majors,level,terms_in_attendance,expected_graduation_date,units_completed,term_gpa,cumulative_gpa,program_status',
-            'English BA;Nuclear Engineering BS,Junior,5,Fall 2019,101.3,2.900,3.8,',
-            'English BA;Political Economy BA,Junior,5,Fall 2019,70,3.200,3.005,',
-            'Letters & Sci Undeclared UG,Senior,5,Fall 2019,102,2.100,3.501,',
-            'Nuclear Engineering BS,Senior,5,Spring 2020,110,,3.9,',
+            'majors,level_by_units,terms_in_attendance,expected_graduation_term,units_completed,term_gpa,cumulative_gpa,program_status',  # noqa: E501
+            'English BA;Nuclear Engineering BS,Junior,,Fall 2019,101.3,2.900,3.8,Active',
+            'English BA;Political Economy BA,Junior,5,Fall 2019,70,3.200,3.005,Active',
+            'Letters & Sci Undeclared UG,Senior,,Fall 2019,102,2.100,3.501,Active',
+            'Nuclear Engineering BS,Senior,2,Spring 2020,110,,3.9,Active',
         ]:
             assert str(snippet) in csv
-
-
-def _api_create_group(client, expected_status_code=200, name=None, sids=()):
-    response = client.post(
-        '/api/curated_group/create',
-        data=json.dumps({
-            'name': name,
-            'sids': sids,
-        }),
-        content_type='application/json',
-    )
-    assert response.status_code == expected_status_code
-    return response.json

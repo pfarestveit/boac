@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,13 +23,17 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from boac.models.authorized_user import AuthorizedUser
+from boac.models.cohort_filter import CohortFilter
+from boac.models.curated_group import CuratedGroup
 import pytest
 import simplejson as json
+from tests.util import override_config
 
 admin_uid = '2040'
-asc_advisor_id = '1081940'
-coe_advisor_id = '1133399'
-coe_scheduler_id = '6972201'
+asc_advisor_uid = '1081940'
+coe_advisor_uid = '1133399'
+coe_scheduler_uid = '6972201'
 
 
 @pytest.fixture()
@@ -39,17 +43,17 @@ def admin_login(fake_auth):
 
 @pytest.fixture()
 def asc_advisor_login(fake_auth):
-    fake_auth.login(asc_advisor_id)
+    fake_auth.login(asc_advisor_uid)
 
 
 @pytest.fixture()
 def coe_advisor_login(fake_auth):
-    fake_auth.login(coe_advisor_id)
+    fake_auth.login(coe_advisor_uid)
 
 
 @pytest.fixture()
 def coe_scheduler_login(fake_auth):
-    fake_auth.login(coe_scheduler_id)
+    fake_auth.login(coe_scheduler_uid)
 
 
 @pytest.fixture()
@@ -100,7 +104,7 @@ class TestStudent:
         if term:
             return next((course for course in term['enrollments'] if course['displayName'] == code), None)
 
-    def test_user_analytics_not_authenticated(self, client):
+    def test_user_feed_not_authenticated(self, client):
         """Returns 401 if not authenticated."""
         self._api_student_by_sid(client=client, sid=self.asc_student['sid'], expected_status_code=401)
         self._api_student_by_uid(client=client, uid=self.asc_student['uid'], expected_status_code=401)
@@ -121,7 +125,7 @@ class TestStudent:
             assert [t['termName'] for t in enrollment_terms] == ['Summer 2017', 'Spring 2017']
             assert student['hasCurrentTermEnrollments'] is False
 
-    def test_user_analytics_authenticated(self, client, coe_advisor_login):
+    def test_user_feed_authenticated(self, client, coe_advisor_login):
         """Returns a well-formed response if authenticated."""
         sid = self.asc_student_in_coe['sid']
         uid = self.asc_student_in_coe['uid']
@@ -132,6 +136,7 @@ class TestStudent:
             assert student['uid'] == uid
             assert student['canvasUserId'] == '9000100'
             assert student['hasCurrentTermEnrollments'] is True
+
             assert len(student['enrollmentTerms']) > 0
             for term in student['enrollmentTerms']:
                 assert len(term['enrollments']) > 0
@@ -143,7 +148,7 @@ class TestStudent:
                         assert canvas_site['courseCode']
                         assert canvas_site['analytics']
 
-    def test_user_analytics_holds(self, asc_advisor_login, client):
+    def test_user_feed_holds(self, asc_advisor_login, client):
         """Returns holds if any."""
         response = client.get('/api/student/by_uid/9933311')
         assert response.status_code == 200
@@ -154,7 +159,7 @@ class TestStudent:
         assert holds[1]['reason']['description'] == 'Semester Out'
         assert holds[1]['reason']['formalDescription'].startswith('You are not eligible to register')
 
-    def test_user_analytics_multiple_terms(self, client, coe_advisor_login):
+    def test_user_feed_multiple_terms(self, client, coe_advisor_login):
         """Returns all terms with enrollment data in reverse order."""
         sid = self.asc_student_in_coe['sid']
         uid = self.asc_student_in_coe['uid']
@@ -163,19 +168,54 @@ class TestStudent:
         for student in [student_by_sid, student_by_uid]:
             assert len(student['enrollmentTerms']) == 4
             assert student['enrollmentTerms'][0]['termName'] == 'Spring 2018'
+            assert student['enrollmentTerms'][0]['academicYear'] == '2018'
             assert student['enrollmentTerms'][0]['enrolledUnits'] == 3
+            assert student['enrollmentTerms'][0]['termGpa']['gpa'] == 2.9
+            assert student['enrollmentTerms'][0]['academicStanding']['status'] == 'GST'
             assert len(student['enrollmentTerms'][0]['enrollments']) == 1
             assert student['enrollmentTerms'][1]['termName'] == 'Fall 2017'
+            assert student['enrollmentTerms'][1]['academicYear'] == '2018'
             assert student['enrollmentTerms'][1]['enrolledUnits'] == 12.5
+            assert student['enrollmentTerms'][1]['termGpa']['gpa'] == 1.8
+            assert student['enrollmentTerms'][1]['academicStanding']['status'] == 'PRO'
             assert len(student['enrollmentTerms'][1]['enrollments']) == 5
             assert student['enrollmentTerms'][2]['termName'] == 'Spring 2017'
+            assert student['enrollmentTerms'][2]['academicYear'] == '2017'
             assert student['enrollmentTerms'][2]['enrolledUnits'] == 10
+            assert student['enrollmentTerms'][2]['termGpa']['gpa'] == 2.7
             assert len(student['enrollmentTerms'][2]['enrollments']) == 3
+            assert student['enrollmentTerms'][2]['academicStanding']['status'] == 'GST'
             assert student['enrollmentTerms'][3]['termName'] == 'Spring 2016'
+            assert student['enrollmentTerms'][3]['academicYear'] == '2016'
             assert student['enrollmentTerms'][3]['enrolledUnits'] == 0
+            assert student['enrollmentTerms'][3]['termGpa']['gpa'] == 3.8
+            assert student['enrollmentTerms'][3]['academicStanding']['status'] == 'GST'
             assert len(student['enrollmentTerms'][3]['enrollments']) == 1
 
-    def test_user_analytics_earliest_term_cutoff(self, client, coe_advisor_login):
+    def test_user_feed_academic_standing(self, client, coe_advisor_login):
+        """Includes standalone academic standing feed, in addition to per-term merges."""
+        sid = self.asc_student_in_coe['sid']
+        uid = self.asc_student_in_coe['uid']
+        student_by_sid = self._api_student_by_sid(client=client, sid=sid)
+        student_by_uid = self._api_student_by_uid(client=client, uid=uid)
+        for student in [student_by_sid, student_by_uid]:
+            assert len(student['academicStanding']) == 5
+            assert student['academicStanding'][0] == {
+                'actionDate': '2018-05-31',
+                'sid': '11667051',
+                'status': 'GST',
+                'termId': '2182',
+                'termName': 'Spring 2018',
+            }
+            assert student['academicStanding'][1] == {
+                'actionDate': '2017-12-30',
+                'termId': '2178',
+                'termName': 'Fall 2017',
+                'sid': '11667051',
+                'status': 'PRO',
+            }
+
+    def test_user_feed_earliest_term_cutoff(self, client, coe_advisor_login):
         """Ignores terms before the configured earliest term."""
         sid = self.asc_student_in_coe['sid']
         uid = self.asc_student_in_coe['uid']
@@ -185,7 +225,7 @@ class TestStudent:
             for term in student['enrollmentTerms']:
                 assert term['termName'] != 'Spring 2001'
 
-    def test_user_analytics_future_term_cutoff(self, client, coe_advisor_login):
+    def test_user_feed_future_term_cutoff(self, client, coe_advisor_login):
         """Ignores terms after the configured future term."""
         sid = self.asc_student_in_coe['sid']
         uid = self.asc_student_in_coe['uid']
@@ -407,6 +447,38 @@ class TestStudent:
             assert dropped_sections[0]['component'] == 'TUT'
             assert dropped_sections[0]['sectionNumber'] == '002'
 
+    def test_generic_haas_advisor(self, client, coe_advisor_login):
+        """Populates UCBUGADHAAS advisor with name and email."""
+        sid = self.coe_student['sid']
+        uid = self.coe_student['uid']
+        student_by_sid = self._api_student_by_sid(client=client, sid=sid)
+        student_by_uid = self._api_student_by_uid(client=client, uid=uid)
+        for student in [student_by_sid, student_by_uid]:
+            advisors = student['advisors']
+            assert len(advisors) == 2
+            assert advisors[0] == {
+                'uid': '1',
+                'sid': '2',
+                'firstName': 'Real',
+                'lastName': 'Advisor',
+                'email': 'ARealLiveAdvisor@b.e',
+                'role': 'College Advisor',
+                'title': 'Director of Advising',
+                'program': 'Undergrad Business',
+                'plan': 'Business Administration BS',
+            }
+            assert advisors[1] == {
+                'uid': None,
+                'sid': 'UCBUGADHAAS',
+                'firstName': 'Haas Undergraduate Program',
+                'lastName': None,
+                'email': 'UGMajorAdvising@haas.berkeley.edu',
+                'role': 'Major Advisor',
+                'title': None,
+                'program': 'Undergrad Business',
+                'plan': 'Business Administration BS',
+            }
+
     def test_sis_profile(self, client, coe_advisor_login):
         """Provides SIS profile data."""
         sid = self.asc_student_in_coe['sid']
@@ -435,7 +507,7 @@ class TestStudent:
             assert sis_profile['plans'][1]['degreeProgramUrl'] == 'http://guide.berkeley.edu/undergraduate/degree-programs/nuclear-engineering/'
             assert sis_profile['preferredName'] == 'Osk Bear'
             assert sis_profile['primaryName'] == 'Oski Bear'
-            assert sis_profile['termsInAttendance'] == 5
+            assert sis_profile['termsInAttendance'] is None
 
     def test_sis_profile_expected_graduation_term(self, client, coe_advisor_login):
         """Provides the last of any expected graduation terms listed in SIS profile."""
@@ -573,39 +645,44 @@ class TestStudent:
 
     def test_student_with_appointment(self, app, client, asc_advisor_login):
         """Includes advising appointments."""
-        student = self._api_student_by_sid(client=client, sid='5678901234')
+        student = self._api_student_by_sid(client=client, sid='11667051')
         appointments = student['notifications']['appointment']
-        assert len(appointments) == 3
+        assert len(appointments) == 5
 
     def test_appointment_marked_read(self, app, client, fake_auth):
-        """Includes advising appointments."""
-        sid = '3456789012'
+        """Includes flag indicating whether user has seen each appointment."""
+        with override_config(app, 'DEPARTMENTS_SUPPORTING_DROP_INS', ['COENG']):
+            student_sid = '11667051'
+            fake_auth.login(coe_scheduler_uid)
+            response = client.post(
+                '/api/appointments/create',
+                data=json.dumps({
+                    'deptCode': 'COENG',
+                    'sid': student_sid,
+                    'appointmentType': 'Drop-in',
+                    'topics': ['Topic for appointments, 4'],
+                }),
+                content_type='application/json',
+            )
+            assert response.status_code == 200
+            boa_appointment_id = response.json['id']
 
-        fake_auth.login(coe_scheduler_id)
-        response = client.post(
-            '/api/appointments/create',
-            data=json.dumps({
-                'deptCode': 'COENG',
-                'sid': sid,
-                'appointmentType': 'Drop-in',
-                'topics': ['Topic for appointments, 4'],
-            }),
-            content_type='application/json',
-        )
-        assert response.status_code == 200
-        appointment_id = response.json['id']
+            def _is_appointment_read(appointment_id):
+                student = self._api_student_by_sid(client=client, sid=student_sid)
+                appointments = student['notifications']['appointment']
+                appointment = next((a for a in appointments if a['id'] == appointment_id), None)
+                assert appointment is not None
+                return appointment.get('read') is True
 
-        def _is_appointment_read():
-            student = self._api_student_by_sid(client=client, sid=sid)
-            appointments = student['notifications']['appointment']
-            appointment = next((a for a in appointments if a['id'] == appointment_id), None)
-            assert appointment is not None
-            return appointment['read']
+            fake_auth.login(asc_advisor_uid)
+            assert _is_appointment_read(boa_appointment_id) is False
+            client.post(f'/api/appointments/{boa_appointment_id}/mark_read')
+            assert _is_appointment_read(boa_appointment_id) is True
 
-        fake_auth.login(asc_advisor_id)
-        assert _is_appointment_read() is False
-        client.post(f'/api/appointments/{appointment_id}/mark_read')
-        assert _is_appointment_read() is True
+            legacy_appointment_id = '11667051-00010'
+            assert _is_appointment_read(legacy_appointment_id) is False
+            client.post(f'/api/appointments/{legacy_appointment_id}/mark_read')
+            assert _is_appointment_read(legacy_appointment_id) is True
 
 
 class TestAlerts:
@@ -622,19 +699,26 @@ class TestAlerts:
         """Returns current_user's current alerts for a given sid."""
         fake_auth.login(self.admin_uid)
         alerts = self._get_alerts(client, 61889)
-        assert len(alerts) == 3
-        assert alerts[0]['alertType'] == 'late_assignment'
-        assert alerts[0]['key'] == '2178_800900300'
-        assert alerts[0]['message'] == 'Week 5 homework in RUSSIAN 13 is late.'
+        assert len(alerts) == 4
+        assert alerts[0]['alertType'] == 'academic_standing'
+        assert alerts[0]['key'] == '2178_2017-12-30_academic_standing_PRO'
+        assert alerts[0]['message'] == "Student's academic standing is 'Probation'."
         assert not alerts[0]['dismissed']
-        assert alerts[1]['alertType'] == 'missing_assignment'
-        assert alerts[1]['key'] == '2178_500600700'
-        assert alerts[1]['message'] == 'Week 6 homework in PORTUGUESE 12 is missing.'
+
+        assert alerts[1]['alertType'] == 'late_assignment'
+        assert alerts[1]['key'] == '2178_800900300'
+        assert alerts[1]['message'] == 'Week 5 homework in RUSSIAN 13 is late.'
         assert not alerts[1]['dismissed']
-        assert alerts[2]['alertType'] == 'midterm'
-        assert alerts[2]['key'] == '2178_90100'
-        assert alerts[2]['message'] == 'BURMESE 1A midpoint deficient grade of D+.'
+
+        assert alerts[2]['alertType'] == 'missing_assignment'
+        assert alerts[2]['key'] == '2178_500600700'
+        assert alerts[2]['message'] == 'Week 6 homework in PORTUGUESE 12 is missing.'
         assert not alerts[2]['dismissed']
+
+        assert alerts[3]['alertType'] == 'midterm'
+        assert alerts[3]['key'] == '2178_90100'
+        assert alerts[3]['message'] == 'BURMESE 1A midpoint deficient grade of D+.'
+        assert not alerts[3]['dismissed']
 
 
 class TestPrefixSearch:
@@ -685,7 +769,7 @@ class TestNotes:
         assert len(note)
         assert 'My darling dime store thief' in note['message']
         author = note['author']
-        assert author['name'] == 'Joni Mitchell'
+        assert author['name'] == 'Joni Mitchell CC'
         assert author['role'] == 'Director'
         assert author['departments'][0]['name'] == 'Athletic Study Center'
         # This note was not authored by coe_advisor_uid
@@ -701,7 +785,7 @@ class TestNotes:
         assert len(notes)
         note = next((n for n in notes if n.get('id') == '11667051-00001'), None)
         assert len(note)
-        assert note['isLegacy'] is True
+        assert note['legacySource'] == 'SIS'
         assert 'Brigitte is making athletic and moral progress' == note['message']
         author = note['author']
         assert not author['name']
@@ -709,6 +793,79 @@ class TestNotes:
         assert not len(author['departments'])
         advisor_sid = '800700600'
         assert author['sid'] == advisor_sid
+
+
+class TestDistinctSids:
+
+    @classmethod
+    def _api_distinct_sids(
+            cls,
+            client,
+            sids=(),
+            cohort_ids=(),
+            curated_group_ids=(),
+            expected_status_code=200,
+    ):
+        response = client.post(
+            '/api/students/distinct_sids',
+            data=json.dumps({
+                'sids': sids,
+                'cohortIds': cohort_ids,
+                'curatedGroupIds': curated_group_ids,
+            }),
+            content_type='application/json',
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_distinct_sids_not_authenticated(self, client):
+        """Deny anonymous access to batch note metadata."""
+        self._api_distinct_sids(
+            client,
+            sids=['11667051'],
+            cohort_ids=[1, 2],
+            expected_status_code=401,
+        )
+
+    def test_distinct_sids_not_owner(self, client, fake_auth):
+        """Deny user access to cohort owned by some other dept."""
+        user_id = AuthorizedUser.get_id_per_uid(coe_advisor_uid)
+        cohorts = CohortFilter.get_cohorts_of_user_id(user_id)
+        # Assert non-zero student count
+        assert sum(list(map(lambda c: c['totalStudentCount'], cohorts)))
+        # Log in as non-owner
+        fake_auth.login(asc_advisor_uid)
+        cohort_ids = [c['id'] for c in cohorts]
+        assert self._api_distinct_sids(client, cohort_ids=cohort_ids)['sids'] == []
+
+    def test_distinct_sids(self, client, fake_auth):
+        """Get distinct SIDs across cohorts and curated groups."""
+        user_id = AuthorizedUser.get_id_per_uid(coe_advisor_uid)
+        cohort_ids = []
+        sids = set()
+        for cohort in CohortFilter.get_cohorts_of_user_id(user_id):
+            cohort_id = cohort['id']
+            cohort_ids.append(cohort_id)
+            sids.update(set(CohortFilter.get_sids(cohort_id)))
+
+        assert len(sids) > 1
+        curated_group = CuratedGroup.create(user_id, 'Like a lemon to a lime, a lime to a lemon')
+        curated_group_ids = [curated_group.id]
+        # We use SIDs from cohorts (above). Therefore, we expect no increase in 'batch_distinct_student_count'.
+        for sid in sids:
+            CuratedGroup.add_student(curated_group.id, sid)
+        # A specific student (SID) that is in neither cohorts nor curated groups.
+        some_other_sid = '5678901234'
+        assert some_other_sid not in sids
+        # Log in as authorized user
+        fake_auth.login(coe_advisor_uid)
+        data = self._api_distinct_sids(
+            client,
+            cohort_ids=cohort_ids,
+            curated_group_ids=curated_group_ids,
+            sids=[some_other_sid],
+        )
+        assert sids.union({some_other_sid}) == set(data['sids'])
 
 
 class TestValidateSids:

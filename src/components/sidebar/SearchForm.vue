@@ -1,117 +1,121 @@
 <template>
   <div>
-    <form
-      id="search-students-form"
-      :class="{'search-page-body': context === 'pageBody'}"
-      autocomplete="off"
-      class="search-form"
-      @keypress.enter.stop="search()"
-      @submit.prevent="search()">
-      <div class="d-flex flex-column-reverse">
-        <div :class="{'search-form-button': context === 'pageBody'}">
-          <span
-            v-if="allOptionsUnchecked"
-            class="sr-only"
-            aria-live="polite"
-            role="alert">
-            At least one search option must be checked.
-          </span>
-          <input
-            id="search-students-input"
-            v-model="searchPhrase"
-            :class="{ 'input-disabled': allOptionsUnchecked }"
-            :readonly="allOptionsUnchecked"
-            :aria-readonly="allOptionsUnchecked"
-            :required="searchInputRequired"
-            class="pl-2 pr-2 search-input w-100"
-            aria-label="Hit enter to execute search"
-            type="text"
-            maxlength="255" />
+    <label class="sr-only" for="search-students-form" role="heading">Search Form</label>
+    <form class="mb-3 mt-2 mx-2">
+      <div class="align-items-end d-flex flex-wrap font-size-14 text-nowrap text-white">
+        <div class="pb-1 pr-1">
+          <font-awesome icon="search" />
         </div>
-        <div v-if="context === 'sidebar'" class="d-flex flex-wrap justify-content-between search-label text-nowrap text-white">
-          <div>
-            <font-awesome icon="search" />
-            <label
-              for="search-students-input"
-              class="search-form-label pl-1">Search</label>
-          </div>
-          <b-btn
+        <div class="pr-1 search-form-label">
+          <label class="mb-0" for="search-students-input">Search</label>
+        </div>
+        <div class="pb-1 search-options-panel-toggle">
+          (<b-btn
             id="search-options-panel-toggle"
-            v-b-toggle="'search-options-panel'"
-            class="pr-0 pt-0 search-options-panel-toggle"
+            aria-controls="search-options-panel"
+            class="p-0 search-options-panel-toggle"
             variant="link"
-            @click="toggleSearchOptions()">
-            {{ showSearchOptions ? 'Hide' : 'Show' }} options
-          </b-btn>
+            @click="toggleSearchOptions"
+          >
+            {{ showSearchOptions ? 'hide' : 'show' }} options
+          </b-btn>)
         </div>
       </div>
-      <div v-if="context === 'pageBody'">
-        <b-btn
-          id="search-students-button"
-          variant="primary"
-          class="btn-search-students btn-primary-color-override"
-          type="submit">
-          Search
-        </b-btn>
-      </div>
-      <b-collapse v-if="context === 'sidebar'" id="search-options-panel" class="mt-2 text-white">
-        <div class="d-flex">
-          <b-form-checkbox
-            id="search-include-students-checkbox"
-            v-model="includeStudents"
-            plain>
-          </b-form-checkbox>
-          <label
-            for="search-include-students-checkbox"
-            class="search-form-label">
-            <span class="sr-only">Search for</span>
-            Students
-          </label>
-        </div>
-        <div v-if="domain.includes('courses')" class="d-flex">
-          <b-form-checkbox
-            id="search-include-courses-checkbox"
-            v-model="includeCourses"
-            plain>
-          </b-form-checkbox>
-          <label
-            for="search-include-courses-checkbox"
-            class="search-form-label">
-            <span class="sr-only">Search for</span>
-            Classes
-          </label>
-        </div>
-        <div class="d-flex flex-wrap">
-          <b-form-checkbox
-            id="search-include-notes-checkbox"
-            v-model="includeNotes"
-            plain>
-          </b-form-checkbox>
-          <label
-            for="search-include-notes-checkbox"
-            class="search-form-label">
-            <span class="sr-only">Search for</span>
-            Notes &amp; Appointments
-          </label>
-          <b-btn
-            id="search-options-note-filters-toggle"
-            :class="includeNotes ? 'visible' : 'invisible'"
-            class="search-options-panel-toggle search-options-panel-toggle-subpanel text-nowrap"
-            variant="link"
-            @click="toggleNoteFilters()">
-            ({{ showNoteFilters ? 'hide' : 'show' }} filters)
-          </b-btn>
-        </div>
+      <div>
         <b-collapse
-          id="search-options-note-filters-subpanel"
-          v-model="showNoteFilters"
-          class="search-options-note-filters-subpanel text-white">
-          <div>
+          id="search-options-panel"
+          v-model="showSearchOptions"
+          class="mt-2 text-white"
+        >
+          <span class="sr-only">
+            Search options
+          </span>
+          <div v-if="domain.includes('admits')" class="d-flex">
+            <b-form-checkbox
+              id="search-include-admits-checkbox"
+              v-model="includeAdmits"
+              plain
+            >
+            </b-form-checkbox>
+            <label
+              for="search-include-admits-checkbox"
+              class="search-form-label"
+            >
+              <span class="sr-only">Search for</span>
+              Admitted Students
+            </label>
+          </div>
+          <div class="d-flex">
+            <b-form-checkbox
+              id="search-include-students-checkbox"
+              v-model="includeStudents"
+              plain
+            >
+            </b-form-checkbox>
+            <label
+              for="search-include-students-checkbox"
+              class="search-form-label"
+            >
+              <span class="sr-only">Search for</span>
+              Students
+            </label>
+          </div>
+          <div v-if="domain.includes('courses')" class="d-flex">
+            <b-form-checkbox
+              id="search-include-courses-checkbox"
+              v-model="includeCourses"
+              plain
+            >
+            </b-form-checkbox>
+            <label
+              for="search-include-courses-checkbox"
+              class="search-form-label"
+            >
+              <span class="sr-only">Search for</span>
+              Classes
+            </label>
+          </div>
+          <div v-if="$currentUser.canAccessAdvisingData" class="d-flex flex-wrap">
+            <b-form-checkbox
+              id="search-include-notes-checkbox"
+              v-model="includeNotes"
+              plain
+            >
+            </b-form-checkbox>
+            <label
+              for="search-include-notes-checkbox"
+              class="search-form-label"
+            >
+              <span class="sr-only">Search for</span>
+              Notes &amp; Appointments
+            </label>
+            <transition name="drawer">
+              <div v-if="includeNotes">
+                <b-btn
+                  id="search-options-note-filters-toggle"
+                  aria-controls="search-options-note-filters-subpanel"
+                  :aria-expanded="showNoteFilters"
+                  class="pl-0 pt-0 search-options-panel-toggle text-nowrap"
+                  variant="link"
+                  @click="toggleNoteFilters"
+                >
+                  ({{ showNoteFilters ? 'hide' : 'show' }} <span class="sr-only">note and appointment </span>search filters)
+                </b-btn>
+              </div>
+            </transition>
+          </div>
+          <b-collapse
+            v-if="$currentUser.canAccessAdvisingData"
+            id="search-options-note-filters-subpanel"
+            v-model="showNoteFilters"
+            class="ml-1 text-white"
+          >
             <b-form-group label="Topic" label-for="search-option-note-filters-topic">
               <b-form-select
                 id="search-option-note-filters-topic"
                 v-model="noteFilters.topic"
-                :options="topicOptions">
+                :options="topicOptions"
+              >
                 <template v-slot:first>
                   <option :value="null">Any topic</option>
                 </template>
@@ -124,7 +128,8 @@
                 :ischecked="noteFilters.postedBy === 'anyone'"
                 name="note-filters-posted-by"
                 value="anyone"
-                @change.native="clearAuthorFilter">
+                @change.native="clearAuthorFilter"
+              >
                 Anyone
               </b-form-radio>
               <b-form-radio
@@ -133,136 +138,200 @@
                 :ischecked="noteFilters.postedBy === 'you'"
                 name="note-filters-posted-by"
                 value="you"
-                @change.native="clearAuthorFilter">
+                @change.native="clearAuthorFilter"
+              >
                 You
               </b-form-radio>
             </b-form-group>
             <b-form-group label="Advisor" label-for="search-options-note-filters-author-input">
+              <span id="notes-search-author-input-label" class="sr-only">Select note author from list of suggested advisors.</span>
               <Autocomplete
                 id="search-options-note-filters-author"
                 v-model="noteAuthor"
-                :source="findAdvisorsByName"
                 :disabled="noteFilters.postedBy === 'you'"
-                :placeholder="noteFilters.postedBy === 'you' ? $currentUser.name : 'Enter name...'">
-              </Autocomplete>
+                input-labelled-by="notes-search-author-input-label"
+                :placeholder="noteFilters.postedBy === 'you' ? $currentUser.name : 'Enter name...'"
+                :source="findAdvisorsByName"
+              />
             </b-form-group>
             <b-form-group label="Student (name or SID)" label-for="search-options-note-filters-student-input">
+              <span id="notes-search-student-input-label" class="sr-only">Select a student for notes-related search. Expect auto-suggest as you type name or SID.</span>
               <Autocomplete
                 id="search-options-note-filters-student"
                 v-model="noteFilters.student"
                 :demo-mode-blur="true"
+                input-labelled-by="notes-search-student-input-label"
+                placeholder="Enter name or SID..."
                 :source="findStudentsByNameOrSid"
-                placeholder="Enter name or SID...">
-              </Autocomplete>
+              />
             </b-form-group>
             <b-form-group label="Date Range">
               <label
+                id="note-filters-date-from-label"
                 for="search-options-note-filters-last-updated-from"
-                class="search-form-label">
+                class="search-form-label"
+              >
                 <span class="sr-only">Date</span>
                 From
               </label>
-              <v-date-picker
-                v-model="noteFilters.dateFrom"
-                popover-visibility="focus"
-                mode="single">
-                <template v-slot="{inputValue, updateValue}">
-                  <b-input-group>
-                    <b-form-input
-                      id="search-options-note-filters-last-updated-from"
-                      :value="inputValue"
-                      :formatter="dateFormat"
-                      type="text"
-                      name="note-filters-date-from"
-                      class="search-input-date"
-                      placeholder="MM/DD/YYYY"
-                      expanded
-                      lazy-formatter
-                      @change.native="updateValue($event.target.value)">
-                    </b-form-input>
-                    <b-btn
-                      v-if="noteFilters.dateFrom"
-                      id="search-options-note-filters-last-updated-from-clear"
-                      class="search-input-date"
-                      @click="noteFilters.dateFrom = null">
-                      <font-awesome icon="times"></font-awesome>
-                      <span class="sr-only">Clear date from</span>
-                    </b-btn>
-                  </b-input-group>
-                </template>
-              </v-date-picker>
+              <div class="d-flex">
+                <div class="w-100">
+                  <v-date-picker
+                    v-model="noteFilters.dateFrom"
+                    :max-date="noteFilters.dateTo || maxDate"
+                    popover-visibility="focus"
+                  >
+                    <template v-slot="{inputValue, inputEvents}">
+                      <input
+                        id="search-options-note-filters-last-updated-from"
+                        aria-labelledby="note-filters-date-from-label"
+                        class="search-input-date form-control"
+                        name="note-filters-date-from"
+                        placeholder="MM/DD/YYYY"
+                        type="text"
+                        :value="inputValue"
+                        v-on="inputEvents"
+                      />
+                    </template>
+                  </v-date-picker>
+                </div>
+                <div v-if="noteFilters.dateFrom">
+                  <b-btn
+                    id="search-options-note-filters-last-updated-from-clear"
+                    class="search-input-date"
+                    @click="noteFilters.dateFrom = null"
+                  >
+                    <font-awesome icon="times" />
+                    <span class="sr-only">Clear date from</span>
+                  </b-btn>
+                </div>
+              </div>
               <label
+                id="note-filters-date-to-label"
                 for="search-options-note-filters-last-updated-to"
-                class="search-form-label">
+                class="search-form-label"
+              >
                 <span class="sr-only">Date</span>
                 To
               </label>
-              <v-date-picker
-                v-model="noteFilters.dateTo"
-                popover-visibility="focus"
-                mode="single">
-                <template v-slot="{inputValue, updateValue}">
-                  <b-input-group>
-                    <b-form-input
-                      id="search-options-note-filters-last-updated-to"
-                      :value="inputValue"
-                      :formatter="dateFormat"
-                      type="text"
-                      name="note-filters-date-to"
-                      class="search-input-date"
-                      placeholder="MM/DD/YYYY"
-                      expanded
-                      lazy-formatter
-                      @change.native="updateValue($event.target.value)">
-                    </b-form-input>
-                    <b-btn
-                      v-if="noteFilters.dateTo"
-                      id="search-options-note-filters-last-updated-to-clear"
-                      class="search-input-date"
-                      @click="noteFilters.dateTo = null">
-                      <font-awesome icon="times"></font-awesome>
-                      <span class="sr-only">Clear date to</span>
-                    </b-btn>
-                  </b-input-group>
-                </template>
-              </v-date-picker>
+              <div class="d-flex">
+                <div class="w-100">
+                  <v-date-picker
+                    v-model="noteFilters.dateTo"
+                    :max-date="maxDate"
+                    :min-date="noteFilters.dateFrom || minDate"
+                    popover-visibility="focus"
+                  >
+                    <template v-slot="{inputValue, inputEvents}">
+                      <input
+                        id="search-options-note-filters-last-updated-to"
+                        aria-labelledby="note-filters-date-to-label"
+                        class="search-input-date form-control"
+                        name="note-filters-date-to"
+                        placeholder="MM/DD/YYYY"
+                        type="text"
+                        :value="inputValue"
+                        v-on="inputEvents"
+                      />
+                    </template>
+                  </v-date-picker>
+                </div>
+                <div v-if="noteFilters.dateTo">
+                  <b-btn
+                    id="search-options-note-filters-last-updated-to-clear"
+                    class="search-input-date"
+                    @click="noteFilters.dateTo = null"
+                  >
+                    <font-awesome icon="times"></font-awesome>
+                    <span class="sr-only">Clear date to</span>
+                  </b-btn>
+                </div>
+              </div>
               <b-form-invalid-feedback :state="validDateRange" class="search-panel-feedback">
                 <font-awesome icon="exclamation-triangle" class="text-warning pr-1" />
-                "To" must be later than or equal to "From."
+                <span aria-live="polite" role="alert">
+                  "To" must be later than or equal to "From."
+                </span>
               </b-form-invalid-feedback>
             </b-form-group>
-          </div>
+          </b-collapse>
         </b-collapse>
-        <b-button
-          :disabled="validDateRange === false"
-          type="submit"
-          variant="primary">
-          Search
-        </b-button>
-      </b-collapse>
+      </div>
+      <span
+        v-if="allOptionsUnchecked"
+        class="sr-only"
+        aria-live="polite"
+        role="alert"
+      >
+        At least one search option must be checked.
+      </span>
+      <span id="search-input-label" class="sr-only">
+        Search for students, courses, or notes.
+        {{ searchInputRequired ? 'Input is required.' : '' }}
+        {{ searchHistory.length ? 'Expect auto-suggest of previous searches.' : '' }}
+      </span>
+      <div class="d-flex" :class="{'pb-3': showNoteFilters}">
+        <div class="flex-grow-1">
+          <InputAutocomplete
+            id="search-students-input"
+            aria-labelledby="search-input-label"
+            :disabled="disabledSearch"
+            :get-suggestions="filterSuggestions"
+            :on-submit="search"
+            :required="searchInputRequired"
+            type="search"
+          />
+          <b-popover
+            v-if="showErrorPopover"
+            :show.sync="showErrorPopover"
+            aria-live="polite"
+            placement="top"
+            role="alert"
+            target="search-students-input"
+          >
+            <span id="popover-error-message" class="has-error"><font-awesome icon="exclamation-triangle" class="text-warning pr-1" /> Search input is required</span>
+          </b-popover>
+        </div>
+        <div>
+          <b-button
+            id="go-search"
+            class="btn-primary-color-override h-100 ml-1 mr-0"
+            :disabled="disabledSearch"
+            variant="primary"
+            @keypress="onSubmit"
+            @click.stop="onSubmit"
+          >
+            Go<span class="sr-only"> (submit search)</span>
+          </b-button>
+        </div>
+      </div>
     </form>
     <hr v-if="showSearchOptions" class="ml-2 mr-2 section-divider" />
   </div>
 </template>
 
 <script>
-import Autocomplete from '@/components/util/Autocomplete';
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { findAdvisorsByName } from '@/api/appointments';
-import { findAuthorsByName } from '@/api/notes';
-import { findStudentsByNameOrSid } from '@/api/student';
-import { getAllTopics } from '@/api/topics';
+import Autocomplete from '@/components/util/Autocomplete'
+import Context from '@/mixins/Context'
+import InputAutocomplete from '@/components/search/InputAutocomplete'
+import Scrollable from '@/mixins/Scrollable'
+import Util from '@/mixins/Util'
+import { findStudentsByNameOrSid } from '@/api/student'
+import { getAllTopics } from '@/api/topics'
+import { addToSearchHistory, findAdvisorsByName, getMySearchHistory } from '@/api/search'
 
 export default {
   name: 'SearchForm',
   components: {
-    Autocomplete
+    Autocomplete,
+    InputAutocomplete
   },
-  mixins: [Context, Util],
+  mixins: [Context, Scrollable, Util],
   props: {
-    context: String,
-    domain: Array,
+    domain: {
+      required: true,
+      type: Array
+    },
   },
   data() {
     return {
@@ -274,32 +343,40 @@ export default {
         student: null,
         topic: null,
       },
+      includeAdmits: this.domain.includes('admits'),
       includeCourses: this.domain.includes('courses'),
       includeNotes: this.domain.includes('notes'),
       includeStudents: this.domain.includes('students'),
+      findAdvisorsByName: findAdvisorsByName,
       findStudentsByNameOrSid: findStudentsByNameOrSid,
+      maxDate: new Date(),
+      minDate: new Date('01/01/1900'),
       noteFilters: null,
-      searchPhrase: null,
+      searchHistory: [],
       showNoteFilters: false,
+      showErrorPopover: false,
       showSearchOptions: false,
       topicOptions: undefined
-    };
+    }
   },
   computed: {
     allOptionsUnchecked() {
-      return this.showSearchOptions && !this.includeCourses && !this.includeNotes && !this.includeStudents;
+      return this.showSearchOptions && !this.includeAdmits && !this.includeCourses && !this.includeNotes && !this.includeStudents
+    },
+    disabledSearch() {
+      return this.validDateRange === false || (!this.includeCourses && !this.includeNotes && !this.includeStudents)
     },
     noteAuthor: {
       get: function() {
         if (this.noteFilters && this.noteFilters.postedBy === 'anyone') {
-          return this.noteFilters.author;
+          return this.noteFilters.author
         } else {
-          return null;
+          return null
         }
       },
       set: function(newValue) {
-        this.noteFilters.postedBy = 'anyone';
-        this.noteFilters.author = newValue;
+        this.noteFilters.postedBy = 'anyone'
+        this.noteFilters.author = newValue
       }
     },
     searchInputRequired() {
@@ -310,196 +387,183 @@ export default {
         this.noteFilters.postedBy !== 'anyone' ||
         this.noteFilters.student ||
         this.noteFilters.topic
-      ));
+      ))
     },
     validDateRange() {
       if (!this.noteFilters.dateFrom || !this.noteFilters.dateTo) {
-        return null;
+        return null
       } else if (this.noteFilters.dateTo < this.noteFilters.dateFrom) {
-        return false;
+        return false
       } else {
-        return null;
+        return null
       }
     }
   },
   watch: {
+    domain(value) {
+      this.includeAdmits = value.includes('admits')
+      this.includeCourses = value.includes('courses')
+      this.includeNotes = value.includes('notes')
+      this.includeStudents = value.includes('students')
+    },
+    includeAdmits(value) {
+      if (this.showSearchOptions) {
+        this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include admits.`)
+      }
+    },
     includeCourses(value) {
-      this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include courses.`);
+      this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include courses.`)
     },
     includeNotes(value) {
       if (value) {
-        this.alertScreenReader('Search will include notes and appointments.');
+        this.alertScreenReader('Search will include notes and appointments.')
       } else {
-        this.showNoteFilters = false;
-        this.alertScreenReader('Search will include neither notes nor appointments.');
+        this.showNoteFilters = false
+        this.alertScreenReader('Search will include neither notes nor appointments.')
       }
     },
     includeStudents(value) {
-      this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include students.`);
+      if (this.showSearchOptions) {
+        this.alertScreenReader(`Search ${value ? 'will' : 'will not'} include students.`)
+      }
     },
     showNoteFilters(value) {
       if (value) {
-        this.alertScreenReader('Notes and Appointments search filters opened.');
-        this.putFocusNextTick('search-option-note-filters-topic');
+        this.alertScreenReader('Notes and Appointments search filters opened.')
+        this.putFocusNextTick('search-option-note-filters-topic')
       }
       else {
-        this.resetNoteFilters();
-        this.alertScreenReader('Notes and Appointments search filters closed.');
-        this.putFocusNextTick('search-options-note-filters-toggle');
+        this.resetNoteFilters()
+        this.alertScreenReader('Notes and Appointments search filters closed.')
+        this.putFocusNextTick('search-options-note-filters-toggle')
       }
     }
   },
   created() {
-    this.resetNoteFilters();
+    this.resetNoteFilters()
+    getMySearchHistory().then(history => {
+      this.searchHistory = history
+    })
+    document.addEventListener('keydown', this.hideError)
+    document.addEventListener('click', this.hideError)
   },
   methods: {
-    dateFormat(value) {
-      const parsed = Date.parse(value);
-      if (isNaN(parsed)) {
-        return null;
-      } else {
-        return this.dateString(parsed, 'MM/DD/YYYY');
-      }
-    },
     clearAuthorFilter() {
-      this.noteFilters.author = null;
+      this.noteFilters.author = null
     },
     dateString(d, format) {
-      return this.$options.filters.moment(d, format);
+      return this.$options.filters.moment(d, format)
     },
-    findAdvisorsByName(q, limit) {
-      const queries = [findAuthorsByName(q, limit), findAdvisorsByName(q, limit)];
-      return Promise.all(queries).then((results) => {
-        return this.orderBy(this.unionBy(this.flatten(results), 'label'), 'label');
-      });
+    filterSuggestions(input) {
+      const q = this.$_.trim(input && input.toLowerCase())
+      return q.length ? this.searchHistory.filter(s => s.toLowerCase().startsWith(q)) : this.searchHistory
+    },
+    hideError() {
+      this.showErrorPopover = false
+    },
+    onSubmit() {
+      let el = document.getElementById('search-students-input')
+      this.search(el && el.value)
     },
     resetNoteFilters() {
-      this.noteFilters = this.cloneDeep(this.defaultNoteFilters);
+      this.noteFilters = this.$_.cloneDeep(this.defaultNoteFilters)
     },
-    search() {
-      this.searchPhrase = this.trim(this.searchPhrase);
-      if (this.searchPhrase || !this.searchInputRequired) {
+    search(input) {
+      const q = this.$_.trim(input)
+      if (q || !this.searchInputRequired) {
         const query = {
           notes: this.includeNotes,
           students: this.includeStudents
-        };
-        if (this.domain.includes('courses')) {
-          query.courses = this.includeCourses;
         }
-        if (this.searchPhrase) {
-          query.q = this.searchPhrase;
+        if (this.includeAdmits) {
+          query.admits = this.includeAdmits
+        }
+        if (this.includeCourses) {
+          query.courses = this.includeCourses
+        }
+        if (q) {
+          query.q = q
         }
         if (this.includeNotes) {
           if (this.noteFilters.postedBy === 'you') {
-            query.advisorCsid = this.$currentUser.csid;
+            query.advisorCsid = this.$currentUser.csid
           } else if (this.noteFilters.author) {
-            query.advisorCsid = this.noteFilters.author.sid;
-            query.advisorUid = this.noteFilters.author.uid;
+            query.advisorCsid = this.noteFilters.author.sid
+            query.advisorUid = this.noteFilters.author.uid
           }
           if (this.noteFilters.student) {
-            query.studentCsid = this.noteFilters.student.sid;
+            query.studentCsid = this.noteFilters.student.sid
           }
           if (this.noteFilters.topic) {
-            query.noteTopic = this.noteFilters.topic;
+            query.noteTopic = this.noteFilters.topic
           }
           if (this.noteFilters.dateFrom) {
-            query.noteDateFrom = this.dateString(this.noteFilters.dateFrom, 'YYYY-MM-DD');
+            query.noteDateFrom = this.dateString(this.noteFilters.dateFrom, 'YYYY-MM-DD')
           }
           if (this.noteFilters.dateTo) {
-            query.noteDateTo = this.dateString(this.noteFilters.dateTo, 'YYYY-MM-DD');
+            query.noteDateTo = this.dateString(this.noteFilters.dateTo, 'YYYY-MM-DD')
           }
         }
         this.$router.push(
           {
-            path: `/search`,
+            path: '/search',
             query: query
           },
-          this.noop
-        );
-        this.$ga.searchEvent(`Search with courses: ${this.includeCourses}; notes: ${this.includeNotes}; students: ${this.includeStudents}`);
+          this.$_.noop
+        )
+        if (q) {
+          addToSearchHistory(q).then(history => {
+            this.searchHistory = history
+          })
+        }
       } else {
-        this.alertScreenReader('Search input is required');
+        this.showErrorPopover = true
+        this.alertScreenReader('Search input is required')
+        this.putFocusNextTick('search-students-input')
       }
+      this.scrollToTop()
     },
     toggleNoteFilters() {
-      this.showNoteFilters = !this.showNoteFilters;
+      this.showNoteFilters = !this.showNoteFilters
       if (!this.topicOptions) {
-        this.topicOptions = [];
-        getAllTopics(true).then(topics => {
-          this.each(topics, topic => {
+        this.topicOptions = []
+        getAllTopics(true).then(rows => {
+          this.$_.each(rows, row => {
+            const topic = row['topic']
             this.topicOptions.push({
               text: topic,
               value: topic
             })
-          });
-        });
+          })
+        })
       }
     },
     toggleSearchOptions() {
-      this.showSearchOptions = !this.showSearchOptions;
+      this.showSearchOptions = !this.showSearchOptions
       if (this.showSearchOptions) {
-        this.alertScreenReader('Search options opened');
-        this.putFocusNextTick('search-include-students-checkbox');
+        this.alertScreenReader('Search options opened')
+        this.putFocusNextTick('search-options-header')
       } else {
-        this.resetNoteFilters();
-        this.alertScreenReader('Search options closed');
-        this.putFocusNextTick('search-students-input');
+        this.resetNoteFilters()
+        this.alertScreenReader('Search options closed')
+        this.putFocusNextTick('search-students-input')
       }
     }
   }
-};
+}
 </script>
 
 <style scoped>
-.btn-search-students {
-  height: 46px;
-}
-.input-disabled {
-  background: #ddd;
-}
-.search-form {
-  margin: 10px 10px 15px 15px;
-}
-.search-label {
-  align-items: baseline;
-  font-size: 14px;
-}
 .search-options-panel-toggle {
   color: #8bbdda;
   font-size: 12px;
-}
-.search-options-panel-toggle-subpanel {
-  margin-bottom: .5rem;
-  padding: 0 0 0 5px;
 }
 .search-form-label {
   font-weight: 400;
   margin-bottom: 5px;
 }
-.search-input {
-  box-sizing: border-box;
-  border: 2px solid #ccc;
-  border-radius: 4px;
-  color: #333;
-  height: 45px;
-}
 .search-input-date {
   margin-bottom: 10px;
-}
-.search-options-note-filters-subpanel {
-  margin-left: 20px;
-}
-.search-page-body {
-  align-items: center;
-  display: flex;
-  flex-flow: row wrap;
-  margin-top: 10px;
-}
-.search-page-body div {
-  align-self: flex-end;
-}
-.search-page-body div:first-child {
-  padding-right: 15px;
 }
 .search-panel-feedback {
   color: #fff;

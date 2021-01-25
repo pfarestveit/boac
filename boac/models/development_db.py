@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -28,20 +28,21 @@ import random
 import string
 
 from boac import db, std_commit
+from boac.api.appointments_controller import _advisor_attrs_for_uid
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.lib.util import utc_now
 from boac.models.appointment import Appointment
 from boac.models.authorized_user import AuthorizedUser
+from boac.models.authorized_user_extension import DropInAdvisor
 from boac.models.cohort_filter import CohortFilter
 from boac.models.curated_group import CuratedGroup
-from boac.models.drop_in_advisor import DropInAdvisor
 from boac.models.json_cache import insert_row as insert_in_json_cache
 from boac.models.topic import Topic
 from boac.models.university_dept import UniversityDept
 from boac.models.university_dept_member import UniversityDeptMember
 # Models below are included so that db.create_all will find them.
 from boac.models.alert import Alert # noqa
-from boac.models.db_relationships import AlertView, cohort_filter_owners  # noqa
+from boac.models.db_relationships import AlertView  # noqa
 from boac.models.job_progress import JobProgress # noqa
 from boac.models.json_cache import JsonCache # noqa
 from flask import current_app as app
@@ -59,6 +60,7 @@ _test_users = [
         'csid': None,
         'isAdmin': True,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -66,6 +68,7 @@ _test_users = [
         'csid': '111111111',
         'isAdmin': False,
         'inDemoMode': True,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': False,
     },
     {
@@ -73,6 +76,7 @@ _test_users = [
         'csid': '222222222',
         'isAdmin': False,
         'inDemoMode': True,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': False,
     },
     {
@@ -81,6 +85,7 @@ _test_users = [
         'csid': '333333333',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': False,
         'canAccessCanvasData': False,
     },
     {
@@ -89,6 +94,7 @@ _test_users = [
         'csid': '444444444',
         'isAdmin': True,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': False,
     },
     {
@@ -96,6 +102,7 @@ _test_users = [
         'csid': None,
         'isAdmin': True,
         'inDemoMode': True,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -103,13 +110,17 @@ _test_users = [
         'csid': '53791',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
+        'firstName': 'Milicent',
+        'lastName': 'Balthazar',
     },
     {
         'uid': '19735',
         'csid': None,
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -117,6 +128,7 @@ _test_users = [
         'csid': None,
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -124,6 +136,7 @@ _test_users = [
         'csid': None,
         'isAdmin': True,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -131,6 +144,7 @@ _test_users = [
         'csid': None,
         'isAdmin': True,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -138,6 +152,7 @@ _test_users = [
         'csid': 'None',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -145,13 +160,17 @@ _test_users = [
         'csid': '800700600',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
+        'firstName': 'Joni',
+        'lastName': 'Mitchell',
     },
     {
         'uid': '211159',
         'csid': None,
-        'isAdmin': True,
+        'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -159,6 +178,7 @@ _test_users = [
         'csid': '100100600',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
         'title': 'Harmless Drudge',
         'calnetDeptCodes': ['HENGL'],
@@ -168,6 +188,7 @@ _test_users = [
         'csid': '100100300',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': False,
         'canAccessCanvasData': True,
     },
     {
@@ -175,6 +196,7 @@ _test_users = [
         'csid': '100400900',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': False,
     },
     {
@@ -182,6 +204,7 @@ _test_users = [
         'csid': None,
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
         'deleted': True,
     },
@@ -190,6 +213,7 @@ _test_users = [
         'csid': None,
         'isAdmin': True,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -197,13 +221,18 @@ _test_users = [
         'csid': '100200300',
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
+        'searchHistory': ['Moe', 'Larry', 'Curly'],
     },
     {
         'uid': '90412',
         'csid': '100100100',
-        'isAdmin': True,
+        'firstName': 'COE Add',
+        'lastName': 'Visor',
+        'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -211,6 +240,7 @@ _test_users = [
         'csid': None,
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
     },
     {
@@ -218,6 +248,7 @@ _test_users = [
         'csid': None,
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
         'deleted': True,
     },
@@ -226,8 +257,27 @@ _test_users = [
         'csid': None,
         'isAdmin': False,
         'inDemoMode': False,
+        'canAccessAdvisingData': True,
         'canAccessCanvasData': True,
         'deleted': True,
+    },
+    {
+        'uid': '2525',
+        'csid': None,
+        'isAdmin': False,
+        'inDemoMode': False,
+        'canAccessAdvisingData': True,
+        'canAccessCanvasData': True,
+        'deleted': False,
+    },
+    {
+        'uid': '3535',
+        'csid': None,
+        'isAdmin': False,
+        'inDemoMode': False,
+        'canAccessAdvisingData': True,
+        'canAccessCanvasData': False,
+        'deleted': False,
     },
 ]
 
@@ -236,47 +286,38 @@ _university_depts = {
         'users': [
             {
                 'uid': '1022796',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': True,
             },
             {
                 'uid': '6972201',
-                'isAdvisor': False,
-                'isDirector': False,
+                'role': 'scheduler',
                 'isDropInAdvisor': False,
-                'isScheduler': True,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
             },
             {
                 'uid': '90412',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': True,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': True,
             },
             {
                 'uid': '1133399',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': True,
-                'isScheduler': False,
-                'isSupervisorOnCall': True,
+                'automate_membership': True,
+            },
+            {
+                'uid': '211159',
+                'role': 'advisor',
+                'isDropInAdvisor': False,
                 'automate_membership': True,
             },
             {
                 'uid': '13',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': True,
             },
         ],
@@ -285,51 +326,48 @@ _university_depts = {
         'users': [
             {
                 'uid': '53791',
-                'isAdvisor': False,
-                'isDirector': True,
+                'role': 'director',
                 'isDropInAdvisor': True,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
             },
             {
                 'uid': '188242',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
             },
             {
                 'uid': '19735',
-                'isAdvisor': False,
-                'isDirector': False,
+                'role': 'scheduler',
                 'isDropInAdvisor': False,
-                'isScheduler': True,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
+            },
+            {
+                'uid': '1022796',
+                'role': 'director',
+                'isDropInAdvisor': False,
+                'automate_membership': True,
             },
         ],
     },
     'QCADVMAJ': {
         'users': [
             {
+                'uid': '53791',
+                'role': 'director',
+                'isDropInAdvisor': True,
+                'automate_membership': False,
+            },
+            {
                 'uid': '242881',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': True,
             },
             {
                 'uid': '1133397',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': True,
             },
         ],
@@ -338,29 +376,36 @@ _university_depts = {
         'users': [
             {
                 'uid': '1081940',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': True,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
             },
             {
                 'uid': '90412',
-                'isAdvisor': False,
-                'isDirector': True,
+                'role': 'director',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
             },
             {
                 'uid': '6446',
-                'isAdvisor': True,
-                'isDirector': True,
+                'role': 'director',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
+                'automate_membership': False,
+            },
+        ],
+    },
+    'ZCEEE': {
+        'users': [
+            {
+                'uid': '2525',
+                'role': 'advisor',
+                'isDropInAdvisor': False,
+                'automate_membership': False,
+            },
+            {
+                'uid': '3535',
+                'role': 'scheduler',
+                'isDropInAdvisor': False,
                 'automate_membership': False,
             },
         ],
@@ -369,11 +414,8 @@ _university_depts = {
         'users': [
             {
                 'uid': '1',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': True,
             },
         ],
@@ -382,11 +424,8 @@ _university_depts = {
         'users': [
             {
                 'uid': '2',
-                'isAdvisor': True,
-                'isDirector': False,
+                'role': 'advisor',
                 'isDropInAdvisor': False,
-                'isScheduler': False,
-                'isSupervisorOnCall': False,
                 'automate_membership': False,
             },
         ],
@@ -395,16 +434,16 @@ _university_depts = {
 
 
 def clear():
-    with open(app.config['BASE_DIR'] + '/scripts/db/drop_schema.sql', 'r') as ddlfile:
+    with open(f"{app.config['BASE_DIR']}/scripts/db/drop_schema.sql", 'r') as ddlfile:
         ddltext = ddlfile.read()
     db.session().execute(text(ddltext))
     std_commit()
 
 
-def load(cohort_test_data=False):
+def load(load_test_data=False):
     _load_schemas()
     _load_users_and_departments()
-    if cohort_test_data:
+    if load_test_data:
         _create_topics()
         _create_appointments()
         _create_curated_groups()
@@ -414,7 +453,7 @@ def load(cohort_test_data=False):
 
 def _load_schemas():
     """Create DB schema from SQL file."""
-    with open(app.config['BASE_DIR'] + '/scripts/db/schema.sql', 'r') as ddlfile:
+    with open(f"{app.config['BASE_DIR']}/scripts/db/schema.sql", 'r') as ddlfile:
         ddltext = ddlfile.read()
     db.session().execute(text(ddltext))
     std_commit()
@@ -431,16 +470,16 @@ def _create_users():
     for test_user in _test_users:
         # This script can be run more than once. Do not create user if s/he exists in BOAC db.
         uid = test_user['uid']
-        csid = test_user['csid']
-        user = AuthorizedUser.find_by_uid(uid=uid)
+        # Mock CSIDs and names are random unless we need them to correspond to test data elsewhere.
+        csid = test_user['csid'] or datetime.now().strftime('%H%M%S%f')
+        first_name = test_user.get('firstName', ''.join(random.choices(string.ascii_uppercase, k=6)))
+        last_name = test_user.get('lastName', ''.join(random.choices(string.ascii_uppercase, k=6)))
+
+        # Put mock CalNet data in our json_cache for all users EXCEPT the test "no_calnet_record" user.
         if uid != no_calnet_record_for_uid:
-            # Put mock CalNet data in our json_cache for all users EXCEPT the test "no_calnet_record" user.
-            first_name = ''.join(random.choices(string.ascii_uppercase, k=6))
-            last_name = ''.join(random.choices(string.ascii_uppercase, k=6))
             calnet_feed = {
                 'uid': uid,
-                # Mock CSIDs are random unless we need them to correspond to test data elsewhere.
-                'csid': csid or datetime.now().strftime('%H%M%S%f'),
+                'csid': csid,
                 'firstName': first_name,
                 'lastName': last_name,
                 'name': f'{first_name} {last_name}',
@@ -455,13 +494,18 @@ def _create_users():
             if 'title' in test_user:
                 calnet_feed['title'] = test_user['title']
             insert_in_json_cache(f'calnet_user_for_uid_{uid}', calnet_feed)
+
+        # Add user to authorized_users table if not already present.
+        user = AuthorizedUser.find_by_uid(uid=uid)
         if not user:
             user = AuthorizedUser(
                 uid=uid,
                 created_by='2040',
                 is_admin=test_user['isAdmin'],
                 in_demo_mode=test_user['inDemoMode'],
+                can_access_advising_data=test_user['canAccessAdvisingData'],
                 can_access_canvas_data=test_user['canAccessCanvasData'],
+                search_history=test_user.get('searchHistory', []),
             )
             if test_user.get('deleted'):
                 user.deleted_at = utc_now()
@@ -482,17 +526,14 @@ def _create_department_memberships():
             UniversityDeptMember.create_or_update_membership(
                 university_dept_id=university_dept.id,
                 authorized_user_id=authorized_user.id,
-                is_advisor=user['isAdvisor'],
-                is_director=user['isDirector'],
-                is_scheduler=user['isScheduler'],
+                role=user['role'],
                 automate_membership=user['automate_membership'],
             )
             if user['isDropInAdvisor']:
-                DropInAdvisor.create_or_update_status(
-                    university_dept=university_dept,
+                DropInAdvisor.create_or_update_membership(
+                    dept_code=dept_code,
                     authorized_user_id=authorized_user.id,
                     is_available=True,
-                    is_supervisor_on_call=user['isSupervisorOnCall'],
                 )
 
 
@@ -526,8 +567,8 @@ def _create_checked_in_appointments():
     coe_scheduler_user_id = AuthorizedUser.get_id_per_uid('6972201')
     coe_advisor_uid = '90412'
     coe_advisor_user_id = AuthorizedUser.get_id_per_uid(coe_advisor_uid)
-    l_s_advisor_uid = '53791'
-    l_s_advisor_user_id = AuthorizedUser.get_id_per_uid(l_s_advisor_uid)
+    l_s_director_uid = '53791'
+    l_s_director_user_id = AuthorizedUser.get_id_per_uid(l_s_director_uid)
 
     check_me_in = Appointment.create(
         appointment_type='Drop-in',
@@ -539,10 +580,7 @@ def _create_checked_in_appointments():
     )
     Appointment.check_in(
         appointment_id=check_me_in.id,
-        advisor_dept_codes=['COENG'],
-        advisor_name='Johnny C. Lately',
-        advisor_role='Advisor',
-        advisor_uid=coe_advisor_uid,
+        advisor_attrs=_advisor_attrs_for_uid(coe_advisor_uid),
         checked_in_by=coe_advisor_user_id,
     )
     check_me_in = Appointment.create(
@@ -555,32 +593,26 @@ def _create_checked_in_appointments():
     )
     Appointment.check_in(
         appointment_id=check_me_in.id,
-        advisor_dept_codes=['COENG'],
-        advisor_name='Johnny C. Lately',
-        advisor_role='Advisor',
-        advisor_uid=coe_advisor_uid,
+        advisor_attrs=_advisor_attrs_for_uid(coe_advisor_uid),
         checked_in_by=coe_advisor_user_id,
     )
     check_me_in = Appointment.create(
         appointment_type='Drop-in',
         created_by=coe_scheduler_user_id,
         dept_code='COENG',
-        details='We will check in this student.',
-        student_sid='9012345678',
+        details='We will check in this inactive student.',
+        student_sid='3141592653',
         topics=['Please check me in.'],
     )
     Appointment.check_in(
         appointment_id=check_me_in.id,
         checked_in_by=coe_advisor_user_id,
-        advisor_uid=coe_advisor_uid,
-        advisor_name='Johnny C. Lately',
-        advisor_role='Advisor',
-        advisor_dept_codes=['COENG'],
+        advisor_attrs=_advisor_attrs_for_uid(coe_advisor_uid),
     )
     # L&S College Advising
     check_me_in = Appointment.create(
         appointment_type='Drop-in',
-        created_by=l_s_advisor_user_id,
+        created_by=l_s_director_user_id,
         dept_code='QCADV',
         details='It is not the length of life, but depth of life.',
         student_sid='11667051',
@@ -588,31 +620,28 @@ def _create_checked_in_appointments():
     )
     Appointment.check_in(
         appointment_id=check_me_in.id,
-        advisor_dept_codes=['QCADV'],
-        advisor_name='Max Headroom',
-        advisor_role='Advisor',
-        advisor_uid=l_s_advisor_uid,
-        checked_in_by=l_s_advisor_user_id,
+        advisor_attrs=_advisor_attrs_for_uid(l_s_director_uid),
+        checked_in_by=l_s_director_user_id,
     )
 
 
 def _create_reserved_appointments():
-    coe_advisor_user_id = AuthorizedUser.get_id_per_uid('90412')
+    coe_advisor_attrs = _advisor_attrs_for_uid('90412')
     reserve_me = Appointment.create(
         appointment_type='Drop-in',
-        created_by=coe_advisor_user_id,
+        created_by=coe_advisor_attrs['id'],
         dept_code='COENG',
         details='I will reserve this appointment.',
         student_sid='7890123456',
         topics=['Whoops'],
     )
-    Appointment.reserve(appointment_id=reserve_me.id, reserved_by=coe_advisor_user_id)
+    Appointment.reserve(appointment_id=reserve_me.id, reserved_by=coe_advisor_attrs['id'], advisor_attrs=coe_advisor_attrs)
 
 
 def _create_waiting_appointments():
     coe_advisor_user_id = AuthorizedUser.get_id_per_uid('90412')
     coe_scheduler_user_id = AuthorizedUser.get_id_per_uid('6972201')
-    l_s_advisor_user_id = AuthorizedUser.get_id_per_uid('53791')
+    l_s_director_user_id = AuthorizedUser.get_id_per_uid('53791')
     Appointment.create(
         appointment_type='Drop-in',
         created_by=coe_scheduler_user_id,
@@ -632,7 +661,7 @@ def _create_waiting_appointments():
     # L&S College Advising
     Appointment.create(
         appointment_type='Drop-in',
-        created_by=l_s_advisor_user_id,
+        created_by=l_s_director_user_id,
         dept_code='QCADV',
         details='C-c-catch the wave!',
         student_sid='5678901234',
@@ -640,7 +669,7 @@ def _create_waiting_appointments():
     )
     Appointment.create(
         appointment_type='Drop-in',
-        created_by=l_s_advisor_user_id,
+        created_by=l_s_director_user_id,
         dept_code='QCADV',
         details='You be you.',
         student_sid='11667051',
@@ -767,11 +796,29 @@ def _create_cohorts():
         },
     )
     CohortFilter.create(
-        uid='1133399',
+        uid=coe_advisor_uid,
         name='Radioactive Women and Men',
         filter_criteria={
             'majors': ['Nuclear Engineering BS'],
         },
+    )
+    # The CE3 advisor will create a standard cohort and a cohort with domain='admitted_students'
+    ce3_advisor_uid = '2525'
+    CohortFilter.create(
+        uid=ce3_advisor_uid,
+        name='Undeclared students',
+        filter_criteria={
+            'majors': ['Undeclared'],
+            'isInactiveAsc': False,
+        },
+    )
+    CohortFilter.create(
+        uid=ce3_advisor_uid,
+        name='First Generation Students',
+        filter_criteria={
+            'isFirstGenerationCollege': True,
+        },
+        domain='admitted_students',
     )
     std_commit(allow_test_environment=True)
 

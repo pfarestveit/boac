@@ -1,0 +1,65 @@
+{
+    "canvasUserId": "10000000",
+    "canvasUserName": "John David Crossman",
+    "firstName": "John David",
+    "lastName": "Crossman",
+    "name": "John David Crossman",
+    "sid": "8901234567",
+    "sisProfile": {
+        "academicCareer": "UGRD",
+        "academicCareerStatus": "Active",
+        "cumulativeGPA": 1.85,
+        "cumulativeUnits": 12,
+        "degreeProgress": {
+            "reportDate": "2017-03-03",
+            "requirements": {
+                "americanCultures": {
+                    "name": "American Cultures",
+                    "status": "In Progress"
+                },
+                "americanHistory": {
+                    "name": "American History",
+                    "status": "Not Satisfied"
+                },
+                "americanInstitutions": {
+                    "name": "American Institutions",
+                    "status": "Not Satisfied"
+                },
+                "entryLevelWriting": {
+                    "name": "Entry Level Writing",
+                    "status": "Satisfied"
+                }
+            }
+        },
+        "emailAddress": "mrwonderful@berkeley.edu",
+        "expectedGraduationTerm": {
+            "id": "1978",
+            "name": "Fall 1997"
+        },
+        "intendedMajors": [
+            {
+                "code": "25246U",
+                "description": "Mathematics",
+                "degreeProgramUrl": "http://guide.berkeley.edu/undergraduate/degree-programs/economics/"
+            }
+        ],
+        "level": {
+            "code": "10",
+            "description": "Freshman"
+        },
+        "matriculation": "Fall 1993",
+        "phoneNumber": "415/123-4567",
+        "plans": [
+            {
+                "description": "Economics BA",
+                "program": "Undergrad Letters & Science",
+                "status": "Active"
+            }
+        ],
+        "preferredName": "John David Crossman",
+        "primaryName": "John David Crossman",
+        "termsInAttendance": 2,
+        "transfer": false
+    },
+    "uid": "123456"
+}

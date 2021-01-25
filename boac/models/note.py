@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -24,15 +24,15 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 import json
-import time
 
 from boac import db, std_commit
-from boac.lib.util import put_attachment_to_s3, titleize, utc_now, vacuum_whitespace
+from boac.lib.background import bg_execute
+from boac.lib.util import get_benchmarker, put_attachment_to_s3, utc_now
+from boac.models.authorized_user import AuthorizedUser
 from boac.models.base import Base
 from boac.models.note_attachment import NoteAttachment
 from boac.models.note_template_attachment import NoteTemplateAttachment
 from boac.models.note_topic import NoteTopic
-from flask import current_app as app
 from sqlalchemy import and_
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import text
@@ -90,32 +90,24 @@ class Note(Base):
             attachments=(),
             template_attachment_ids=(),
     ):
-        note = cls(author_uid, author_name, author_role, author_dept_codes, sid, subject, body)
-        for topic in topics:
-            note.topics.append(
-                NoteTopic.create(note, titleize(vacuum_whitespace(topic)), author_uid),
-            )
-        for byte_stream_bundle in attachments:
-            note.attachments.append(
-                NoteAttachment.create(
-                    note_id=note.id,
-                    name=byte_stream_bundle['name'],
-                    byte_stream=byte_stream_bundle['byte_stream'],
-                    uploaded_by=author_uid,
-                ),
-            )
-        for template_attachment in NoteTemplateAttachment.get_attachments(template_attachment_ids):
-            note.attachments.append(
-                NoteAttachment.create_using_template_attachment(
-                    note_id=note.id,
-                    template_attachment=template_attachment,
-                    uploaded_by=author_uid,
-                ),
-            )
-        db.session.add(note)
-        std_commit()
-        cls.refresh_search_index()
-        return note
+        ids_by_sid = cls.create_batch(
+            author_id=AuthorizedUser.get_id_per_uid(author_uid),
+            author_uid=author_uid,
+            author_name=author_name,
+            author_role=author_role,
+            author_dept_codes=author_dept_codes,
+            sids=[sid],
+            subject=subject,
+            body=body,
+            topics=topics,
+            attachments=attachments,
+            template_attachment_ids=template_attachment_ids,
+        )
+
+        def _get_note_id():
+            values = list(ids_by_sid.values())
+            return values[0] if len(values) > 0 else None
+        return cls.find_by_id(_get_note_id())
 
     @classmethod
     def create_batch(
@@ -132,8 +124,9 @@ class Note(Base):
             attachments=(),
             template_attachment_ids=(),
     ):
-        t = time.time()
-        note_ids_per_sid = _create_notes(
+        sid_count = len(sids)
+        benchmark = get_benchmarker('begin note creation' if sid_count == 1 else f'begin creation of {sid_count} notes')
+        ids_by_sid = _create_notes(
             author_id=author_id,
             author_uid=author_uid,
             author_name=author_name,
@@ -143,17 +136,20 @@ class Note(Base):
             sids=sids,
             subject=subject,
         )
-        note_ids = list(note_ids_per_sid.values())
+        note_ids = list(ids_by_sid.values())
+        benchmark('begin add 1 topic' if len(topics) == 1 else f'begin add {len(topics)} topics')
         _add_topics_to_notes(author_uid=author_uid, note_ids=note_ids, topics=topics)
+        benchmark('begin add 1 attachment' if len(attachments) == 1 else f'begin add {len(attachments)} attachments')
         _add_attachments_to_notes(
             attachments=attachments,
             template_attachment_ids=template_attachment_ids,
             author_uid=author_uid,
             note_ids=note_ids,
         )
+        benchmark('begin refresh search index')
         cls.refresh_search_index()
-        app.logger.info(f'Batch note creation: {len(sids)} records inserted in {str(time.time() - t)} seconds')
-        return note_ids_per_sid
+        benchmark('end note creation' if sid_count == 1 else f'end creation of {sid_count} notes')
+        return ids_by_sid
 
     @classmethod
     def search(cls, search_phrase, author_uid, student_csid, topic, datetime_from, datetime_to):
@@ -209,8 +205,11 @@ class Note(Base):
 
     @classmethod
     def refresh_search_index(cls):
-        db.session.execute(text('REFRESH MATERIALIZED VIEW notes_fts_index'))
-        std_commit()
+        def _refresh_search_index(db_session):
+            db_session.execute(text('REFRESH MATERIALIZED VIEW notes_fts_index'))
+            db_session.execute(text('REFRESH MATERIALIZED VIEW advisor_author_index'))
+            std_commit(session=db_session)
+        bg_execute(_refresh_search_index)
 
     @classmethod
     def update(cls, note_id, subject, body=None, topics=()):
@@ -250,7 +249,7 @@ class Note(Base):
     def _update_note_topics(cls, note, topics):
         modified = False
         now = utc_now()
-        topics = set([titleize(vacuum_whitespace(topic)) for topic in topics])
+        topics = set(topics)
         existing_topics = set(note_topic.topic for note_topic in NoteTopic.find_by_note_id(note.id))
         topics_to_delete = existing_topics - topics
         topics_to_add = topics - existing_topics
@@ -309,8 +308,7 @@ class Note(Base):
             cls.refresh_search_index()
 
     def to_api_json(self):
-        attachments = [a.to_api_json() for a in self.attachments if not a.deleted_at]
-        topics = [t.to_api_json() for t in self.topics if not t.deleted_at]
+        attachments = self.attachments_to_api_json()
         return {
             'id': self.id,
             'attachments': attachments,
@@ -321,14 +319,17 @@ class Note(Base):
             'sid': self.sid,
             'subject': self.subject,
             'body': self.body,
-            'topics': topics,
+            'topics': [topic.topic for topic in self.topics],
             'createdAt': self.created_at,
             'updatedAt': self.updated_at,
         }
 
+    def attachments_to_api_json(self):
+        return [a.to_api_json() for a in self.attachments if not a.deleted_at]
+
 
 def _create_notes(author_id, author_uid, author_name, author_role, author_dept_codes, body, sids, subject):
-    note_ids_per_sid = {}
+    ids_by_sid = {}
     now = utc_now().strftime('%Y-%m-%dT%H:%M:%S+00')
     # The syntax of the following is what Postgres expects in json_populate_recordset(...)
     joined_author_dept_codes = '{' + ','.join(author_dept_codes) + '}'
@@ -372,12 +373,12 @@ def _create_notes(author_id, author_uid, author_name, author_role, author_dept_c
             } for note_id in results_of_chunk_query.values()
         ]
         db.session.execute(notes_read_query, {'json_dumps': json.dumps(notes_read_data)})
-        note_ids_per_sid.update(results_of_chunk_query)
-    return note_ids_per_sid
+        ids_by_sid.update(results_of_chunk_query)
+    return ids_by_sid
 
 
 def _add_topics_to_notes(author_uid, note_ids, topics):
-    for prepared_topic in [titleize(vacuum_whitespace(topic)) for topic in topics]:
+    for topic in topics:
         count_per_chunk = 10000
         for chunk in range(0, len(note_ids), count_per_chunk):
             query = """
@@ -390,7 +391,7 @@ def _add_topics_to_notes(author_uid, note_ids, topics):
                 {
                     'author_uid': author_uid,
                     'note_id': note_id,
-                    'topic': prepared_topic,
+                    'topic': topic,
                 } for note_id in note_ids_subset
             ]
             db.session.execute(query, {'json_dumps': json.dumps(data)})

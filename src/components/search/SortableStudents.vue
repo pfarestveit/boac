@@ -10,35 +10,43 @@
       :sort-compare="sortCompare"
       :sort-desc.sync="sortDescending"
       stacked="md"
-      thead-class="sortable-table-header text-nowrap">
+      thead-class="sortable-table-header text-nowrap"
+    >
       <template v-slot:cell(curated)="row">
-        <CuratedStudentCheckbox v-if="options.includeCuratedCheckbox" :student="row.item" />
+        <StudentCheckbox v-if="options.includeCuratedCheckbox" :student="row.item" />
       </template>
 
       <template v-slot:cell(avatar)="row">
         <StudentAvatar :key="row.item.sid" :student="row.item" size="small" />
+        <div v-if="options.includeCuratedCheckbox" class="sr-only">
+          <ManageStudent :is-button-variant-link="true" :student="row.item" />
+        </div>
       </template>
 
       <template v-slot:cell(lastName)="row">
         <span class="sr-only">Student name</span>
         <router-link
           :id="`link-to-student-${row.item.uid}`"
-          :aria-label="`Go to profile page of ${row.item.name}`"
           :class="{'demo-mode-blur': $currentUser.inDemoMode}"
           :to="studentRoutePath(row.item.uid, $currentUser.inDemoMode)"
-          v-html="`${row.item.lastName}, ${row.item.firstName}`"></router-link>
+          v-html="lastNameFirst(row.item)"
+        ></router-link>
         <span
           v-if="row.item.academicCareerStatus === 'Inactive' || displayAsAscInactive(row.item) || displayAsCoeInactive(row.item)"
           class="inactive-info-icon sortable-students-icon"
           uib-tooltip="Inactive"
-          tooltip-placement="bottom">
+          aria-label="Inactive"
+          tooltip-placement="bottom"
+        >
           <font-awesome icon="info-circle" />
         </span>
         <span
           v-if="row.item.academicCareerStatus === 'Completed'"
           class="sortable-students-icon"
           uib-tooltip="Graduated"
-          tooltip-placement="bottom">
+          aria-label="Graduated"
+          tooltip-placement="bottom"
+        >
           <font-awesome icon="graduation-cap" />
         </span>
       </template>
@@ -53,7 +61,8 @@
         <div v-if="!row.item.majors || row.item.majors.length === 0">--<span class="sr-only">No data</span></div>
         <div
           v-for="major in row.item.majors"
-          :key="major">
+          :key="major"
+        >
           {{ major }}
         </div>
       </template>
@@ -66,19 +75,19 @@
 
       <template v-if="!options.compact" v-slot:cell(term.enrolledUnits)="row">
         <span class="sr-only">Term units</span>
-        <div>{{ get(row.item.term, 'enrolledUnits', 0) }}</div>
+        <div>{{ $_.get(row.item.term, 'enrolledUnits', 0) }}</div>
       </template>
 
       <template v-if="!options.compact" v-slot:cell(cumulativeUnits)="row">
         <span class="sr-only">Units completed</span>
         <div v-if="!row.item.cumulativeUnits">--<span class="sr-only">No data</span></div>
-        <div v-if="row.item.cumulativeUnits">{{ row.item.cumulativeUnits | numFormat('0.00') }}</div>
+        <div v-if="row.item.cumulativeUnits">{{ numFormat(row.item.cumulativeUnits, '0.00') }}</div>
       </template>
 
       <template v-if="!options.compact" v-slot:cell(cumulativeGPA)="row">
         <span class="sr-only">GPA</span>
-        <div v-if="isNil(row.item.cumulativeGPA)">--<span class="sr-only">No data</span></div>
-        <div v-if="!isNil(row.item.cumulativeGPA)">{{ row.item.cumulativeGPA | round(3) }}</div>
+        <div v-if="$_.isNil(row.item.cumulativeGPA)">--<span class="sr-only">No data</span></div>
+        <div v-if="!$_.isNil(row.item.cumulativeGPA)">{{ round(row.item.cumulativeGPA, 3) }}</div>
       </template>
 
       <template v-slot:cell(alertCount)="row">
@@ -88,14 +97,14 @@
             v-if="!row.item.alertCount"
             :aria-label="`No alerts for ${row.item.name}`"
             class="bg-white border pl-3 pr-3 rounded-pill text-muted"
-            tabindex="0">
+          >
             0
           </div>
           <div
             v-if="row.item.alertCount"
             :aria-label="`${row.item.alertCount} alerts for ${row.item.name}`"
             class="bg-white border border-warning font-weight-bolder pill-alerts-per-student pl-3 pr-3 rounded-pill"
-            tabindex="0">
+          >
             {{ row.item.alertCount }}
           </div>
         </div>
@@ -105,17 +114,19 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import CuratedStudentCheckbox from '@/components/curated/CuratedStudentCheckbox';
-import StudentAvatar from '@/components/student/StudentAvatar';
-import StudentMetadata from '@/mixins/StudentMetadata';
-import Util from '@/mixins/Util';
+import Context from '@/mixins/Context'
+import ManageStudent from '@/components/curated/dropdown/ManageStudent'
+import StudentAvatar from '@/components/student/StudentAvatar'
+import StudentCheckbox from '@/components/curated/dropdown/StudentCheckbox'
+import StudentMetadata from '@/mixins/StudentMetadata'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'SortableStudents',
   components: {
-    CuratedStudentCheckbox,
-    StudentAvatar
+    ManageStudent,
+    StudentAvatar,
+    StudentCheckbox
   },
   mixins: [Context, StudentMetadata, Util],
   props: {
@@ -133,80 +144,82 @@ export default {
       type: Array
     }
   },
-  data() {
-    return {
-      fields: undefined,
-      sortBy: this.options.sortBy,
-      sortDescending: this.options.reverse
-    }
-  },
+  data: () => ({
+    fields: undefined,
+    sortBy: undefined,
+    sortDescending: undefined
+  }),
   watch: {
     sortBy() {
-      this.onChangeSortBy();
+      this.onChangeSortBy()
     },
     sortDescending() {
-      this.onChangeSortBy();
+      this.onChangeSortBy()
     }
   },
   created() {
+    this.sortBy = this.options.sortBy
+    this.sortDescending = this.options.reverse
+
+    const sortable = this.students.length > 1
     this.fields = [
       {key: 'curated', label: ''},
       {key: 'avatar', label: '', class: 'pr-0'},
-      {key: 'lastName', label: 'Name', sortable: true},
-      {key: 'sid', label: 'SID', sortable: true}
-    ];
+      {key: 'lastName', label: 'Name', sortable},
+      {key: 'sid', label: 'SID', sortable}
+    ]
     if (this.options.compact) {
       this.fields = this.fields.concat([
-        {key: 'alertCount', label: 'Alerts', sortable: true, class: 'alert-count text-right'}
-      ]);
+        {key: 'alertCount', label: 'Alerts', sortable, class: 'alert-count text-right'}
+      ])
     } else {
       this.fields = this.fields.concat([
-        {key: 'majors[0]', label: 'Major', sortable: true, class: 'truncate-with-ellipsis'},
-        {key: 'expectedGraduationTerm.id', label: 'Grad', sortable: true},
-        {key: 'term.enrolledUnits', label: 'Term units', sortable: true},
-        {key: 'cumulativeUnits', label: 'Units completed', sortable: true},
-        {key: 'cumulativeGPA', label: 'GPA', sortable: true},
-        {key: 'alertCount', label: 'Alerts', sortable: true, class: 'alert-count text-right'}
-      ]);
+        {key: 'majors[0]', label: 'Major', sortable, class: 'truncate-with-ellipsis'},
+        {key: 'expectedGraduationTerm.id', label: 'Grad', sortable},
+        {key: 'term.enrolledUnits', label: 'Term units', sortable},
+        {key: 'cumulativeUnits', label: 'Units completed', sortable},
+        {key: 'cumulativeGPA', label: 'GPA', sortable},
+        {key: 'alertCount', label: 'Alerts', sortable, class: 'alert-count text-right'}
+      ])
     }
   },
   methods: {
     abbreviateTermName: termName =>
       termName &&
       termName
-        .replace('20', " '")
+        .replace('20', ' \'')
         .replace('Spring', 'Spr')
         .replace('Summer', 'Sum'),
     normalizeForSort(value) {
-      return this.isString(value) ? value.toLowerCase() : value;
+      return this.$_.isString(value) ? value.toLowerCase() : value
     },
     onChangeSortBy() {
-      const field = this.find(this.fields, ['key', this.sortBy]);
-      this.alertScreenReader(`Sorted by ${field.label}${this.sortDescending ? ', descending' : ''}`);
+      const field = this.$_.find(this.fields, ['key', this.sortBy])
+      this.alertScreenReader(`Sorted by ${field.label}${this.sortDescending ? ', descending' : ''}`)
     },
     sortCompare(a, b, sortBy, sortDesc) {
-      let aValue = this.get(a, sortBy);
-      let bValue = this.get(b, sortBy);
+      let aValue = this.$_.get(a, sortBy)
+      let bValue = this.$_.get(b, sortBy)
       // If column type is number then nil is treated as zero.
-      aValue = this.isNil(aValue) && this.isNumber(bValue) ? 0 : this.normalizeForSort(aValue);
-      bValue = this.isNil(bValue) && this.isNumber(aValue) ? 0 : this.normalizeForSort(bValue);
-      let result = this.sortComparator(aValue, bValue);
+      aValue = this.$_.isNil(aValue) && this.$_.isNumber(bValue) ? 0 : this.normalizeForSort(aValue)
+      bValue = this.$_.isNil(bValue) && this.$_.isNumber(aValue) ? 0 : this.normalizeForSort(bValue)
+      let result = this.sortComparator(aValue, bValue)
       if (result === 0) {
-        this.each(['lastName', 'firstName', 'sid'], field => {
+        this.$_.each(['lastName', 'firstName', 'sid'], field => {
           result = this.sortComparator(
-            this.normalizeForSort(this.get(a, field)),
-            this.normalizeForSort(this.get(b, field))
-          );
+            this.normalizeForSort(this.$_.get(a, field)),
+            this.normalizeForSort(this.$_.get(b, field))
+          )
           // Secondary sort is always ascending
-          result *= sortDesc ? -1 : 1;
+          result *= sortDesc ? -1 : 1
           // Break from loop if comparator result is non-zero
-          return result === 0;
-        });
+          return result === 0
+        })
       }
-      return result;
+      return result
     }
-   }
-};
+  }
+}
 </script>
 
 <style>

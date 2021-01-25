@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -32,6 +32,7 @@ from tests.util import mock_advising_note_s3_bucket
 
 admin_uid = '2040'
 coe_advisor_uid = '1133399'
+coe_advisor_no_advising_data_uid = '1022796'
 l_s_major_advisor_uid = '242881'
 
 
@@ -45,6 +46,11 @@ class TestGetNoteTemplate:
 
     def test_not_authenticated(self, app, client, mock_note_template):
         """Returns 401 if not authenticated."""
+        self._api_note_template(client=client, note_template_id=mock_note_template.id, expected_status_code=401)
+
+    def test_user_without_advising_data_access(self, client, fake_auth, mock_note_template):
+        """Denies access to a user who cannot access notes and appointments."""
+        fake_auth.login(coe_advisor_no_advising_data_uid)
         self._api_note_template(client=client, note_template_id=mock_note_template.id, expected_status_code=401)
 
     def test_unauthorized(self, app, client, fake_auth, mock_note_template):
@@ -67,12 +73,17 @@ class TestMyNoteTemplates:
 
     @classmethod
     def _api_my_note_templates(cls, client, expected_status_code=200):
-        response = client.get(f'/api/note_templates/my')
+        response = client.get('/api/note_templates/my')
         assert response.status_code == expected_status_code
         return response.json
 
     def test_not_authenticated(self, app, client):
         """Returns 401 if not authenticated."""
+        self._api_my_note_templates(client=client, expected_status_code=401)
+
+    def test_user_without_advising_data_access(self, client, fake_auth):
+        """Denies access to a user who cannot access notes and appointments."""
+        fake_auth.login(coe_advisor_no_advising_data_uid)
         self._api_my_note_templates(client=client, expected_status_code=401)
 
     def test_get_note_template_by_id(self, app, client, fake_auth):
@@ -109,6 +120,17 @@ class TestNoteTemplateCreation:
             title='Ain\'t gonna happen',
             subject='Sorry \'bout it',
             expected_status_code=403,
+        )
+
+    def test_user_without_advising_data_access(self, app, client, fake_auth):
+        """Denies access to a user who cannot access notes and appointments."""
+        fake_auth.login(coe_advisor_no_advising_data_uid)
+        _api_create_note_template(
+            app=app,
+            client=client,
+            title='Nope',
+            subject='Nooooooope',
+            expected_status_code=401,
         )
 
     def test_create_note_template(self, app, client, fake_auth):
@@ -182,6 +204,18 @@ class TestUpdateNoteTemplate:
             note_template_id=mock_note_template.id,
             title='Hack the title!',
             subject='Hack the subject!',
+            expected_status_code=401,
+        )
+
+    def test_user_without_advising_data_access(self, app, client, fake_auth, mock_note_template):
+        """Denies access to a user who cannot access notes and appointments."""
+        fake_auth.login(coe_advisor_no_advising_data_uid)
+        self._api_note_template_update(
+            app=app,
+            client=client,
+            note_template_id=mock_note_template.id,
+            title='Nope',
+            subject='Nooooooope',
             expected_status_code=401,
         )
 
@@ -295,6 +329,16 @@ class TestRenameNoteTemplate:
             expected_status_code=401,
         )
 
+    def test_user_without_advising_data_access(self, client, fake_auth, mock_note_template):
+        """Denies access to a user who cannot access notes and appointments."""
+        fake_auth.login(coe_advisor_no_advising_data_uid)
+        self._api_note_template_rename(
+            client,
+            note_template_id=mock_note_template.id,
+            title='Nopity Nope',
+            expected_status_code=401,
+        )
+
     def test_rename_note_template_unauthorized(self, app, client, fake_auth, mock_note_template):
         """Deny user's attempt to rename someone else's note template."""
         original_subject = mock_note_template.subject
@@ -326,6 +370,12 @@ class TestDeleteNoteTemplate:
 
     def test_not_authenticated(self, client, mock_note_template):
         """You must log in to delete a note."""
+        response = client.delete(f'/api/note_template/delete/{mock_note_template.id}')
+        assert response.status_code == 401
+
+    def test_user_without_advising_data_access(self, client, fake_auth, mock_note_template):
+        """Denies access to a user who cannot access notes and appointments."""
+        fake_auth.login(coe_advisor_no_advising_data_uid)
         response = client.delete(f'/api/note_template/delete/{mock_note_template.id}')
         assert response.status_code == 401
 

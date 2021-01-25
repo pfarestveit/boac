@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,7 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
-from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME, get_dept_role
+from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.merged import calnet
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.json_cache import clear, stow
@@ -82,6 +82,13 @@ class UserSession(UserMixin):
             return False
 
     @property
+    def is_same_day_advisor(self):
+        if self.api_json['sameDayAdvisorStatus']:
+            return True
+        else:
+            return False
+
+    @property
     def departments(self):
         return self.api_json['departments']
 
@@ -90,12 +97,20 @@ class UserSession(UserMixin):
         return self.api_json['dropInAdvisorStatus']
 
     @property
+    def same_day_advisor_departments(self):
+        return self.api_json['sameDayAdvisorStatus']
+
+    @property
     def is_admin(self):
         return self.api_json['isAdmin']
 
     @property
     def in_demo_mode(self):
         return self.api_json['inDemoMode']
+
+    @property
+    def can_access_advising_data(self):
+        return self.api_json['canAccessAdvisingData']
 
     @property
     def can_access_canvas_data(self):
@@ -125,13 +140,13 @@ class UserSession(UserMixin):
                 departments.append(
                     {
                         'code': dept_code,
+                        'isDropInEnabled': dept_code in app.config['DEPARTMENTS_SUPPORTING_DROP_INS'],
+                        'isSameDayEnabled': dept_code in app.config['DEPARTMENTS_SUPPORTING_SAME_DAY_APPTS'],
                         'name': BERKELEY_DEPT_CODE_TO_NAME.get(dept_code, dept_code),
-                        'role': get_dept_role(m),
-                        'isAdvisor': m.is_advisor,
-                        'isDirector': m.is_director,
-                        'isScheduler': m.is_scheduler,
+                        'role': m.role,
                     })
         drop_in_advisor_status = []
+        same_day_advisor_status = []
         is_active = False
         if user:
             if not calnet_profile:
@@ -140,21 +155,28 @@ class UserSession(UserMixin):
                 is_active = True
             elif len(user.department_memberships):
                 for m in user.department_memberships:
-                    is_active = m.is_advisor or m.is_director or m.is_scheduler
+                    is_active = True if m.role else False
                     if is_active:
                         break
-            drop_in_advisor_status = [d.to_api_json() for d in user.drop_in_departments]
+            drop_in_advisor_status = [
+                d.to_api_json() for d in user.drop_in_departments if d.dept_code in app.config['DEPARTMENTS_SUPPORTING_DROP_INS']
+            ]
+            same_day_advisor_status = [
+                d.to_api_json() for d in user.same_day_departments if d.dept_code in app.config['DEPARTMENTS_SUPPORTING_SAME_DAY_APPTS']
+            ]
         return {
             **(calnet_profile or {}),
             **{
                 'id': user and user.id,
                 'departments': departments,
                 'dropInAdvisorStatus': drop_in_advisor_status,
+                'sameDayAdvisorStatus': same_day_advisor_status,
                 'isActive': is_active,
                 'isAdmin': user and user.is_admin,
                 'isAnonymous': not is_active,
                 'isAuthenticated': is_active,
                 'inDemoMode': user and user.in_demo_mode,
+                'canAccessAdvisingData': user and user.can_access_advising_data,
                 'canAccessCanvasData': user and user.can_access_canvas_data,
                 'uid': user and user.uid,
             },

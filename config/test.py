@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,6 +27,8 @@ ALERT_INFREQUENT_ACTIVITY_ENABLED = False
 ALERT_WITHDRAWAL_ENABLED = False
 
 AWS_APP_ROLE_ARN = 'arn:aws:iam::123456789012:role/test-role'
+
+BACKGROUND_TASKS = False
 
 DATA_LOCH_RDS_URI = 'postgres://boac:boac@localhost:5432/boac_loch_test'
 

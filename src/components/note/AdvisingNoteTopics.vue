@@ -16,7 +16,8 @@
             :disabled="disabled"
             role="listbox"
             aria-label="Use up and down arrows to review topics. Hit enter to select a topic."
-            @input="add">
+            @input="add"
+          >
             <template v-slot:first>
               <option :value="null" disabled>Select...</option>
             </template>
@@ -24,7 +25,8 @@
               v-for="option in topicOptions"
               :key="option.value"
               :disabled="option.disabled"
-              :value="option.value">
+              :value="option.value"
+            >
               {{ option.text }}
             </option>
           </b-form-select>
@@ -34,26 +36,25 @@
         <ul
           id="note-topics-list"
           class="pill-list pl-0"
-          aria-labelledby="note-topics-label">
+          aria-labelledby="note-topics-label"
+        >
           <li
             v-for="(addedTopic, index) in topics"
             :id="`${notePrefix}-topic-${index}`"
-            :key="index">
+            :key="index"
+          >
             <span class="pill pill-attachment text-uppercase text-nowrap">
               {{ addedTopic }}
               <b-btn
                 :id="`remove-${notePrefix}-topic-${index}`"
                 :disabled="disabled"
-                :aria-labelledby="`remove-${notePrefix}-topic-${index}-label`"
                 variant="link"
                 class="px-0 pt-1"
-                tabindex="0"
-                @click.prevent="remove(addedTopic)">
+                @click.prevent="remove(addedTopic)"
+              >
                 <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
+                <span class="sr-only">Remove</span>
               </b-btn>
-              <label :id="`remove-${notePrefix}-topic-${index}-label`" :for="`remove-${notePrefix}-topic-${index}`" class="sr-only">
-                remove topic {{ topics[index] }}
-              </label>
             </span>
           </li>
         </ul>
@@ -66,16 +67,15 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { getTopicsForNotes } from "@/api/topics";
+import Context from '@/mixins/Context'
+import Util from '@/mixins/Util'
+import { getTopicsForNotes } from '@/api/topics'
 
 export default {
   name: 'AdvisingNoteTopics',
   mixins: [Context, Util],
   props: {
     disabled: {
-      default: false,
       required: false,
       type: Boolean
     },
@@ -88,6 +88,7 @@ export default {
       required: true
     },
     noteId: {
+      default: undefined,
       type: Number,
       required: false
     },
@@ -102,40 +103,41 @@ export default {
   }),
   computed: {
     notePrefix() {
-      return this.noteId ? `note-${this.noteId}` : 'note';
+      return this.noteId ? `note-${this.noteId}` : 'note'
     }
   },
   created() {
-    getTopicsForNotes(false).then(topics => {
-      this.each(topics, topic => {
+    getTopicsForNotes(false).then(rows => {
+      this.$_.each(rows, row => {
+        const topic = row['topic']
         this.topicOptions.push({
           text: topic,
           value: topic,
-          disabled: this.includes(this.topics, topic)
+          disabled: this.$_.includes(this.topics, topic)
         })
-      });
-    });
+      })
+    })
   },
   methods: {
     add(topic) {
       // Reset the dropdown
-      this.selected = null;
+      this.selected = null
       if (topic) {
-        this.setDisabled(topic, true);
-        this.functionAdd(topic);
-        this.putFocusNextTick('add-topic-select-list');
-        this.alertScreenReader(`Topic ${topic} added.`);
+        this.setDisabled(topic, true)
+        this.functionAdd(topic)
+        this.putFocusNextTick('add-topic-select-list')
+        this.alertScreenReader(`Topic ${topic} added.`)
       }
     },
     remove(topic) {
-      this.setDisabled(topic, false);
-      this.functionRemove(topic);
-      this.putFocusNextTick('add-topic-select-list');
-      this.alertScreenReader(`Topic ${topic} removed.`);
+      this.setDisabled(topic, false)
+      this.functionRemove(topic)
+      this.alertScreenReader(`Removed topic ${topic}.`)
+      this.putFocusNextTick('add-topic-select-list')
     },
     setDisabled(topic, disable) {
-      const option = this.find(this.topicOptions, ['value', topic]);
-      this.set(option, 'disabled', disable);
+      const option = this.$_.find(this.topicOptions, ['value', topic])
+      this.$_.set(option, 'disabled', disable)
     }
   }
 }

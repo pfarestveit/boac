@@ -1,18 +1,17 @@
 <template>
   <b-modal
-    id="appointment-update"
     v-model="showUpdateModal"
     :no-close-on-backdrop="true"
     body-class="pl-0 pr-0"
     hide-footer
     hide-header
     @cancel.prevent="close"
-    @hide.prevent="close">
+    @hide.prevent="close"
+    @shown="putFocusNextTick('modal-header')"
+  >
     <div>
-      <div class="ml-3 modal-header">
-        <h3 id="appointment-update-modal-header">Drop-in Update</h3>
-      </div>
-      <div id="appointment-update-modal-body" class="modal-body">
+      <ModalHeader text="Drop-in Update" />
+      <div class="modal-body">
         {{ appointmentUpdate.statusBy.name }} recently updated the status of this drop-in appointment to
         <strong>{{ appointmentUpdate.status.replace('_', ' ') }}</strong>.
       </div>
@@ -21,7 +20,8 @@
           id="btn-update-modal-close"
           class="pl-2"
           variant="primary"
-          @click.stop="close">
+          @click.stop="close"
+        >
           Okay
         </b-btn>
       </div>
@@ -30,12 +30,14 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
+import Context from '@/mixins/Context'
+import ModalHeader from '@/components/util/ModalHeader'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'AppointmentUpdateModal',
   mixins: [Context, Util],
+  components: {ModalHeader},
   props: {
     appointmentUpdate: {
       type: Object,
@@ -55,13 +57,12 @@ export default {
   }),
   watch: {
     showModal(value) {
-      this.showUpdateModal = value;
+      this.showUpdateModal = value
     }
   },
   created() {
-    this.showUpdateModal = this.showModal;
-    this.alertScreenReader('Drop-in Update');
-    this.putFocusNextTick('appointment-update-modal-body');
+    this.showUpdateModal = this.showModal
+    this.alertScreenReader('Drop-in Update')
   }
 }
 </script>

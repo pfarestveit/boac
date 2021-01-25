@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,19 +27,19 @@ import urllib.parse
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
 from boac.api.util import (
-    advisor_required,
+    advising_data_access_required,
+    director_advising_data_access_required,
     get_note_attachments_from_http_post,
     get_note_topics_from_http_post,
     get_template_attachment_ids_from_http_post,
 )
-from boac.externals import data_loch
 from boac.lib.berkeley import dept_codes_where_advising
 from boac.lib.http import tolerant_jsonify
-from boac.lib.util import get as get_param, is_int, process_input_from_rich_text_editor
+from boac.lib.sis_advising import get_legacy_attachment_stream
+from boac.lib.util import is_int, process_input_from_rich_text_editor
 from boac.merged.advising_note import (
-    get_batch_distinct_sids,
     get_boa_attachment_stream,
-    get_legacy_attachment_stream,
+    get_zip_stream_for_sid,
     note_to_compatible_json,
 )
 from boac.merged.calnet import get_calnet_user_for_uid
@@ -52,7 +52,7 @@ from flask_login import current_user
 
 
 @app.route('/api/note/<note_id>')
-@advisor_required
+@advising_data_access_required
 def get_note(note_id):
     note = Note.find_by_id(note_id=note_id)
     if not note:
@@ -62,7 +62,7 @@ def get_note(note_id):
 
 
 @app.route('/api/notes/<note_id>/mark_read', methods=['POST'])
-@advisor_required
+@advising_data_access_required
 def mark_note_read(note_id):
     if NoteRead.find_or_create(current_user.get_id(), note_id):
         return tolerant_jsonify({'status': 'created'}, status=201)
@@ -71,83 +71,51 @@ def mark_note_read(note_id):
 
 
 @app.route('/api/notes/create', methods=['POST'])
-@advisor_required
-def create_note():
-    params = request.form
-    sid = params.get('sid', None)
-    subject = params.get('subject', None)
-    body = params.get('body', None)
-    topics = get_note_topics_from_http_post()
-    if not sid or not subject:
-        raise BadRequestError('Note creation requires \'subject\' and \'sid\'')
-    user_dept_codes = dept_codes_where_advising(current_user)
-    if current_user.is_admin or not len(user_dept_codes):
-        raise ForbiddenRequestError('Sorry, only advisors can create advising notes.')
-
-    author_profile = _get_author_profile()
-    attachments = get_note_attachments_from_http_post(tolerate_none=True)
-
-    note = Note.create(
-        **author_profile,
-        subject=subject,
-        body=process_input_from_rich_text_editor(body),
-        topics=topics,
-        sid=sid,
-        attachments=attachments,
-        template_attachment_ids=get_template_attachment_ids_from_http_post(),
-    )
-    note_read = NoteRead.find_or_create(current_user.get_id(), note.id)
-    return tolerant_jsonify(_boa_note_to_compatible_json(note=note, note_read=note_read))
-
-
-@app.route('/api/notes/batch/create', methods=['POST'])
-@advisor_required
-def batch_create_notes():
+@advising_data_access_required
+def create_notes():
     params = request.form
     sids = _get_sids_for_note_creation()
     subject = params.get('subject', None)
     body = params.get('body', None)
     topics = get_note_topics_from_http_post()
     if not sids or not subject:
-        raise BadRequestError('Note creation requires \'subject\' and \'sid\'')
-    user_dept_codes = dept_codes_where_advising(current_user)
-    if current_user.is_admin or not len(user_dept_codes):
+        raise BadRequestError('Note creation requires \'subject\' and \'sids\'')
+    dept_codes = dept_codes_where_advising(current_user)
+    if current_user.is_admin or not len(dept_codes):
         raise ForbiddenRequestError('Sorry, only advisors can create advising notes')
 
-    author_profile = _get_author_profile()
     attachments = get_note_attachments_from_http_post(tolerate_none=True)
+    body = process_input_from_rich_text_editor(body)
+    template_attachment_ids = get_template_attachment_ids_from_http_post()
 
-    note_ids_per_sid = Note.create_batch(
-        author_id=current_user.to_api_json()['id'],
-        **author_profile,
-        subject=subject,
-        body=process_input_from_rich_text_editor(body),
-        topics=topics,
-        sids=sids,
-        attachments=attachments,
-        template_attachment_ids=get_template_attachment_ids_from_http_post(),
-    )
-    return tolerant_jsonify(note_ids_per_sid)
-
-
-@app.route('/api/notes/batch/distinct_student_count', methods=['POST'])
-@advisor_required
-def distinct_student_count():
-    params = request.get_json()
-    sids = get_param(params, 'sids', None)
-    cohort_ids = get_param(params, 'cohortIds', None)
-    curated_group_ids = get_param(params, 'curatedGroupIds', None)
-    if cohort_ids or curated_group_ids:
-        count = len(get_batch_distinct_sids(sids, cohort_ids, curated_group_ids))
+    if len(sids) == 1:
+        note = Note.create(
+            **_get_author_profile(),
+            subject=subject,
+            body=body,
+            topics=topics,
+            sid=sids[0],
+            attachments=attachments,
+            template_attachment_ids=template_attachment_ids,
+        )
+        return tolerant_jsonify(_boa_note_to_compatible_json(note, note_read=True))
     else:
-        count = len(sids)
-    return tolerant_jsonify({
-        'count': count,
-    })
+        return tolerant_jsonify(
+            Note.create_batch(
+                author_id=current_user.to_api_json()['id'],
+                **_get_author_profile(),
+                subject=subject,
+                body=body,
+                topics=topics,
+                sids=sids,
+                attachments=attachments,
+                template_attachment_ids=template_attachment_ids,
+            ),
+        )
 
 
 @app.route('/api/notes/update', methods=['POST'])
-@advisor_required
+@advising_data_access_required
 def update_note():
     params = request.form
     note_id = params.get('id', None)
@@ -169,7 +137,7 @@ def update_note():
 
 
 @app.route('/api/notes/delete/<note_id>', methods=['DELETE'])
-@advisor_required
+@advising_data_access_required
 def delete_note(note_id):
     if not current_user.is_admin:
         raise ForbiddenRequestError('Sorry, you are not authorized to delete notes.')
@@ -180,50 +148,31 @@ def delete_note(note_id):
     return tolerant_jsonify({'message': f'Note {note_id} deleted'}), 200
 
 
-@app.route('/api/notes/authors/find_by_name', methods=['GET'])
-@advisor_required
-def find_note_authors_by_name():
-    query = request.args.get('q')
-    if not query:
-        raise BadRequestError('Search query must be supplied')
-    limit = request.args.get('limit')
-    query_fragments = filter(None, query.upper().split(' '))
-    authors = data_loch.match_advising_note_authors_by_name(query_fragments, limit=limit)
-
-    def _author_feed(a):
-        return {
-            'label': ' '.join([a.get('first_name', ''), a.get('last_name', '')]),
-            'sid': a.get('sid'),
-            'uid': a.get('uid'),
-        }
-    return tolerant_jsonify([_author_feed(a) for a in authors])
-
-
-@app.route('/api/notes/<note_id>/attachment', methods=['POST'])
-@advisor_required
-def add_attachment(note_id):
-    if Note.find_by_id(note_id=note_id).author_uid != current_user.get_uid():
+@app.route('/api/notes/<note_id>/attachments', methods=['POST'])
+@advising_data_access_required
+def add_attachments(note_id):
+    note = Note.find_by_id(note_id=note_id)
+    if note.author_uid != current_user.get_uid():
         raise ForbiddenRequestError('Sorry, you are not the author of this note.')
     attachments = get_note_attachments_from_http_post()
-    if len(attachments) != 1:
-        raise BadRequestError('A single attachment file must be supplied.')
-    note = Note.add_attachment(
-        note_id=note_id,
-        attachment=attachments[0],
-    )
-    note_json = note.to_api_json()
+    attachment_limit = app.config['NOTES_ATTACHMENTS_MAX_PER_NOTE']
+    if len(attachments) + len(note.attachments) > attachment_limit:
+        raise BadRequestError(f'No more than {attachment_limit} attachments may be uploaded at once.')
+    for attachment in attachments:
+        note = Note.add_attachment(
+            note_id=note_id,
+            attachment=attachment,
+        )
     return tolerant_jsonify(
-        note_to_compatible_json(
-            note=note_json,
+        _boa_note_to_compatible_json(
+            note=note,
             note_read=NoteRead.find_or_create(current_user.get_id(), note_id),
-            attachments=note_json.get('attachments'),
-            topics=note_json.get('topics'),
         ),
     )
 
 
 @app.route('/api/notes/<note_id>/attachment/<attachment_id>', methods=['DELETE'])
-@advisor_required
+@advising_data_access_required
 def remove_attachment(note_id, attachment_id):
     existing_note = Note.find_by_id(note_id=note_id)
     if not existing_note:
@@ -234,19 +183,16 @@ def remove_attachment(note_id, attachment_id):
         note_id=note_id,
         attachment_id=int(attachment_id),
     )
-    note_json = note.to_api_json()
     return tolerant_jsonify(
-        note_to_compatible_json(
-            note=note_json,
+        _boa_note_to_compatible_json(
+            note=note,
             note_read=NoteRead.find_or_create(current_user.get_id(), note_id),
-            attachments=note_json.get('attachments'),
-            topics=note_json.get('topics'),
         ),
     )
 
 
 @app.route('/api/notes/attachment/<attachment_id>', methods=['GET'])
-@advisor_required
+@advising_data_access_required
 def download_attachment(attachment_id):
     is_legacy = not is_int(attachment_id)
     id_ = attachment_id if is_legacy else int(attachment_id)
@@ -257,6 +203,18 @@ def download_attachment(attachment_id):
     r.headers['Content-Type'] = 'application/octet-stream'
     encoding_safe_filename = urllib.parse.quote(stream_data['filename'].encode('utf8'))
     r.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoding_safe_filename}"
+    return r
+
+
+@app.route('/api/notes/download_for_sid/<sid>', methods=['GET'])
+@director_advising_data_access_required
+def download_notes_and_attachments(sid):
+    stream_data = get_zip_stream_for_sid(sid)
+    if not stream_data or not stream_data['stream']:
+        return Response('Notes not available.', mimetype='text/html', status=404)
+    r = Response(stream_data['stream'])
+    r.headers['Content-Type'] = 'application/zip'
+    r.headers['Content-Disposition'] = f"attachment; filename={stream_data['filename']}"
     return r
 
 
@@ -316,13 +274,12 @@ def _get_author_profile():
 
 
 def _boa_note_to_compatible_json(note, note_read):
-    note_json = note.to_api_json()
     return {
         **note_to_compatible_json(
-            note=note_json,
+            note=note.__dict__,
             note_read=note_read,
-            attachments=note_json.get('attachments'),
-            topics=note_json.get('topics'),
+            attachments=[a.to_api_json() for a in note.attachments if not a.deleted_at],
+            topics=[t.topic for t in note.topics if not t.deleted_at],
         ),
         **{
             'message': note.body,

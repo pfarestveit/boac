@@ -1,15 +1,15 @@
 <template>
   <b-modal
-    id="create-note-template"
     v-model="showModalProxy"
     aria-label="Name Your Template"
     body-class="pl-0 pr-0"
     hide-footer
-    hide-header-close
-    title="Name Your Template"
-    @shown="focusModalById('template-title-input')">
+    hide-header
+    @shown="putFocusNextTick('modal-header')"
+  >
     <div>
-      <form @submit.prevent="createTemplate()">
+      <ModalHeader text="Name Your Template" />
+      <form @submit.prevent="createTemplate">
         <div class="ml-3 mr-3">
           <div>
             <label class="pb-2" for="template-title-input">Template name:</label>
@@ -19,7 +19,8 @@
               class="cohort-create-input-name"
               type="text"
               maxlength="255"
-              required>
+              required
+            >
           </div>
           <div class="faint-text mb-3"><span class="sr-only">Template name has a </span>255 character limit <span v-if="title.length">({{ 255 - title.length }} left)</span></div>
           <div
@@ -27,13 +28,15 @@
             id="create-error"
             aria-live="polite"
             role="alert"
-            class="has-error">
+            class="has-error"
+          >
             {{ error }}
           </div>
           <div
             v-if="title.length === 255"
             class="sr-only"
-            aria-live="polite">
+            aria-live="polite"
+          >
             Template name cannot exceed 255 characters.
           </div>
         </div>
@@ -43,13 +46,15 @@
             :disabled="!title.length"
             class="btn-primary-color-override"
             variant="primary"
-            @click.prevent="createTemplate()">
+            @click.prevent="createTemplate"
+          >
             Save
           </b-btn>
           <b-btn
             id="cancel-template-create"
             variant="link"
-            @click="cancelModal()">
+            @click="cancelModal"
+          >
             Cancel
           </b-btn>
         </div>
@@ -59,12 +64,14 @@
 </template>
 
 <script>
-import Util from '@/mixins/Util';
-import Validator from '@/mixins/Validator';
+import Util from '@/mixins/Util'
+import ModalHeader from '@/components/util/ModalHeader'
+import Validator from '@/mixins/Validator'
 
 export default {
   name: 'TemplateModalCreate',
   mixins: [Util, Validator],
+  components: {ModalHeader},
   props: {
     cancel: {
       type: Function,
@@ -90,32 +97,32 @@ export default {
   computed: {
     showModalProxy: {
       get() {
-        return this.showModal;
+        return this.showModal
       },
       set(value) {
-        this.toggleShow(value);
+        this.toggleShow(value)
       }
     }
   },
   watch: {
     title() {
-      this.error = undefined;
+      this.error = undefined
     }
   },
   methods: {
     reset() {
-      this.title = '';
-      this.error = undefined;
+      this.title = ''
+      this.error = undefined
     },
     cancelModal() {
-      this.cancel();
-      this.reset();
+      this.cancel()
+      this.reset()
     },
     createTemplate: function() {
-      this.error = this.validateTemplateTitle({ title: this.title });
+      this.error = this.validateTemplateTitle({ title: this.title })
       if (!this.error) {
-        this.create(this.title);
-        this.reset();
+        this.create(this.title)
+        this.reset()
       }
     }
   }

@@ -1,17 +1,16 @@
 <template>
   <b-modal
-    id="advising-appointment-check-in"
     v-model="showCancellationModal"
     :no-close-on-backdrop="true"
     body-class="pl-0 pr-0"
     hide-footer
     hide-header
     @cancel.prevent="close"
-    @hide.prevent="close">
+    @hide.prevent="close"
+    @shown="putFocusNextTick('modal-header')"
+  >
     <div>
-      <div class="modal-header">
-        <h3>Cancel Appointment</h3>
-      </div>
+      <ModalHeader text="Cancel Appointment" />
       <div class="modal-body w-100">
         <div class="mr-3 mt-2">
           <b-container fluid>
@@ -46,7 +45,7 @@
                 </label>
               </b-col>
               <b-col>
-                <span id="appointment-student" :class="{'demo-mode-blur' : $currentUser.inDemoMode}" v-html="appointment.student.name"></span>
+                <span id="appointment-student" :class="{'demo-mode-blur': $currentUser.inDemoMode}" v-html="appointment.student.name"></span>
               </b-col>
             </b-row>
           </b-container>
@@ -59,7 +58,8 @@
             id="cancellation-reason"
             v-model="reason"
             :options="reasonOptions"
-            @input="reasonSelected">
+            @input="reasonSelected"
+          >
             <template v-slot:first>
               <option :value="undefined">Select...</option>
             </template>
@@ -72,7 +72,8 @@
           <b-form-textarea
             id="cancellation-reason-explained"
             v-model="reasonExplained"
-            rows="4">
+            rows="4"
+          >
           </b-form-textarea>
         </div>
       </div>
@@ -81,16 +82,17 @@
           <b-btn
             id="btn-appointment-cancel"
             :disabled="!reason"
-            :aria-label="`Cancel appointment with ${student.name}`"
             class="btn-primary-color-override mr-2"
             variant="primary"
-            @click.prevent="cancelTheAppointment">
+            @click.prevent="cancelTheAppointment"
+          >
             Cancel Appointment
           </b-btn>
           <b-btn
             id="btn-appointment-close"
             variant="link"
-            @click.stop="close">
+            @click.stop="close"
+          >
             Close
           </b-btn>
         </form>
@@ -100,12 +102,14 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
+import Context from '@/mixins/Context'
+import ModalHeader from '@/components/util/ModalHeader'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'AppointmentCancellationModal',
   mixins: [Context, Util],
+  components: {ModalHeader},
   props: {
     appointment: {
       type: Object,
@@ -139,23 +143,22 @@ export default {
   }),
   watch: {
     showModal(value) {
-      this.showCancellationModal = value;
+      this.showCancellationModal = value
     }
   },
   created() {
-    this.showCancellationModal = this.showModal;
-    this.putFocusNextTick('cancellation-reason');
-    this.alertScreenReader(`Cancel appointment modal is open`);
+    this.showCancellationModal = this.showModal
+    this.alertScreenReader('Cancel appointment modal is open')
   },
   methods: {
     cancelTheAppointment() {
-      this.appointmentCancellation(this.appointment.id, this.reason, this.reasonExplained);
-      this.alertScreenReader(`Appointment with ${this.student.name} cancelled`);
-      this.showCancellationModal = false;
+      this.appointmentCancellation(this.appointment.id, this.reason, this.reasonExplained)
+      this.alertScreenReader(`Appointment with ${this.student.name} cancelled`)
+      this.showCancellationModal = false
     },
     reasonSelected() {
-      this.alertScreenReader(`Reason '${this.reason}' selected`);
-      this.putFocusNextTick('cancellation-reason-explained');
+      this.alertScreenReader(`Reason '${this.reason}' selected`)
+      this.putFocusNextTick('cancellation-reason-explained')
     }
   }
 }

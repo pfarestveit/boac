@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -34,7 +34,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 
 
 @scriptify.in_app  # noqa: C901
-def main(app):
+def main(app):  # noqa: C901
     from boac import std_commit
     from boac.models.cohort_filter import CohortFilter
 

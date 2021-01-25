@@ -1,22 +1,28 @@
 <script>
-import { mapActions, mapGetters } from 'vuex';
+import { mapActions, mapGetters } from 'vuex'
 
 export default {
   name: 'Context',
   computed: {
     ...mapGetters('context', [
       'announcement',
-      'hasUserDismissedFooterAlert',
-      'screenReaderAlert'
+      'dismissedFooterAlert',
+      'dismissedServiceAnnouncement'
     ]),
-    ...mapGetters('noteEditSession', ['disableNewNoteButton'])
+    ...mapGetters('noteEditSession', [
+      'disableNewNoteButton',
+      'mode'
+    ])
   },
   methods: {
     ...mapActions('context', [
-      'alertScreenReader',
       'dismissFooterAlert',
-      'initUserSession'
-    ])
+      'dismissServiceAnnouncement',
+      'restoreServiceAnnouncement'
+    ]),
+    alertScreenReader(message, politeness='polite') {
+      this.$announcer.set(message, politeness)
+    }
   }
-};
+}
 </script>

@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -24,8 +24,11 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from datetime import datetime, timedelta
+import io
+from zipfile import ZipFile
 
-from boac.merged.advising_note import get_advising_notes, get_legacy_attachment_stream, search_advising_notes
+from boac.lib.util import localize_datetime, utc_now
+from boac.merged.advising_note import get_advising_notes, get_zip_stream_for_sid, search_advising_notes
 from boac.models.note import Note
 from dateutil.parser import parse
 import pytz
@@ -56,6 +59,7 @@ class TestMergedAdvisingNote:
         assert notes[0]['updatedAt'] is None
         assert notes[0]['read'] is False
         assert notes[0]['topics'] == ['God Scéaw']
+        assert notes[0]['legacySource'] == 'SIS'
         assert notes[1]['id'] == '11667051-00002'
         assert notes[1]['sid'] == '11667051'
         assert notes[1]['body'] == 'Brigitte demonstrates a cavalier attitude toward university requirements'
@@ -68,6 +72,7 @@ class TestMergedAdvisingNote:
         assert notes[1]['updatedAt'] is None
         assert notes[1]['read'] is False
         assert notes[1]['topics'] == ['Earg Scéaw', 'Ofscéaw']
+        assert notes[1]['legacySource'] == 'SIS'
 
         # Legacy ASC notes
         assert notes[4]['id'] == '11667051-139362'
@@ -79,6 +84,7 @@ class TestMergedAdvisingNote:
         assert notes[4]['createdAt']
         assert notes[4]['updatedAt'] is None
         assert notes[4]['read'] is False
+        assert notes[4]['legacySource'] == 'ASC'
         assert notes[5]['id'] == '11667051-139379'
         assert notes[5]['sid'] == '11667051'
         assert notes[5]['body'] is None
@@ -88,17 +94,28 @@ class TestMergedAdvisingNote:
         assert notes[5]['createdAt']
         assert notes[5]['updatedAt'] is None
         assert notes[5]['read'] is False
+        assert notes[5]['legacySource'] == 'ASC'
+
+        # Legacy Data Science notes
+        assert notes[6]['id'] == '11667051-20181003051208'
+        assert notes[6]['sid'] == '11667051'
+        assert notes[6]['body'] == 'Data that is loved tends to survive.'
+        assert notes[6]['author']['email'] == '33333@berkeley.edu'
+        assert notes[6]['createdAt'] == '2018-10-04T00:12:08+00:00'
+        assert notes[6]['topics'] == ['Declaring the major', 'Course planning', 'Domain Emphasis']
+        assert notes[6]['legacySource'] == 'Data Science'
 
         # Legacy E&I notes
-        assert notes[6]['id'] == '11667051-151620'
-        assert notes[6]['sid'] == '11667051'
-        assert notes[6]['body'] is None
-        assert notes[6]['author']['uid'] == '1133398'
-        assert notes[6]['author']['name'] == 'Charlie Christian'
-        assert notes[6]['topics'] == ['Course Planning', 'Personal']
-        assert notes[6]['createdAt']
-        assert notes[6]['updatedAt'] is None
-        assert notes[6]['read'] is False
+        assert notes[8]['id'] == '11667051-151620'
+        assert notes[8]['sid'] == '11667051'
+        assert notes[8]['body'] is None
+        assert notes[8]['author']['uid'] == '1133398'
+        assert notes[8]['author']['name'] == 'Charlie Christian'
+        assert notes[8]['topics'] == ['Course Planning', 'Personal']
+        assert notes[8]['createdAt']
+        assert notes[8]['updatedAt'] is None
+        assert notes[8]['read'] is False
+        assert notes[8]['legacySource'] == 'CE3'
 
         # Non-legacy note
         boa_created_note = next((n for n in notes if n['id'] == mock_advising_note.id), None)
@@ -117,6 +134,7 @@ class TestMergedAdvisingNote:
         assert boa_created_note['read'] is False
         assert boa_created_note['topics'] == []
         assert len(boa_created_note['attachments']) == 1
+        assert 'legacySource' not in boa_created_note
 
     def test_get_advising_notes_ucbconversion_attachment(self, app, fake_auth):
         fake_auth.login(coe_advisor)
@@ -416,29 +434,26 @@ class TestMergedAdvisingNote:
 
         assert len(search_advising_notes(search_phrase='Bryant', datetime_from=yesterday, datetime_to=tomorrow)) == 1
 
-    def test_stream_attachment(self, app, fake_auth):
+    def test_stream_zipped_bundle(self, app, fake_auth):
         with mock_legacy_note_attachment(app):
-            fake_auth.login(coe_advisor)
-            stream = get_legacy_attachment_stream('9000000000_00002_1.pdf')['stream']
+            stream = get_zip_stream_for_sid('9000000000')['stream']
             body = b''
             for chunk in stream:
                 body += chunk
-            assert body == b'When in the course of human events, it becomes necessarf arf woof woof woof'
+            zipfile = ZipFile(io.BytesIO(body), 'r')
+            contents = {}
+            for name in zipfile.namelist():
+                contents[name] = zipfile.read(name)
 
-    def test_stream_attachment_handles_malformed_filename(self, app):
-        with mock_legacy_note_attachment(app):
-            assert get_legacy_attachment_stream('h0ax.lol') is None
-
-    def test_stream_attachment_handles_file_not_in_database(self, app, fake_auth, caplog):
-        with mock_legacy_note_attachment(app):
-            fake_auth.login(coe_advisor)
-            assert get_legacy_attachment_stream('11667051_00002_1.pdf') is None
-
-    def test_stream_attachment_handles_file_not_in_s3(self, app, fake_auth, caplog):
-        with mock_legacy_note_attachment(app):
-            fake_auth.login(coe_advisor)
-            assert get_legacy_attachment_stream('11667051_00001_1.pdf')['stream'] is None
-            assert "the s3 key 'sis-attachment-path/11667051/11667051_00001_1.pdf' does not exist, or is forbidden" in caplog.text
+            assert len(contents) == 2
+            assert contents['dog_eaten_homework.pdf'] == b'When in the course of human events, it becomes necessarf arf woof woof woof'
+            today = localize_datetime(utc_now()).strftime('%Y%m%d')
+            csv_rows = contents[f"advising_notes_wolfgang_pauli-o'rourke_{today}.csv"].decode('utf-8').strip().split('\r\n')
+            assert len(csv_rows) == 3
+            assert csv_rows[0] == 'date_created,student_sid,student_name,author_uid,author_csid,author_name,subject,topics,attachments,body'
+            assert csv_rows[1] ==\
+                "2017-11-02,9000000000,Wolfgang Pauli-O'Rourke,,700600500,,,,dog_eaten_homework.pdf,I am confounded by this confounding student"
+            assert csv_rows[2] == "2017-11-02,9000000000,Wolfgang Pauli-O'Rourke,,600500400,,,Ne Scéaw,,Is this student even on campus?"
 
 
 def _create_coe_advisor_note(

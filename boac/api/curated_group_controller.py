@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -221,6 +221,9 @@ def _curated_group_with_complete_student_profiles(curated_group_id, order_by='la
     api_json['students'] = get_summary_student_profiles(sids, include_historical=True)
     benchmark('begin alerts query')
     Alert.include_alert_counts_for_students(viewer_user_id=current_user.get_id(), group=api_json)
+    benchmark('end')
+    benchmark('begin get_referencing_cohort_ids')
+    api_json['referencingCohortIds'] = curated_group.get_referencing_cohort_ids()
     benchmark('end')
     return api_json
 

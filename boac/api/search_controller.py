@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -26,19 +26,22 @@ ENHANCEMENTS, OR MODIFICATIONS.
 from datetime import timedelta
 from itertools import islice
 
+from boac import db
 from boac.api.errors import BadRequestError, ForbiddenRequestError
-from boac.api.util import add_alert_counts, advisor_required, is_unauthorized_search
-from boac.externals.data_loch import get_enrolled_primary_sections, get_enrolled_primary_sections_for_parsed_code
+from boac.api.util import add_alert_counts, advising_data_access_required, advisor_required, ce3_required, is_unauthorized_search
+from boac.externals.data_loch import get_enrolled_primary_sections, get_enrolled_primary_sections_for_parsed_code, match_advising_note_authors_by_name
 from boac.lib import util
 from boac.lib.http import tolerant_jsonify
+from boac.merged.admitted_student import search_for_admitted_students
+from boac.merged.advising_appointment import search_advising_appointments
 from boac.merged.advising_note import search_advising_notes
 from boac.merged.calnet import get_uid_for_csid
 from boac.merged.sis_terms import current_term_id
 from boac.merged.student import search_for_students
 from boac.models.alert import Alert
-from boac.models.appointment import Appointment
+from boac.models.authorized_user import AuthorizedUser
 from flask import current_app as app, request
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 
 @app.route('/api/search', methods=['POST'])
@@ -61,6 +64,8 @@ def search():
         raise BadRequestError('Invalid or empty search input')
     if domain['courses'] and not current_user.can_access_canvas_data:
         raise ForbiddenRequestError('Unauthorized to search courses')
+    if (domain['notes'] or domain['appointments']) and not current_user.can_access_advising_data:
+        raise ForbiddenRequestError('Unauthorized to search notes and appointments')
 
     feed = {}
 
@@ -71,12 +76,107 @@ def search():
         feed.update(_student_search(search_phrase, params, order_by))
 
     if len(search_phrase) and domain['courses']:
-        feed.update(_course_search(search_phrase, params, order_by))
+        feed.update(_course_search(search_phrase))
 
     if domain['notes']:
         feed.update(_notes_search(search_phrase, params))
 
     return tolerant_jsonify(feed)
+
+
+@app.route('/api/search/admits', methods=['POST'])
+@ce3_required
+def search_admits():
+    params = request.get_json()
+    search_phrase = util.get(params, 'searchPhrase', '').strip()
+    if not len(search_phrase):
+        raise BadRequestError('Invalid or empty search input')
+    order_by = util.get(params, 'orderBy', None)
+    admit_results = search_for_admitted_students(
+        search_phrase=search_phrase.replace(',', ' '),
+        order_by=order_by,
+    )
+    return tolerant_jsonify(admit_results)
+
+
+@app.route('/api/search/add_to_search_history', methods=['POST'])
+@login_required
+def add_to_search_history():
+    search_phrase = request.get_json().get('phrase')
+    search_phrase = search_phrase and search_phrase.strip()
+    if search_phrase:
+        search_history = AuthorizedUser.add_to_search_history(current_user.get_id(), search_phrase)
+        return tolerant_jsonify(search_history)
+    else:
+        raise BadRequestError('Search phrase not found in request')
+
+
+@app.route('/api/search/my_search_history')
+@login_required
+def my_search_history():
+    search_history = AuthorizedUser.get_search_history(current_user.get_id()) or []
+    return tolerant_jsonify(search_history)
+
+
+@app.route('/api/search/advisors/find_by_name', methods=['GET'])
+@advising_data_access_required
+def find_advisors_by_name():
+    query = request.args.get('q')
+    if not query:
+        raise BadRequestError('Search query must be supplied')
+    limit = request.args.get('limit')
+    query_fragments = list(filter(None, set(query.upper().split(' '))))
+    advisors = _advisors_by_name(query_fragments, limit=limit)
+    legacy_note_authors = match_advising_note_authors_by_name(query_fragments, limit=limit)
+    advisors_feed = _local_advisors_feed(advisors) + _loch_authors_feed(legacy_note_authors)
+    advisors_by_uid = {a.get('uid'): a for a in advisors_feed}
+    return tolerant_jsonify(list(advisors_by_uid.values()))
+
+
+def _advisors_by_name(tokens, limit=None):
+    benchmark = util.get_benchmarker('search find_advisors_by_name')
+    benchmark('begin')
+    token_conditions = []
+    params = {}
+    for token in tokens:
+        idx = tokens.index(token)
+        token_conditions.append(
+            f"""JOIN advisor_author_index a{idx}
+            ON UPPER(a{idx}.advisor_name) LIKE :token_{idx}
+            AND a{idx}.advisor_uid = a.advisor_uid
+            AND a{idx}.advisor_name = a.advisor_name""",
+        )
+        params[f'token_{idx}'] = f'%{token}%'
+    sql = f"""SELECT DISTINCT a.advisor_name, a.advisor_uid
+        FROM advisor_author_index a
+        {' '.join(token_conditions)}
+        ORDER BY a.advisor_name"""
+    if limit:
+        sql += f' LIMIT {limit}'
+    benchmark('execute query')
+    results = db.session.execute(sql, params)
+    benchmark('end')
+    keys = results.keys()
+    return [dict(zip(keys, row)) for row in results.fetchall()]
+
+
+def _local_advisors_feed(local_results):
+    return [
+        {
+            'label': a.get('advisor_name'),
+            'uid': a.get('advisor_uid'),
+        } for a in local_results
+    ]
+
+
+def _loch_authors_feed(loch_results):
+    return [
+        {
+            'label': f"{a.get('first_name')} {a.get('last_name')}",
+            'sid': a.get('sid'),
+            'uid': a.get('uid'),
+        } for a in loch_results
+    ]
 
 
 def _appointments_search(search_phrase, params):
@@ -116,7 +216,7 @@ def _appointments_search(search_phrase, params):
     if datetime_from and datetime_to and datetime_to <= datetime_from:
         raise BadRequestError('dateFrom must be less than dateTo')
 
-    appointment_results = Appointment.search(
+    appointment_results = search_advising_appointments(
         search_phrase=search_phrase,
         advisor_uid=advisor_uid,
         student_csid=student_csid,
@@ -148,7 +248,7 @@ def _student_search(search_phrase, params, order_by):
     }
 
 
-def _course_search(search_phrase, params, order_by):
+def _course_search(search_phrase):
     term_id = current_term_id()
     course_rows = []
 

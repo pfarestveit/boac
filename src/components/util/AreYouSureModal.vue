@@ -1,6 +1,5 @@
 <template>
   <b-modal
-    id="are-you-sure-modal"
     v-model="showAreYouSureModal"
     :no-close-on-backdrop="true"
     body-class="pl-0 pr-0"
@@ -8,29 +7,29 @@
     hide-header
     @cancel.prevent="functionCancel"
     @hide.prevent="functionCancel"
-    @shown="putFocusNextTick('are-you-sure-confirm')">
+    @shown="putFocusNextTick('modal-header')"
+  >
     <div>
-      <div class="modal-header">
-        <h3 id="are-you-sure-header">{{ modalHeader }}</h3>
-      </div>
-      <div v-if="modalBody" id="are-you-sure-body" class="modal-body">
+      <ModalHeader :text="modalHeader" />
+      <div v-if="modalBody" class="modal-body">
         <span v-html="modalBody"></span>
       </div>
       <div class="modal-footer">
         <form @submit.prevent="functionConfirm">
           <b-btn
             id="are-you-sure-confirm"
-            :aria-label="modalHeader"
             class="btn-primary-color-override"
             variant="primary"
-            @click.prevent="functionConfirm">
+            @click.prevent="functionConfirm"
+          >
             {{ buttonLabelConfirm }}
           </b-btn>
           <b-btn
             id="are-you-sure-cancel"
             class="pl-2"
             variant="link"
-            @click.stop="functionCancel">
+            @click.stop="functionCancel"
+          >
             {{ buttonLabelCancel }}
           </b-btn>
         </form>
@@ -40,10 +39,12 @@
 </template>
 
 <script>
-import Util from '@/mixins/Util';
+import ModalHeader from '@/components/util/ModalHeader'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'AreYouSureModal',
+  components: {ModalHeader},
   mixins: [Util],
   props: {
     buttonLabelCancel: {
@@ -84,11 +85,11 @@ export default {
   }),
   watch: {
     showModal(value) {
-      this.showAreYouSureModal = value;
+      this.showAreYouSureModal = value
     }
   },
   created() {
-    this.showAreYouSureModal = this.showModal;
+    this.showAreYouSureModal = this.showModal
   }
 }
 </script>

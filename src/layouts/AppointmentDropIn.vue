@@ -5,13 +5,6 @@
       <b-col id="content" class="body-text h-100 min-width-100 pb-2" sm="10">
         <ServiceAnnouncement />
         <div>
-          <span
-            v-if="screenReaderAlert"
-            class="sr-only"
-            aria-live="polite"
-            role="alert">
-            {{ screenReaderAlert }}
-          </span>
           <router-view :key="stripAnchorRef($route.fullPath)"></router-view>
         </div>
       </b-col>
@@ -25,12 +18,12 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Footer from '@/components/Footer';
-import Loading from '@/mixins/Loading';
-import ServiceAnnouncement from '@/layouts/shared/ServiceAnnouncement';
-import StandardHeaderLayout from '@/layouts/shared/StandardHeaderLayout';
-import Util from '@/mixins/Util';
+import Context from '@/mixins/Context'
+import Footer from '@/components/Footer'
+import Loading from '@/mixins/Loading'
+import ServiceAnnouncement from '@/layouts/shared/ServiceAnnouncement'
+import StandardHeaderLayout from '@/layouts/shared/StandardHeaderLayout'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'AppointmentDropIn',
@@ -39,10 +32,7 @@ export default {
     ServiceAnnouncement,
     StandardHeaderLayout
   },
-  mixins: [Context, Loading, Util],
-  created() {
-    this.loaded();
-  }
+  mixins: [Context, Loading, Util]
 }
 </script>
 

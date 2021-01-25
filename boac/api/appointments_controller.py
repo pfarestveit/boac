@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,12 +23,17 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+import urllib.parse
+
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import advisor_required, drop_in_advisors_for_dept_code, scheduler_required
+from boac.api.util import advising_data_access_required, authorized_users_api_feed, drop_in_advisors_for_dept_code, scheduler_required
 from boac.lib.berkeley import BERKELEY_DEPT_CODE_TO_NAME
 from boac.lib.http import tolerant_jsonify
+from boac.lib.sis_advising import get_legacy_attachment_stream
+from boac.lib.util import localize_datetime, localized_timestamp_to_utc, process_input_from_rich_text_editor, utc_now
 from boac.merged.student import get_distilled_student_profiles
 from boac.models.appointment import Appointment
+from boac.models.appointment_availability import AppointmentAvailability
 from boac.models.appointment_event import appointment_event_type
 from boac.models.appointment_read import AppointmentRead
 from boac.models.authorized_user import AuthorizedUser
@@ -50,7 +55,7 @@ def get_waitlist(dept_code):
         statuses = appointment_event_type.enums if show_all_statuses else ['reserved', 'waiting']
         unresolved = []
         resolved = []
-        for appointment in Appointment.get_waitlist(dept_code, statuses):
+        for appointment in Appointment.get_drop_in_waitlist(dept_code, statuses):
             a = appointment.to_api_json(current_user.get_id())
             if a['status'] in ['reserved', 'waiting']:
                 unresolved.append(a)
@@ -69,8 +74,32 @@ def get_waitlist(dept_code):
         raise ForbiddenRequestError(f'You are unauthorized to manage {dept_code} appointments.')
 
 
+@app.route('/api/appointments/today/<dept_code>')
+@scheduler_required
+def get_today_scheduled_appointments(dept_code):
+    def _is_current_user_authorized():
+        return current_user.is_admin or dept_code in _dept_codes_with_scheduler_privilege()
+
+    dept_code = dept_code.upper()
+    if dept_code not in BERKELEY_DEPT_CODE_TO_NAME:
+        raise ResourceNotFoundError(f'Unrecognized department code: {dept_code}')
+    elif _is_current_user_authorized():
+        local_today = localize_datetime(utc_now())
+        advisor_uid = request.args.get('advisorUid')
+        scheduled_for_today = Appointment.get_scheduled(dept_code, local_today, advisor_uid)
+        appointments = [a.to_api_json(current_user.get_id()) for a in scheduled_for_today]
+        openings = AppointmentAvailability.get_openings(dept_code, local_today, appointments)
+        _put_student_profile_per_appointment(appointments)
+        return tolerant_jsonify({
+            'appointments': appointments,
+            'openings': openings,
+        })
+    else:
+        raise ForbiddenRequestError(f'You are unauthorized to manage {dept_code} appointments.')
+
+
 @app.route('/api/appointments/<appointment_id>')
-@advisor_required
+@advising_data_access_required
 def get_appointment(appointment_id):
     appointment = Appointment.find_by_id(appointment_id)
     if not appointment:
@@ -91,16 +120,13 @@ def appointment_check_in(appointment_id):
     if not appointment.status_change_available():
         raise BadRequestError(appointment.to_api_json(current_user.get_id()))
     params = request.get_json()
-    advisor_uid = params.get('advisorUid', None)
-    if not advisor_uid:
-        raise BadRequestError('Appointment check-in requires "advisor_uid"')
+    advisor_attrs = _advisor_attrs_for_uid(params.get('advisorUid'))
+    if not advisor_attrs:
+        raise BadRequestError('Appointment reservation requires valid "advisorUid"')
     Appointment.check_in(
         appointment_id=appointment_id,
         checked_in_by=current_user.get_id(),
-        advisor_dept_codes=params.get('advisorDeptCodes', None),
-        advisor_name=params.get('advisorName', None),
-        advisor_role=params.get('advisorRole', None),
-        advisor_uid=advisor_uid,
+        advisor_attrs=advisor_attrs,
     )
     return Response(status=200)
 
@@ -150,13 +176,13 @@ def reserve_appointment(appointment_id):
     if not appointment.status_change_available():
         raise BadRequestError(appointment.to_api_json(current_user.get_id()))
     params = request.get_json()
-    advisor_uid = params.get('advisorUid', None)
-    advisor_id = advisor_uid and AuthorizedUser.get_id_per_uid(advisor_uid)
-    if not advisor_id:
-        raise BadRequestError('Appointment check-in requires valid "advisorUid"')
+    advisor_attrs = _advisor_attrs_for_uid(params.get('advisorUid'))
+    if not advisor_attrs:
+        raise BadRequestError('Appointment reservation requires valid "advisorUid"')
     Appointment.reserve(
         appointment_id=appointment_id,
-        reserved_by=advisor_id,
+        reserved_by=current_user.get_id(),
+        advisor_attrs=advisor_attrs,
     )
     return Response(status=200)
 
@@ -187,9 +213,17 @@ def update_appointment(appointment_id):
         raise ForbiddenRequestError(f'You are unauthorized to manage {appointment.dept_code} appointments.')
     params = request.get_json()
     details = params.get('details', None)
+    scheduled_time = params.get('scheduledTime', None)
+    if scheduled_time:
+        scheduled_time = localized_timestamp_to_utc(scheduled_time)
+    student_contact_info = params.get('studentContactInfo', None)
+    student_contact_type = params.get('studentContactType', None)
     topics = params.get('topics', None)
     appointment.update(
-        details=details,
+        details=process_input_from_rich_text_editor(details),
+        scheduled_time=scheduled_time,
+        student_contact_info=student_contact_info,
+        student_contact_type=student_contact_type,
         topics=topics,
         updated_by=current_user.get_id(),
     )
@@ -220,15 +254,27 @@ def create_appointment():
         raise ResourceNotFoundError(f'Unrecognized department code: {dept_code}')
     if dept_code not in _dept_codes_with_scheduler_privilege():
         raise ForbiddenRequestError(f'You are unauthorized to manage {dept_code} appointments.')
+    advisor_attrs = None
+    advisor_uid = params.get('advisorUid')
+    if advisor_uid:
+        advisor_attrs = _advisor_attrs_for_uid(advisor_uid)
+        if not advisor_attrs:
+            raise BadRequestError('Invalid "advisorUid"')
+    details = params.get('details', None)
+    scheduled_time = params.get('scheduledTime', None)
+    if scheduled_time:
+        scheduled_time = localized_timestamp_to_utc(scheduled_time)
+    student_contact_info = params.get('studentContactInfo', None)
+    student_contact_type = params.get('studentContactType', None)
     appointment = Appointment.create(
-        advisor_dept_codes=params.get('advisorDeptCodes', None),
-        advisor_name=params.get('advisorName', None),
-        advisor_role=params.get('advisorRole', None),
-        advisor_uid=params.get('advisorUid', None),
+        advisor_attrs=advisor_attrs,
         appointment_type=appointment_type,
         created_by=current_user.get_id(),
         dept_code=dept_code,
-        details=params.get('details', None),
+        details=process_input_from_rich_text_editor(details),
+        scheduled_time=scheduled_time,
+        student_contact_info=student_contact_info,
+        student_contact_type=student_contact_type,
         student_sid=sid,
         topics=topics,
     )
@@ -239,31 +285,49 @@ def create_appointment():
 
 
 @app.route('/api/appointments/<appointment_id>/mark_read', methods=['POST'])
-@advisor_required
+@advising_data_access_required
 def mark_appointment_read(appointment_id):
-    return tolerant_jsonify(AppointmentRead.find_or_create(current_user.get_id(), int(appointment_id)).to_api_json())
+    return tolerant_jsonify(AppointmentRead.find_or_create(current_user.get_id(), appointment_id).to_api_json())
 
 
-@app.route('/api/appointments/advisors/find_by_name', methods=['GET'])
-@advisor_required
-def find_appointment_advisors_by_name():
-    query = request.args.get('q')
-    if not query:
-        raise BadRequestError('Search query must be supplied')
-    limit = request.args.get('limit')
-    query_fragments = filter(None, query.upper().split(' '))
-    advisors = Appointment.find_advisors_by_name(query_fragments, limit=limit)
+@app.route('/api/appointments/attachment/<attachment_id>', methods=['GET'])
+@advising_data_access_required
+def download_legacy_appointment_attachment(attachment_id):
+    stream_data = get_legacy_attachment_stream(attachment_id)
+    if not stream_data or not stream_data['stream']:
+        return Response('Sorry, attachment not available.', mimetype='text/html', status=404)
+    r = Response(stream_data['stream'])
+    r.headers['Content-Type'] = 'application/octet-stream'
+    encoding_safe_filename = urllib.parse.quote(stream_data['filename'].encode('utf8'))
+    r.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoding_safe_filename}"
+    return r
 
-    def _advisor_feed(a):
-        return {
-            'label': a.advisor_name,
-            'uid': a.advisor_uid,
-        }
-    return tolerant_jsonify([_advisor_feed(a) for a in advisors])
+
+def _advisor_attrs_for_uid(advisor_uid):
+    authorized_user = AuthorizedUser.find_by_uid(advisor_uid)
+    if not authorized_user:
+        return None
+    api_feeds = authorized_users_api_feed([authorized_user])
+    if not api_feeds:
+        return None
+    api_feed = api_feeds[0]
+
+    if next((d for d in api_feed['departments'] if d['role'] == 'scheduler'), False):
+        role = 'Intake Desk'
+    else:
+        role = api_feed.get('title') or 'Advisor'
+
+    return {
+        'id': authorized_user.id,
+        'uid': advisor_uid,
+        'name': api_feed['name'],
+        'role': role,
+        'deptCodes': [d['code'] for d in api_feed.get('departments', [])],
+    }
 
 
 def _dept_codes_with_scheduler_privilege():
-    scheduler_dept_codes = [d['code'] for d in current_user.departments if d.get('isScheduler')]
+    scheduler_dept_codes = [d['code'] for d in current_user.departments if d.get('role') == 'scheduler']
     drop_in_advisor_dept_codes = [d['deptCode'] for d in current_user.drop_in_advisor_departments]
     return scheduler_dept_codes + drop_in_advisor_dept_codes
 

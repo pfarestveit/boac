@@ -2,18 +2,21 @@
   <div class="position-relative">
     <img
       :class="avatarStyle"
-      :aria-label="`Photo of ${student.firstName} ${student.lastName}`"
-      :alt="`Photo of ${student.firstName} ${student.lastName}`"
+      :aria-label="ariaLabel"
+      :alt="ariaLabel"
       :src="avatarUrl"
       class="avatar"
-      tabindex="0"
-      @error="avatarError" />
+      @error="avatarError"
+    />
     <div
       v-if="alertCount"
-      class="inactive-info-icon student-avatar-alert-count">
+      aria-hidden="true"
+      class="student-avatar-alert-count"
+    >
       <span
         v-b-tooltip.hover.bottom
-        :title="`${alertCount} alert${alertCount === 1 ? '' : 's'}`">
+        :title="`${alertCount} alert${alertCount === 1 ? '' : 's'}`"
+      >
         {{ alertCount }}
       </span>
     </div>
@@ -21,7 +24,7 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
+import Context from '@/mixins/Context'
 
 export default {
   name: 'StudentAvatar',
@@ -32,21 +35,26 @@ export default {
     alertCount: Number
   },
   data: () => ({
+    ariaLabel: undefined,
     avatarStyle: undefined,
     avatarUrl: undefined
   }),
   created() {
-    this.avatarUrl = this.student.photoUrl;
+    this.ariaLabel = `Photo of ${this.student.firstName} ${this.student.lastName}`
+    if (!this.$_.isNil(this.alertCount)) {
+      this.ariaLabel += this.alertCount === 1 ? ' (one alert)' : ` (${this.alertCount} alerts)`
+    }
+    this.avatarUrl = this.student.photoUrl
     this.avatarStyle = `student-avatar-${this.size} ${
       this.$currentUser.inDemoMode ? 'img-blur' : ''
-    }`;
+    }`
   },
   methods: {
     avatarError() {
-      this.avatarUrl = require('@/assets/avatar-50.png');
+      this.avatarUrl = require('@/assets/avatar-50.png')
     }
   }
-};
+}
 </script>
 
 <style scoped>

@@ -1,30 +1,31 @@
 <template>
   <div class="ml-3 mt-3">
     <h1 class="sr-only">Welcome to BOA</h1>
-    <Spinner alert-prefix="The BOA homepage" />
+    <Spinner />
     <div v-if="!loading" class="home-content">
       <div>
         <div id="filtered-cohorts-header-row">
-          <h2 v-if="myCohorts && !size(myCohorts)" id="no-cohorts-header" class="page-section-header">
+          <h2 v-if="myCohorts && !$_.size(myCohorts)" id="no-cohorts-header" class="page-section-header">
             You have no saved cohorts.
           </h2>
-          <h1 v-if="myCohorts && size(myCohorts)" class="page-section-header">
+          <h2 v-if="myCohorts && $_.size(myCohorts)" class="page-section-header">
             Cohorts
-          </h1>
+          </h2>
         </div>
-        <div v-if="myCohorts && !size(myCohorts)">
+        <div v-if="myCohorts && !$_.size(myCohorts)">
           <router-link id="create-filtered-cohort" to="/cohort/new">Create a student cohort</router-link>
           automatically by your filtering preferences, such as GPA or units.
         </div>
-        <div role="tablist" class="panel-group">
+        <div class="panel-group">
           <SortableGroup
             v-for="cohort in myCohorts"
             :key="cohort.id"
             :group="cohort"
-            :is-cohort="true" />
+            :is-cohort="true"
+          />
         </div>
       </div>
-      <div v-if="size(myCuratedGroups)">
+      <div v-if="$_.size(myCuratedGroups)">
         <div id="curated-groups-header-row">
           <h2 class="page-section-header">Curated Groups</h2>
         </div>
@@ -32,19 +33,20 @@
           v-for="curatedGroup in myCuratedGroups"
           :key="curatedGroup.id"
           :group="curatedGroup"
-          :is-cohort="false" />
+          :is-cohort="false"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import CurrentUserExtras from '@/mixins/CurrentUserExtras.vue';
-import Loading from '@/mixins/Loading.vue';
-import Scrollable from '@/mixins/Scrollable';
-import SortableGroup from '@/components/search/SortableGroup.vue';
-import Spinner from '@/components/util/Spinner.vue';
-import Util from '@/mixins/Util.vue';
+import CurrentUserExtras from '@/mixins/CurrentUserExtras.vue'
+import Loading from '@/mixins/Loading.vue'
+import Scrollable from '@/mixins/Scrollable'
+import SortableGroup from '@/components/search/SortableGroup.vue'
+import Spinner from '@/components/util/Spinner.vue'
+import Util from '@/mixins/Util.vue'
 
 export default {
   name: 'Home',
@@ -54,10 +56,10 @@ export default {
   },
   mixins: [CurrentUserExtras, Loading, Scrollable, Util],
   mounted() {
-    this.loaded('Home');
-    this.scrollToTop();
+    this.loaded('BOA has loaded')
+    this.scrollToTop()
   }
-};
+}
 </script>
 
 <style scoped>

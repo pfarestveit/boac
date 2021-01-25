@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,6 +27,8 @@ from datetime import datetime
 
 from boac import db, std_commit
 from boac.lib.util import utc_now
+from dateutil.tz import tzutc
+from sqlalchemy import text
 
 
 class Topic(db.Model):
@@ -65,11 +67,64 @@ class Topic(db.Model):
             std_commit()
 
     @classmethod
-    def create_topic(cls, topic, available_in_notes=False, available_in_appointments=False):
-        topic = cls(topic=topic, available_in_notes=available_in_notes, available_in_appointments=available_in_appointments)
+    def undelete(cls, topic_id):
+        topic = cls.query.filter_by(id=topic_id).first()
+        if topic:
+            topic.deleted_at = None
+            std_commit()
+
+    @classmethod
+    def create_topic(cls, topic, available_in_appointments=False, available_in_notes=False):
+        topic = cls(
+            topic=topic,
+            available_in_notes=available_in_notes,
+            available_in_appointments=available_in_appointments,
+        )
         db.session.add(topic)
         std_commit()
         return topic
 
+    @classmethod
+    def update_topic(cls, topic_id, topic, available_in_appointments=False, available_in_notes=False):
+        existing = cls.find_by_id(topic_id=topic_id)
+        existing.topic = topic
+        existing.available_in_appointments = available_in_appointments
+        existing.available_in_notes = available_in_notes
+        std_commit()
+        return existing
+
+    @classmethod
+    def find_by_id(cls, topic_id):
+        return cls.query.filter(cls.id == topic_id).first()  # noqa: E711
+
+    @classmethod
+    def get_usage_statistics(cls):
+        statistics = {}
+        for usage_type in ('appointment', 'note'):
+            query = text(f"""
+                SELECT t.id AS topic_id, COUNT(n.id)
+                FROM {usage_type}_topics n
+                JOIN topics t ON t.topic = n.topic
+                WHERE n.deleted_at IS NULL
+                GROUP BY t.id, n.topic
+            """)
+            key = f'{usage_type}s'
+            statistics[key] = {}
+            for row in db.session.execute(query):
+                topic_id = row['topic_id']
+                statistics[key][topic_id] = row['count']
+        return statistics
+
     def to_api_json(self):
-        return self.topic
+        return {
+            'id': self.id,
+            'availableInAppointments': self.available_in_appointments,
+            'availableInNotes': self.available_in_notes,
+            'topic': self.topic,
+            'createdAt': _isoformat(self.created_at),
+            'deletedAt': _isoformat(self.deleted_at),
+        }
+
+
+def _isoformat(value):
+    return value and value.astimezone(tzutc()).isoformat()

@@ -6,11 +6,13 @@
       show
       target="sign-in"
       triggers="focus"
-      @hidden="onHidden">
+      @hidden="onHidden"
+    >
       <span
         class="has-error"
         aria-live="polite"
-        v-html="error"></span>
+        v-html="error"
+      ></span>
     </b-popover>
     <div class="container">
       <div class="stripe"></div>
@@ -22,18 +24,17 @@
           id="sign-in"
           class="btn-sign-in btn-primary-color-override"
           variant="primary"
-          aria-label="Log in to BOA"
-          tabindex="0"
           placement="top"
-          @click.stop="logIn()">
+          @click.stop="logIn"
+        >
           Sign In
         </b-btn>
         <div class="contact-us">
           Questions or feedback? Contact us at
           <a
             :href="`mailto:${$config.supportEmailAddress}`"
-            aria-label="BOA support email address"
-            target="_blank">{{ $config.supportEmailAddress }}<span class="sr-only"> (will open new browser tab)</span></a>
+            target="_blank"
+          >{{ $config.supportEmailAddress }}<span class="sr-only"> (link will open new browser tab)</span></a>
         </div>
         <DevAuth v-if="$config.devAuthEnabled" :report-error="reportError" />
       </div>
@@ -43,17 +44,17 @@
         </div>
       </div>
       <div class="copyright pt-2" role="contentinfo">
-        <span class="font-size-12 text-white">&copy; 2020 The Regents of the University of California</span>
+        <span class="font-size-12 text-white">&copy; 2021 The Regents of the University of California</span>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import DevAuth from '@/components/admin/DevAuth';
-import Util from '@/mixins/Util';
-import { getCasLoginURL } from '@/api/auth';
+import Context from '@/mixins/Context'
+import DevAuth from '@/components/admin/DevAuth'
+import Util from '@/mixins/Util'
+import { getCasLoginURL } from '@/api/auth'
 
 export default {
   name: 'Login',
@@ -66,25 +67,25 @@ export default {
     showError: false
   }),
   created() {
-    this.reportError(this.$route.query.error);
+    this.reportError(this.$route.query.error)
   },
   methods: {
     logIn() {
-      getCasLoginURL().then(data => window.location.href = data.casLoginUrl);
+      getCasLoginURL().then(data => window.location.href = data.casLoginUrl)
     },
     onHidden() {
-      this.error = null;
-      this.showError = false;
+      this.error = null
+      this.showError = false
     },
     reportError(error) {
-      error = this.trim(error);
+      error = this.$_.trim(error)
       if (error.length) {
-        this.error = error;
-        this.showError = true;
+        this.error = error
+        this.showError = true
       }
     }
   }
-};
+}
 </script>
 
 <style scoped>

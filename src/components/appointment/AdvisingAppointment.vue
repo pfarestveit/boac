@@ -3,14 +3,15 @@
     <div
       v-if="!isOpen"
       :id="`appointment-${appointment.id}-is-closed`"
-      :class="{'truncate-with-ellipsis': !isOpen}">
-      <span :id="`appointment-${appointment.id}-details-closed`">{{ appointment.details }}</span>
+      :class="{'truncate-with-ellipsis': !isOpen}"
+    >
+      <span :id="`appointment-${appointment.id}-details-closed`" v-html="appointment.details"></span>
     </div>
     <div v-if="isOpen" :id="`appointment-${appointment.id}-is-open`">
       <div class="mt-2">
         <span :id="`appointment-${appointment.id}-details`" v-html="appointment.details"></span>
       </div>
-      <div class="mt-3">
+      <div v-if="!(appointment.status === 'checked_in' && appointment.advisor.title === 'Intake Desk') && !appointment.legacySource" class="mt-3">
         <font-awesome icon="clock" class="status-arrived-icon" />
         <span class="text-secondary ml-1">
           Arrived @
@@ -20,20 +21,21 @@
         </span>
       </div>
       <div class="d-flex align-items-center mt-1 mb-3">
-        <div v-if="isUserDropInAdvisor(appointment.deptCode) && includes(['waiting', 'reserved'], appointment.status)">
+        <div v-if="isUserDropInAdvisor(appointment.deptCode) && $_.includes(['waiting', 'reserved'], appointment.status)">
           <DropInAppointmentDropdown
             :appointment="appointment"
             :dept-code="appointment.deptCode"
             :include-details-option="false"
             :on-appointment-status-change="onAppointmentStatusChange"
             :self-check-in="true"
-            class="mr-3" />
+            class="mr-3"
+          />
         </div>
         <div v-if="appointment.status === 'reserved' && ($currentUser.isAdmin || isUserDropInAdvisor(appointment.deptCode))">
           <span class="text-secondary">
             Assigned
-            <span v-if="appointment.statusBy" :id="`appointment-${appointment.id}-assigned-to`">
-              to {{ appointment.statusBy.id === $currentUser.id ? 'you' : appointment.statusBy.name }}
+            <span v-if="appointment.advisor.id" :id="`appointment-${appointment.id}-assigned-to`">
+              to {{ appointment.advisor.id === $currentUser.id ? 'you' : appointment.advisor.name }}
             </span>
           </span>
         </div>
@@ -58,37 +60,59 @@
           </div>
         </div>
       </div>
-      <div v-if="appointment.advisorName && (appointment.status === 'checked_in')" class="mt-2">
+      <div v-if="appointment.advisor.name && (appointment.status === 'checked_in' || appointment.legacySource)" class="mt-2">
         <a
-          v-if="appointment.advisorUid"
+          v-if="appointment.advisor.uid"
           :id="`appointment-${appointment.id}-advisor-name`"
-          :aria-label="`Open UC Berkeley Directory page of ${appointment.advisorName} in a new window`"
-          :href="`https://www.berkeley.edu/directory/results?search-term=${appointment.advisorName}`"
-          target="_blank">{{ appointment.advisorName }}</a>
-        <span v-if="!appointment.advisorUid" :id="`appointment-${appointment.id}-advisor-name`">
-          {{ appointment.advisorName }}
+          :aria-label="`Open UC Berkeley Directory page of ${appointment.advisor.name} in a new window`"
+          :href="`https://www.berkeley.edu/directory/results?search-term=${appointment.advisor.name}`"
+          target="_blank"
+        >{{ appointment.advisor.name }}</a>
+        <span v-if="!appointment.advisor.uid" :id="`appointment-${appointment.id}-advisor-name`">
+          {{ appointment.advisor.name }}
         </span>
-        <span v-if="appointment.advisorRole" :id="`appointment-${appointment.id}-advisor-role`" class="text-dark">
-          - {{ appointment.advisorRole }}
+        <span v-if="appointment.advisor.title" :id="`appointment-${appointment.id}-advisor-role`" class="text-dark">
+          - {{ appointment.advisor.title }}
         </span>
       </div>
-      <div v-if="size(appointment.advisorDepartments)" class="text-secondary">
-        <span v-for="(dept, index) in appointment.advisorDepartments" :key="dept.code">
+      <div v-if="$_.size(appointment.advisor.departments)" class="text-secondary">
+        <span v-for="(dept, index) in appointment.advisor.departments" :key="dept.code">
           <span :id="`appointment-${appointment.id}-advisor-dept-${index}`">{{ dept.name }}</span>
         </span>
       </div>
       <div v-if="appointment.appointmentType" :id="`appointment-${appointment.id}-type`" class="mt-3">
         {{ appointment.appointmentType }}
       </div>
-      <div v-if="appointment.topics && size(appointment.topics)">
-        <div class="pill-list-header mt-3 mb-1">{{ size(appointment.topics) === 1 ? 'Topic' : 'Topics' }}</div>
+      <div v-if="appointment.topics && $_.size(appointment.topics)">
+        <div class="pill-list-header mt-3 mb-1">{{ $_.size(appointment.topics) === 1 ? 'Topic' : 'Topics' }}</div>
         <ul class="pill-list pl-0">
           <li
             v-for="(topic, index) in appointment.topics"
             :id="`appointment-${appointment.id}-topic-${index}`"
             :key="topic"
-            class="mt-2">
+            class="mt-2"
+          >
             <span class="pill pill-attachment text-uppercase text-nowrap">{{ topic }}</span>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <ul class="pill-list pl-0 mt-3">
+          <li
+            v-for="(attachment, index) in appointment.attachments"
+            :id="`appointment-${appointment.id}-attachment-${index}`"
+            :key="attachment.name"
+            class="mt-2"
+          >
+            <span class="pill pill-attachment text-nowrap">
+              <a
+                :id="`appointment-${appointment.id}-attachment-${index}`"
+                :href="downloadUrl(attachment)"
+              >
+                <font-awesome icon="paperclip" />
+                {{ attachment.displayName }}
+              </a>
+            </span>
           </li>
         </ul>
       </div>
@@ -97,9 +121,10 @@
 </template>
 
 <script>
-import DropInAppointmentDropdown from '@/components/appointment/DropInAppointmentDropdown';
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
+import DropInAppointmentDropdown from '@/components/appointment/DropInAppointmentDropdown'
+import Context from '@/mixins/Context'
+import Util from '@/mixins/Util'
+import { getCalnetProfileByUid } from '@/api/user'
 
 export default {
   name: 'AdvisingAppointment',
@@ -123,14 +148,44 @@ export default {
       type: Object
     }
   },
+  watch: {
+    isOpen() {
+      this.setAdvisor()
+    }
+  },
+  created() {
+    this.setAdvisor()
+  },
   methods: {
     datePerTimezone(date) {
-      return this.$moment(date).tz(this.$config.timezone);
+      return this.$moment(date).tz(this.$config.timezone)
+    },
+    downloadUrl(attachment) {
+      return `${this.$config.apiBaseUrl}/api/appointments/attachment/${attachment.id}`
     },
     isUserDropInAdvisor(deptCode) {
-      const deptCodes = this.map(this.$currentUser.dropInAdvisorStatus || [], 'deptCode');
-      return this.includes(deptCodes, this.upperCase(deptCode));
-    }
+      const deptCodes = this.$_.map(this.$currentUser.dropInAdvisorStatus || [], 'deptCode')
+      return this.$_.includes(deptCodes, this.$_.upperCase(deptCode))
+    },
+    setAdvisor() {
+      const requiresLazyLoad = this.isOpen && (!this.$_.get(this.appointment, 'advisor.name') || !this.$_.get(this.appointment, 'advisor.title'))
+      if (requiresLazyLoad) {
+        if (this.$_.get(this.appointment, 'advisor.uid')) {
+          const advisor_uid = this.appointment.advisor.uid
+          if (advisor_uid) {
+            if (advisor_uid === this.$currentUser.uid) {
+              // TODO: do not mutate prop
+              this.appointment.advisor = this.$currentUser // eslint-disable-line vue/no-mutating-props
+            } else {
+              getCalnetProfileByUid(advisor_uid).then(data => {
+                // TODO: do not mutate prop
+                this.appointment.advisor = data // eslint-disable-line vue/no-mutating-props
+              })
+            }
+          }
+        }
+      }
+    },
   }
 }
 </script>

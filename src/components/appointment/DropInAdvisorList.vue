@@ -13,7 +13,8 @@
         id="no-advisors"
         class="font-size-16 mb-3 ml-1 mt-3"
         aria-live="polite"
-        role="alert">
+        role="alert"
+      >
         No advisors found
       </div>
     </div>
@@ -23,18 +24,22 @@
           v-for="advisor in orderedAdvisors"
           :key="advisor.uid"
           no-gutters
-          class="border-bottom font-size-16 mt-2">
-          <b-col sm="8" class="pb-2 text-nowrap">
+          class="border-bottom font-size-16 mt-2"
+        >
+          <b-col sm="8" class="pb-2">
             {{ advisor.name }}
-            <font-awesome v-if="isSupervisorOnCall(advisor, deptCode)" icon="star" class="supervisor-on-call-icon" />
-            <span v-if="isSupervisorOnCall(advisor, deptCode)" class="sr-only">(Supervisor on call)</span>
+            <span v-if="advisor.status" class="text-muted">
+              ({{ advisor.status }})
+            </span>
           </b-col>
           <b-col sm="4">
             <DropInAvailabilityToggle
               :availability="advisor.available"
               :dept-code="deptCode"
               :is-homepage="false"
-              :uid="advisor.uid" />
+              :reserved-appointments="reservedAppointmentsByAdvisor[advisor.uid] || []"
+              :uid="advisor.uid"
+            />
           </b-col>
         </b-row>
       </b-container>
@@ -43,10 +48,10 @@
 </template>
 
 <script>
-import Berkeley from '@/mixins/Berkeley';
-import Context from '@/mixins/Context';
-import DropInAvailabilityToggle from '@/components/appointment/DropInAvailabilityToggle';
-import Util from '@/mixins/Util';
+import Berkeley from '@/mixins/Berkeley'
+import Context from '@/mixins/Context'
+import DropInAvailabilityToggle from '@/components/appointment/DropInAvailabilityToggle'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'DropInAdvisorList',
@@ -62,11 +67,20 @@ export default {
     deptCode: {
       type: String,
       required: true
+    },
+    waitlist: {
+      type: Object,
+      required: true
     }
   },
   computed: {
+    reservedAppointmentsByAdvisor: function() {
+      return this.$_.groupBy(this.waitlist.unresolved, (appt) => {
+        return appt.status === 'reserved' && appt.advisorUid
+      })
+    },
     orderedAdvisors: function() {
-      return this.orderBy(this.advisors, 'name');
+      return this.$_.orderBy(this.advisors, 'name')
     }
   }
 }

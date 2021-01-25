@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,13 +23,16 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from boac import std_commit
 from boac.externals import data_loch
 from boac.lib import util
 from boac.models.appointment import Appointment
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.manually_added_advisee import ManuallyAddedAdvisee
+from flask import current_app as app
 import pytest
 import simplejson as json
+from tests.util import override_config
 
 asc_advisor_uid = '1081940'
 
@@ -50,8 +53,18 @@ def coe_advisor(fake_auth):
 
 
 @pytest.fixture()
+def coe_advisor_no_advising_data(fake_auth):
+    fake_auth.login('1022796')
+
+
+@pytest.fixture()
 def coe_scheduler(fake_auth):
     fake_auth.login('6972201')
+
+
+@pytest.fixture()
+def ce3_advisor(fake_auth):
+    fake_auth.login('2525')
 
 
 @pytest.fixture()
@@ -66,40 +79,6 @@ def asc_inactive_students():
         JOIN student.student_academic_status sas ON sas.sid = s.sid
         WHERE s.active is FALSE
     """)
-
-
-def _api_search(
-        client,
-        phrase,
-        appointments=False,
-        courses=False,
-        notes=False,
-        students=False,
-        appointment_options=None,
-        note_options=None,
-        order_by=None,
-        offset=None,
-        limit=None,
-        expected_status_code=200,
-):
-    response = client.post(
-        '/api/search',
-        content_type='application/json',
-        data=json.dumps({
-            'appointments': appointments,
-            'courses': courses,
-            'notes': notes,
-            'students': students,
-            'searchPhrase': phrase,
-            'appointmentOptions': appointment_options,
-            'noteOptions': note_options,
-            'orderBy': order_by,
-            'offset': offset,
-            'limit': limit,
-        }),
-    )
-    assert response.status_code == expected_status_code
-    return response.json
 
 
 class TestStudentSearch:
@@ -176,6 +155,7 @@ class TestStudentSearch:
         assert len(students) == 0
 
     def test_inactive_sids_search_creates_manually_added_advisee(self, client, fake_auth):
+        ManuallyAddedAdvisee.query.delete()
         assert len(ManuallyAddedAdvisee.query.all()) == 0
         fake_auth.login('2040')
         _api_search(client, '2718281828', students=True)
@@ -187,12 +167,13 @@ class TestStudentSearch:
         """Search results include alert counts."""
         fake_auth.login('2040')
         api_json = _api_search(client, 'davies', students=True)
-        assert api_json['students'][0]['alertCount'] == 3
+        assert api_json['students'][0]['alertCount'] == 4
 
     def test_summary_profiles_in_search_results(self, client, fake_auth):
         fake_auth.login('2040')
         api_json = _api_search(client, 'davies', students=True)
         students = api_json['students']
+        assert students[0]['academicStanding'][0]['status'] == 'GST'
         assert students[0]['cumulativeGPA'] == 3.8
         assert students[0]['cumulativeUnits'] == 101.3
         assert students[0]['expectedGraduationTerm']['name'] == 'Fall 2019'
@@ -433,7 +414,7 @@ class TestNoteSearch:
             '/api/notes/create',
             data={
                 'authorId': AuthorizedUser.get_id_per_uid(asc_advisor_uid),
-                'sid': '9000000000',
+                'sids': ['9000000000'],
                 'subject': 'Patience is a conquering virtue',
             },
         )
@@ -493,6 +474,16 @@ class TestNoteSearch:
         )
         self._assert(api_json, note_count=1, note_ids=['11667051-139362'])
 
+    def test_search_by_note_author_data_science(self, coe_advisor, client):
+        """Searches Data Science notes by advisor CSID if posted by option is selected."""
+        api_json = _api_search(
+            client,
+            'Buyer beware',
+            notes=True,
+            note_options={'advisorCsid': '800700600'},
+        )
+        self._assert(api_json, note_count=1, note_ids=['11667051-20190801112456'])
+
     def test_search_with_no_input_and_author(self, coe_advisor, client):
         """Notes search needs no input when author set."""
         api_json = _api_search(
@@ -501,7 +492,7 @@ class TestNoteSearch:
             notes=True,
             note_options={'advisorCsid': '800700600'},
         )
-        self._assert(api_json, note_count=2)
+        self._assert(api_json, note_count=3)
 
     def test_search_by_student(self, coe_advisor, client):
         """Searches notes by student CSID."""
@@ -521,7 +512,7 @@ class TestNoteSearch:
             notes=True,
             note_options={'studentCsid': '11667051'},
         )
-        self._assert(api_json, note_count=8)
+        self._assert(api_json, note_count=10)
 
     def test_note_search_limit(self, coe_advisor, client):
         """Limits search to the first n notes."""
@@ -551,7 +542,11 @@ class TestNoteSearch:
             notes=True,
             note_options={'studentCsid': '11667051'},
         )
-        self._assert(api_json, note_count=8)
+        self._assert(api_json, note_count=10)
+
+    def test_search_notes_includes_inactive_students(self, coe_advisor, client):
+        api_json = _api_search(client, 'vocation', notes=True)
+        self._assert(api_json, note_count=1, note_ids=['2718281828-00001'])
 
 
 class TestAppointmentSearch:
@@ -566,15 +561,21 @@ class TestAppointmentSearch:
         for appointment in appointments:
             if previous_id is not None:
                 assert previous_id > appointment.get('id')
+            assert appointment['details']
+            assert appointment['detailsSnippet']
+            assert appointment['student']
+            assert appointment['student']['firstName']
+            assert appointment['student']['lastName']
+            assert appointment['studentSid']
 
     def test_search_with_missing_input_no_options(self, coe_advisor, client):
         """Appointments search is nothing without input when no additional options are set."""
         _api_search(client, ' \t  ', appointments=True, expected_status_code=400)
 
     def test_search_appointments(self, coe_advisor, client):
-        """Search results include appointments ordered by rank."""
+        """Search results include both legacy and BOA-generated appointments."""
         api_json = _api_search(client, 'life', appointments=True)
-        self._assert(api_json, appointment_count=2)
+        self._assert(api_json, appointment_count=3)
 
     def test_search_by_appointment_cancel_reason(self, coe_advisor, client):
         """Appointments can be searched for by cancel reason and cancel reason explained."""
@@ -650,7 +651,7 @@ class TestAppointmentSearch:
             appointments=True,
             appointment_options={'dateFrom': '2017-11-01', 'dateTo': '2017-11-02'},
         )
-        self._assert(api_json, appointment_count=1)
+        self._assert(api_json, appointment_count=3)
 
     def test_search_excludes_appointments_unless_requested(self, coe_advisor, client):
         """Excludes appointments from search results if appointments param is false."""
@@ -695,7 +696,7 @@ class TestAppointmentSearch:
             appointments=True,
             appointment_options={'advisorUid': '90412'},
         )
-        self._assert(api_json, appointment_count=3)
+        self._assert(api_json, appointment_count=4)
 
     def test_search_appointments_by_student(self, coe_advisor, client):
         """Searches appointments by student CSID."""
@@ -715,7 +716,7 @@ class TestAppointmentSearch:
             appointments=True,
             appointment_options={'studentCsid': '11667051'},
         )
-        self._assert(api_json, appointment_count=2)
+        self._assert(api_json, appointment_count=5)
 
     def test_appointments_search_limit(self, coe_advisor, client):
         """Limits search to the first n appointments."""
@@ -735,7 +736,7 @@ class TestAppointmentSearch:
             appointments=True,
             appointment_options={'offset': '1'},
         )
-        self._assert(api_json, appointment_count=1)
+        self._assert(api_json, appointment_count=2)
 
     def test_search_appointments_no_canvas_data_access(self, client, no_canvas_access_advisor):
         """A user with no access to Canvas data can still search for appointments."""
@@ -745,7 +746,269 @@ class TestAppointmentSearch:
             appointments=True,
             appointment_options={'studentCsid': '11667051'},
         )
-        self._assert(api_json, appointment_count=2)
+        self._assert(api_json, appointment_count=5)
+
+    def test_search_appointments_includes_inactive_students(self, coe_advisor, client):
+        api_json = _api_search(client, 'pez', appointments=True)
+        self._assert(api_json, appointment_count=1)
+
+
+class TestAdmittedStudentSearch:
+    """Admitted students search API."""
+
+    @classmethod
+    def _api_search_admits(cls, client, search_phrase, order_by='cs_empl_id', expected_status_code=200):
+        response = client.post(
+            '/api/search/admits',
+            content_type='application/json',
+            data=json.dumps({
+                'searchPhrase': search_phrase,
+                'orderBy': order_by,
+            }),
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    @classmethod
+    def _assert(cls, api_json, admit_count=0):
+        assert 'admits' in api_json
+        assert 'totalAdmitCount' in api_json
+        admits = api_json['admits']
+        assert len(admits) == admit_count
+        assert api_json['totalAdmitCount'] == admit_count
+        for admit in admits:
+            assert admit['csEmplId']
+            assert admit['firstName']
+            assert admit['lastName']
+            assert 'currentSir' in admit
+            assert 'specialProgramCep' in admit
+            assert 'reentryStatus' in admit
+            assert 'firstGenerationCollege' in admit
+            assert 'residencyCategory' in admit
+            assert 'urem' in admit
+            assert 'applicationFeeWaiverFlag' in admit
+            assert 'freshmanOrTransfer' in admit
+
+    def test_search_admits_when_feature_flag_false(self, client, ce3_advisor):
+        """Excludes admit results if feature flag is false."""
+        with override_config(app, 'FEATURE_FLAG_ADMITTED_STUDENTS', False):
+            api_json = self._api_search_admits(client, '0000', expected_status_code=401)
+            assert 'admits' not in api_json
+
+    def test_search_admits_performed_by_non_ce3_advisor(self, client, coe_advisor):
+        """Excludes admit results if user is a non-CE3 advisor."""
+        with override_config(app, 'FEATURE_FLAG_ADMITTED_STUDENTS', True):
+            api_json = self._api_search_admits(client, '0000', expected_status_code=401)
+            assert 'admits' not in api_json
+
+    def test_search_admits_by_sid(self, client, ce3_advisor):
+        """Search by SID yields admit results."""
+        with override_config(app, 'FEATURE_FLAG_ADMITTED_STUDENTS', True):
+            api_json = self._api_search_admits(client, '0000')
+            self._assert(api_json, admit_count=1)
+
+    def test_search_admits_by_name(self, client, ce3_advisor):
+        """Search by first, last, and/or middle name yields admits."""
+        with override_config(app, 'FEATURE_FLAG_ADMITTED_STUDENTS', True):
+            api_json = self._api_search_admits(client, 'da')
+            self._assert(api_json, admit_count=2)
+
+            api_json = self._api_search_admits(client, 'da de')
+            self._assert(api_json, admit_count=1)
+
+            api_json = self._api_search_admits(client, 'j ly')
+            self._assert(api_json, admit_count=1)
+
+    def test_search_admits_ordering(self, client, ce3_advisor):
+        with override_config(app, 'FEATURE_FLAG_ADMITTED_STUDENTS', True):
+            api_json = self._api_search_admits(client, 'da', order_by='first_name')
+            self._assert(api_json, admit_count=2)
+            assert(api_json['admits'][0]['firstName']) == 'Daniel'
+            assert(api_json['admits'][1]['firstName']) == 'Deborah'
+
+            api_json = self._api_search_admits(client, 'da', order_by='last_name')
+            self._assert(api_json, admit_count=2)
+            assert(api_json['admits'][0]['lastName']) == 'Davies'
+            assert(api_json['admits'][1]['lastName']) == 'Mcknight'
+
+
+class TestSearchHistory:
+    """Search history API."""
+
+    @classmethod
+    def _api_my_search_history(cls, client, expected_status_code=200):
+        response = client.get('/api/search/my_search_history')
+        assert response.status_code == expected_status_code
+        return response.json
+
+    @classmethod
+    def _api_add_to_my_search_history(cls, client, phrase, expected_status_code=200):
+        response = client.post(
+            '/api/search/add_to_search_history',
+            content_type='application/json',
+            data=json.dumps({
+                'phrase': phrase,
+            }),
+        )
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_not_authenticated(self, client):
+        """Returns 401 if not authenticated."""
+        self._api_my_search_history(client, expected_status_code=401)
+
+    def test_not_authenticated_update_search_history(self, client):
+        """/add_to_search_history returns 401 if not authenticated."""
+        self._api_add_to_my_search_history(client, 'I want it all', expected_status_code=401)
+
+    def test_empty_search_history(self, client, coe_advisor):
+        """Returns empty array if user has no search history."""
+        assert self._api_my_search_history(client) == []
+
+    def test_blank_input(self, asc_advisor, client):
+        """Blank search phrase is not added to search history."""
+        self._api_add_to_my_search_history(client, '    ', expected_status_code=400)
+        assert self._api_my_search_history(client=client) == ['Moe', 'Larry', 'Curly']
+
+    def test_search_history(self, asc_advisor, client):
+        """Returns search history."""
+        api_json = self._api_my_search_history(client)
+        expected_history = ['Moe', 'Larry', 'Curly']
+        assert api_json == expected_history
+        # Searching for same phrase twice should cause no change in search history
+        self._api_add_to_my_search_history(client, 'Moe')
+        assert self._api_my_search_history(client=client) == expected_history
+
+    def test_search_history_truncate(self, client, coe_scheduler):
+        # The string expected in search history will be shorter than MAX_LENGTH
+        expected_length = AuthorizedUser.SEARCH_HISTORY_ITEM_MAX_LENGTH - 20
+        expected_search_history_string = 's' * expected_length
+        search_string = f'  {expected_search_history_string}  this_suffix_has_no_whitespace_and_will_be_dropped  '
+        self._api_add_to_my_search_history(client, search_string)
+        assert self._api_my_search_history(client)[0] == expected_search_history_string
+
+        # A whole lot of whitespace in search string
+        search_string = '       aa       bbb     c  ' * AuthorizedUser.SEARCH_HISTORY_ITEM_MAX_LENGTH
+        self._api_add_to_my_search_history(client, search_string)
+        actual_search_history_string = self._api_my_search_history(client)[0]
+        assert actual_search_history_string[0] in 'abc'
+        assert actual_search_history_string[-1] in 'abc'
+        for snippet in (' aa ', ' bbb ', ' c '):
+            assert snippet in actual_search_history_string
+        assert '  ' not in actual_search_history_string
+
+    def test_search_history_truncate_when_no_whitespace(self, client, coe_scheduler):
+        expected_search_history_string = 's' * AuthorizedUser.SEARCH_HISTORY_ITEM_MAX_LENGTH
+        no_whitespace_in_search_string = f'{expected_search_history_string}truncate_me'
+        self._api_add_to_my_search_history(client, f'  {no_whitespace_in_search_string}   ')
+        assert self._api_my_search_history(client)[0] == expected_search_history_string
+
+    def test_manage_search_history(self, admin_login, client):
+        """Properly manages search history."""
+        assert self._api_my_search_history(client) == []
+        polythene_pam = 'Polythene Pam'
+        phrases = [
+            'Sun King',
+            'Mean Mr. Mustard',
+            polythene_pam,
+            'She Came In Through the Bathroom Window',
+            'Golden Slumbers',
+        ]
+        for phrase in phrases:
+            self._api_add_to_my_search_history(client, phrase)
+        std_commit(allow_test_environment=True)
+        # Expect list above, in reverse order
+        search_history = phrases[::-1]
+        assert self._api_my_search_history(client) == search_history
+        # Search for phrase a second time and it will move to start of list
+        self._api_add_to_my_search_history(client, polythene_pam)
+        std_commit(allow_test_environment=True)
+
+        search_history = self._api_my_search_history(client)
+        assert search_history == [
+            polythene_pam,
+            'Golden Slumbers',
+            'She Came In Through the Bathroom Window',
+            'Mean Mr. Mustard',
+            'Sun King',
+        ]
+        # Finally, verify USER_SEARCH_HISTORY_MAX_SIZE setting
+        self._api_add_to_my_search_history(client, 'Carry That Weight')
+        self._api_add_to_my_search_history(client, 'The End')
+        search_history = self._api_my_search_history(client)
+        assert search_history == [
+            'The End',
+            'Carry That Weight',
+            polythene_pam,
+            'Golden Slumbers',
+            'She Came In Through the Bathroom Window',
+        ]
+
+
+class TestFindAdvisorsByName:
+    """Advisors by name API."""
+
+    @classmethod
+    def _api_search_advisors(cls, client, query, expected_status_code=200):
+        response = client.get(f'/api/search/advisors/find_by_name?q={query}')
+        assert response.status_code == expected_status_code
+        return response.json
+
+    def test_not_authenticated(self, client):
+        """Denies anonymous access."""
+        self._api_search_advisors(client, 'Vis', expected_status_code=401)
+
+    def test_user_without_advising_data_access(self, client, coe_advisor_no_advising_data):
+        """Denies access to a user who cannot access notes and appointments."""
+        self._api_search_advisors(client, 'Vis', expected_status_code=401)
+
+    def test_find_advisors_by_name(self, client, coe_advisor):
+        """Finds matches including appointment advisors."""
+        response = self._api_search_advisors(client, 'Vis')
+        assert len(response) == 1
+        labels = [s['label'] for s in response]
+        assert 'COE Add Visor' in labels
+
+    def test_find_note_authors_by_name(self, client, coe_advisor, mock_advising_note):
+        """Finds matches including authors of legacy and non-legacy notes."""
+        response = self._api_search_advisors(client, 'Jo')
+        assert len(response) == 4
+        labels = set([s['label'] for s in response])
+        assert labels == {'John Deleted-in-BOA', 'Joni Mitchell', 'Joni Mitchell CC', 'Robert Johnson'}
+
+
+def _api_search(
+        client,
+        phrase,
+        appointments=False,
+        courses=False,
+        notes=False,
+        students=False,
+        appointment_options=None,
+        note_options=None,
+        order_by=None,
+        offset=None,
+        limit=None,
+        expected_status_code=200,
+):
+    response = client.post(
+        '/api/search',
+        content_type='application/json',
+        data=json.dumps({
+            'appointments': appointments,
+            'courses': courses,
+            'notes': notes,
+            'students': students,
+            'searchPhrase': phrase,
+            'appointmentOptions': appointment_options,
+            'noteOptions': note_options,
+            'orderBy': order_by,
+            'offset': offset,
+            'limit': limit,
+        }),
+    )
+    assert response.status_code == expected_status_code
+    return response.json
 
 
 def _get_common_sids(student_list_1, student_list_2):

@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -24,7 +24,7 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac.api.errors import BadRequestError, ForbiddenRequestError, ResourceNotFoundError
-from boac.api.util import advisor_required, get_note_attachments_from_http_post, get_note_topics_from_http_post
+from boac.api.util import advising_data_access_required, get_note_attachments_from_http_post, get_note_topics_from_http_post
 from boac.lib.berkeley import dept_codes_where_advising
 from boac.lib.http import tolerant_jsonify
 from boac.lib.util import process_input_from_rich_text_editor
@@ -34,7 +34,7 @@ from flask_login import current_user
 
 
 @app.route('/api/note_template/create', methods=['POST'])
-@advisor_required
+@advising_data_access_required
 def create_note_template():
     params = request.form
     title = params.get('title', None)
@@ -61,25 +61,25 @@ def create_note_template():
 
 
 @app.route('/api/note_template/<note_template_id>')
-@advisor_required
+@advising_data_access_required
 def get_note_template(note_template_id):
     note_template = NoteTemplate.find_by_id(note_template_id=note_template_id)
     if not note_template:
         raise ResourceNotFoundError('Template not found')
     if note_template.creator_id != current_user.get_id():
-        raise ForbiddenRequestError(f'Template not available')
+        raise ForbiddenRequestError('Template not available')
     return tolerant_jsonify(note_template.to_api_json())
 
 
 @app.route('/api/note_templates/my')
-@advisor_required
+@advising_data_access_required
 def get_my_note_templates():
     note_templates = NoteTemplate.get_templates_created_by(creator_id=current_user.get_id())
     return tolerant_jsonify([t.to_api_json() for t in note_templates])
 
 
 @app.route('/api/note_template/rename', methods=['POST'])
-@advisor_required
+@advising_data_access_required
 def rename_note_template():
     params = request.get_json()
     note_template_id = params.get('id', None)
@@ -96,7 +96,7 @@ def rename_note_template():
 
 
 @app.route('/api/note_template/update', methods=['POST'])
-@advisor_required
+@advising_data_access_required
 def update_note_template():
     params = request.form
     note_template_id = params.get('id', None)
@@ -125,12 +125,12 @@ def update_note_template():
 
 
 @app.route('/api/note_template/delete/<note_template_id>', methods=['DELETE'])
-@advisor_required
+@advising_data_access_required
 def delete_note_template(note_template_id):
     note_template = NoteTemplate.find_by_id(note_template_id=note_template_id)
     if not note_template:
         raise ResourceNotFoundError('Template not found')
     if note_template.creator_id != current_user.get_id():
-        raise ForbiddenRequestError(f'Template not available')
+        raise ForbiddenRequestError('Template not available')
     NoteTemplate.delete(note_template_id=note_template_id)
     return tolerant_jsonify({'message': f'Note template {note_template_id} deleted'}), 200

@@ -1,9 +1,10 @@
 <template>
   <div class="m-3">
-    <Spinner :is-plural="true" alert-prefix="Curated groups" />
+    <Spinner />
     <div v-if="!loading">
-      <h1 ref="pageHeader" class="mb-4">Everyone's Groups</h1>
-
+      <h1 class="mb-4">
+        Everyone's Groups
+      </h1>
       <div v-if="!rows.length">
         <div>There are no saved groups</div>
       </div>
@@ -26,22 +27,23 @@
 </template>
 
 <script>
-import { getUsersWithGroups } from '@/api/curated';
-import Spinner from '@/components/util/Spinner';
-import Loading from '@/mixins/Loading';
+import { getUsersWithGroups } from '@/api/curated'
+import Spinner from '@/components/util/Spinner'
+import Loading from '@/mixins/Loading'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'AllGroups',
   components: { Spinner },
-  mixins: [Loading],
+  mixins: [Loading, Util],
   data: () => ({
     rows: []
   }),
   created() {
     getUsersWithGroups().then(data => {
-      this.rows = data;
-      this.loaded('Everyone\'s Groups');
-    });
+      this.rows = data
+      this.loaded('Everyone\'s Groups has loaded')
+    })
   }
-};
+}
 </script>

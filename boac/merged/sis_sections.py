@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -71,8 +71,17 @@ def _get_meetings(section_rows):
             end_time = _format_time(row['meeting_end_time'])
             if start_time and end_time and (start_time != end_time):
                 times = f'{start_time} - {end_time}'
+        instruction_mode = row['instruction_mode']
         meeting = {
             'days': meeting_days,
+            'instructionMode': instruction_mode,
+            'instructionModeName': {
+                'EF': 'Flexible',
+                'EH': 'Hybrid',
+                'ER': 'Remote',
+                'P': 'In-person',
+                'W': 'Online',
+            }.get(instruction_mode, instruction_mode),
             'location': row['meeting_location'],
             'time': times,
         }

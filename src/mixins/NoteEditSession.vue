@@ -1,7 +1,7 @@
 <script>
-import _ from 'lodash';
-import store from '@/store';
-import { mapActions, mapGetters } from 'vuex';
+import _ from 'lodash'
+import store from '@/store'
+import { mapActions, mapGetters } from 'vuex'
 
 export default {
   name: 'NoteEditSession',
@@ -9,13 +9,15 @@ export default {
     ...mapGetters('noteEditSession', [
       'addedCohorts',
       'addedCuratedGroups',
+      'boaSessionExpired',
+      'completeSidSet',
       'isFocusLockDisabled',
       'isSaving',
+      'isRecalculating',
       'mode',
       'model',
       'noteTemplates',
-      'sids',
-      'targetStudentCount'
+      'sids'
     ])
   },
   methods: {
@@ -25,8 +27,9 @@ export default {
       'addCuratedGroup',
       'addSid',
       'addTopic',
-      'createAdvisingNote',
+      'createAdvisingNotes',
       'exitSession',
+      'onBoaSessionExpires',
       'removeAttachment',
       'removeCohort',
       'removeCuratedGroup',
@@ -36,13 +39,14 @@ export default {
       'setBody',
       'setFocusLockDisabled',
       'setIsSaving',
+      'setIsRecalculating',
       'setMode',
       'setModel',
       'setSubject'
     ]),
     setSubjectPerEvent(event) {
-      store.dispatch('noteEditSession/setSubject', _.isString(event) ? event : event.target.value);
+      store.dispatch('noteEditSession/setSubject', _.isString(event) ? event : event.target.value)
     }
   }
-};
+}
 </script>

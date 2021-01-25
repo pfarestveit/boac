@@ -3,27 +3,29 @@
     <span
       class="cloud-background m-0 p-0 h-100 w-100"
       aria-live="polite"
-      role="alert"><span class="sr-only">Sorry, page not found. Contact us if the system is misbehaving.</span></span>
+      role="alert"
+    ><span class="sr-only">Sorry, page not found. Contact us if the system is misbehaving.</span></span>
     <div class="ticket-container text-center">
       <img
         alt="A silly boarding pass with the text, 'Error 404: Flight not found'"
         class="ticket-to-nowhere w-75"
-        src="@/assets/boa-boarding-ticket.png" />
+        src="@/assets/boa-boarding-ticket.png"
+      />
     </div>
   </div>
 </template>
 
 <script>
-import Loading from '@/mixins/Loading';
+import Loading from '@/mixins/Loading'
 
 export default {
   name: 'NotFound',
   mixins: [ Loading ],
   created() {
     // All top-level view components must identify themselves as "loaded".
-    this.loaded('404');
+    this.loaded('404')
   }
-};
+}
 </script>
 
 <style scoped>

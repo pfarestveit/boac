@@ -1,32 +1,18 @@
 <template>
-  <div>
-    <div :class="{'d-flex justify-content-center pl-3 pr-3': isBatchFeature}">
-      <b-btn
-        :id="isBatchFeature ? 'batch-note-button' : 'new-note-button'"
-        :class="{'w-100': isBatchFeature}"
-        :disabled="disableNewNoteButton"
-        class="mt-1 mr-2 btn-primary-color-override btn-primary-color-override-opaque"
-        variant="primary"
-        @click="openNoteModal()">
-        <span class="m-1">
-          <font-awesome icon="file-alt" />
-          <span class="sr-only">{{ isBatchFeature ? 'Batch create ' : 'Create ' }}</span>
-          New Note
-        </span>
-      </b-btn>
-    </div>
+  <div role="dialog">
     <FocusLock
-      v-if="isModalOpen"
       :disabled="isFocusLockDisabled"
-      class="create-note-container">
+      class="create-note-container"
+    >
       <div
         id="new-note-modal-container"
         :class="{
-          'd-none': isNil(mode),
-          'modal-content': includes(['batch', 'create', 'editTemplate'], mode),
+          'd-none': $_.isNil(mode),
+          'modal-content': $_.includes(['batch', 'create', 'editTemplate'], mode),
           'mt-4': isBatchFeature
-        }">
-        <form @submit.prevent="submitForm()">
+        }"
+      >
+        <form @submit.prevent="submitForm">
           <CreateNoteHeader :cancel-primary-modal="cancelRequested" />
           <hr class="m-0" />
           <div class="mt-2 mr-3 mb-1 ml-3">
@@ -46,7 +32,8 @@
                 variant="info"
                 aria-live="polite"
                 role="alert"
-                @dismiss-count-down="dismissAlert">
+                @dismiss-count-down="dismissAlert"
+              >
                 <div class="d-flex">
                   <div v-if="isSaving" class="mr-2">
                     <font-awesome icon="sync" spin />
@@ -56,48 +43,48 @@
               </b-alert>
             </div>
             <div>
-              <label for="create-note-subject" class="font-size-14 font-weight-bolder mb-1"><span class="sr-only">Note </span>Subject</label>
+              <label id="create-note-subject-label" for="create-note-subject" class="font-size-14 font-weight-bolder mb-1"><span class="sr-only">Note </span>Subject</label>
             </div>
             <div>
               <input
                 id="create-note-subject"
                 :value="model.subject"
-                :disabled="isSaving"
-                :class="{ 'bg-light': isSaving }"
+                :disabled="isSaving || boaSessionExpired"
+                :class="{'bg-light': isSaving}"
                 aria-labelledby="create-note-subject-label"
                 class="cohort-create-input-name"
                 maxlength="255"
                 type="text"
                 @input="setSubjectPerEvent"
-                @keydown.enter="submitForm()"
-                @keydown.esc="cancelRequested()">
-            </div>
-            <div>
-              <label for="create-note-body" class="font-size-14 font-weight-bolder mt-3 mb-1">Note Details</label>
+                @keydown.esc="cancelRequested"
+              >
             </div>
             <div id="note-details">
               <RichTextEditor
-                id="create-note-body"
                 :initial-value="model.body || ''"
-                :disabled="isSaving"
+                :disabled="isSaving || boaSessionExpired"
                 :is-in-modal="true"
-                :on-value-update="setBody" />
+                label="Note Details"
+                :on-value-update="setBody"
+              />
             </div>
           </div>
           <div>
             <AdvisingNoteTopics
               :key="mode"
-              :disabled="isSaving"
+              :disabled="isSaving || boaSessionExpired"
               :function-add="addTopic"
               :function-remove="removeTopic"
               :topics="model.topics"
-              class="mt-2 mr-3 mb-1 ml-3" />
+              class="mt-2 mr-3 mb-1 ml-3"
+            />
             <AdvisingNoteAttachments
               :add-attachment="addAttachment"
-              :disabled="isSaving"
+              :disabled="isSaving || boaSessionExpired"
               :existing-attachments="model.attachments"
               :remove-attachment="removeAttachment"
-              class="mt-2 mr-3 mb-1 ml-3" />
+              class="mt-2 mr-3 mb-1 ml-3"
+            />
           </div>
           <hr />
           <div>
@@ -105,7 +92,8 @@
               :cancel="cancelRequested"
               :create-note="createNote"
               :save-as-template="saveAsTemplate"
-              :update-template="updateTemplate" />
+              :update-template="updateTemplate"
+            />
           </div>
         </form>
       </div>
@@ -115,36 +103,41 @@
       :function-cancel="cancelDiscardNote"
       :function-confirm="discardNote"
       :show-modal="showDiscardNoteModal"
-      modal-header="Discard unsaved note?" />
+      modal-header="Discard unsaved note?"
+    />
     <CreateTemplateModal
       :show-modal="showCreateTemplateModal"
       :cancel="cancelCreateTemplate"
       :create="createTemplate"
-      :toggle-show="toggleShowCreateTemplateModal" />
+      :toggle-show="toggleShowCreateTemplateModal"
+    />
     <AreYouSureModal
       v-if="showDiscardTemplateModal"
       :function-cancel="cancelDiscardTemplate"
       :function-confirm="discardTemplate"
       :show-modal="showDiscardTemplateModal"
-      modal-header="Discard unsaved template?" />
+      modal-header="Discard unsaved template?"
+    />
   </div>
 </template>
 
 <script>
-import AdvisingNoteAttachments from '@/components/note/AdvisingNoteAttachments';
-import AdvisingNoteTopics from '@/components/note/AdvisingNoteTopics';
-import AreYouSureModal from '@/components/util/AreYouSureModal';
-import BatchNoteFeatures from '@/components/note/create/BatchNoteFeatures';
-import Context from '@/mixins/Context';
-import CreateNoteFooter from '@/components/note/create/CreateNoteFooter';
-import CreateNoteHeader from '@/components/note/create/CreateNoteHeader';
-import CreateTemplateModal from "@/components/note/create/CreateTemplateModal";
-import FocusLock from 'vue-focus-lock';
-import NoteEditSession from '@/mixins/NoteEditSession';
-import RichTextEditor from '@/components/util/RichTextEditor';
-import store from "@/store";
-import Util from '@/mixins/Util';
-import { createNoteTemplate, updateNoteTemplate } from '@/api/note-templates';
+import AdvisingNoteAttachments from '@/components/note/AdvisingNoteAttachments'
+import AdvisingNoteTopics from '@/components/note/AdvisingNoteTopics'
+import AreYouSureModal from '@/components/util/AreYouSureModal'
+import BatchNoteFeatures from '@/components/note/create/BatchNoteFeatures'
+import Context from '@/mixins/Context'
+import CreateNoteFooter from '@/components/note/create/CreateNoteFooter'
+import CreateNoteHeader from '@/components/note/create/CreateNoteHeader'
+import CreateTemplateModal from '@/components/note/create/CreateTemplateModal'
+import FocusLock from 'vue-focus-lock'
+import NoteEditSession from '@/mixins/NoteEditSession'
+import RichTextEditor from '@/components/util/RichTextEditor'
+import store from '@/store'
+import Util from '@/mixins/Util'
+import Vue from 'vue'
+import { createNoteTemplate, updateNoteTemplate } from '@/api/note-templates'
+import { getUserProfile } from '@/api/user'
 
 export default {
   name: 'CreateNoteModal',
@@ -161,184 +154,202 @@ export default {
   },
   mixins: [Context, NoteEditSession, Util],
   props: {
-    onCreateNoteStart: {
-      required: false,
+    isBatchFeature: {
+      required: true,
+      type: Boolean
+    },
+    onClose: {
       default: () => {},
+      required: false,
       type: Function
     },
-    onCreateNoteSuccess: {
+    sid: {
+      default: undefined,
       required: false,
-      default: () => {},
-      type: Function
-    },
-    student: {
-      required: false,
-      type: Object
+      type: String
     }
   },
   data: () => ({
     alert: undefined,
     dismissAlertSeconds: 0,
-    isBatchFeature: undefined,
-    isModalOpen: false,
     showCreateTemplateModal: false,
     showDiscardNoteModal: false,
     showDiscardTemplateModal: false,
     showErrorPopover: false
   }),
   mounted() {
-    this.isBatchFeature = !this.student;
-    store.dispatch('noteEditSession/loadNoteTemplates');
+    store.dispatch('noteEditSession/loadNoteTemplates')
+    this.resetModel()
+    if (this.sid) {
+      this.addSid(this.sid)
+    }
+    this.setMode(this.isBatchFeature ? 'batch' : 'create')
+    this.alertScreenReader(this.isBatchFeature ? 'Create batch note form is open.' : 'Create note form is open')
+    this.putFocusNextTick('modal-header')
+    this.$eventHub.on('user-session-expired', () => {
+      this.onBoaSessionExpires()
+    })
   },
   methods: {
     cancelRequested() {
       if (this.mode === 'editTemplate') {
-        const indexOf = this.noteTemplates.findIndex(t => t.id === this.model.id);
-        const template = this.noteTemplates[indexOf];
-        const noDiff = this.trim(this.model.subject) === template.subject
+        const indexOf = this.noteTemplates.findIndex(t => t.id === this.model.id)
+        const template = this.noteTemplates[indexOf]
+        const noDiff = this.$_.trim(this.model.subject) === template.subject
           && this.model.body === template.body
-          && !this.size(this.xor(this.model.topics, template.topics))
-          && !this.size(this.xorBy(this.model.attachments, template.attachments, 'displayName'));
+          && !this.$_.size(this.$_.xor(this.model.topics, template.topics))
+          && !this.$_.size(this.$_.xorBy(this.model.attachments, template.attachments, 'displayName'))
         if (noDiff) {
-          this.discardTemplate();
+          this.discardTemplate()
         } else {
-          this.showDiscardTemplateModal = true;
-          this.setFocusLockDisabled(true);
+          this.showDiscardTemplateModal = true
+          this.setFocusLockDisabled(true)
         }
       } else {
-        const unsavedChanges = this.trim(this.model.subject)
+        const unsavedChanges = this.$_.trim(this.model.subject)
           || this.stripHtmlAndTrim(this.model.body)
-          || this.size(this.model.topics)
-          || this.size(this.model.attachments)
+          || this.$_.size(this.model.topics)
+          || this.$_.size(this.model.attachments)
           || this.addedCohorts.length
-          || this.addedCuratedGroups.length;
+          || this.addedCuratedGroups.length
         if (unsavedChanges) {
-          this.showDiscardNoteModal = true;
-          this.setFocusLockDisabled(true);
+          this.showDiscardNoteModal = true
+          this.setFocusLockDisabled(true)
         } else {
-          this.discardNote();
+          this.discardNote()
         }
       }
     },
     cancelCreateTemplate() {
-      this.showCreateTemplateModal = false;
-      this.setFocusLockDisabled(false);
+      this.showCreateTemplateModal = false
+      this.setFocusLockDisabled(false)
     },
     cancelDiscardNote() {
-      this.showDiscardNoteModal = false;
-      this.setFocusLockDisabled(false);
-      this.putFocusNextTick('create-note-subject');
-      this.alertScreenReader(`Continue editing note.`);
+      this.showDiscardNoteModal = false
+      this.setFocusLockDisabled(false)
+      this.alertScreenReader('Continue editing note.')
+      this.putFocusNextTick('create-note-subject')
     },
     cancelDiscardTemplate() {
-      this.showDiscardTemplateModal = false;
-      this.setFocusLockDisabled(false);
-      this.putFocusNextTick('create-note-subject');
+      this.showDiscardTemplateModal = false
+      this.setFocusLockDisabled(false)
+      this.putFocusNextTick('create-note-subject')
     },
     createNote() {
-      if (this.model.subject && this.targetStudentCount) {
-        this.setIsSaving(true);
-        this.onCreateNoteStart(this.model.subject);
-        if (this.model.attachments.length) {
+      const ifAuthenticated = () => {
+        if (this.model.subject && this.completeSidSet.length) {
+          this.setIsSaving(true)
           // File upload might take time; alert will be overwritten when API call is done.
-          this.showAlert('Creating note...', 60);
+          this.showAlert('Creating note...', 60)
+          this.createAdvisingNotes().then(note => {
+            this.setIsSaving(false)
+            this.alertScreenReader(this.isBatchFeature ? `Note created for ${this.completeSidSet.length} students.` : 'New note saved.')
+            this.exit(note)
+            if (this.isBatchFeature) {
+              Vue.prototype.$ga.noteEvent(note.id, `Advisor ${this.$currentUser.uid} created a batch of notes`, 'batch_create')
+            } else {
+              Vue.prototype.$ga.noteEvent(note.id, `Advisor ${this.$currentUser.uid} created a note`, 'create')
+            }
+          })
         }
-        this.createAdvisingNote(this.isBatchFeature).then(() => {
-          this.setIsSaving(false);
-          this.isModalOpen = false;
-          this.onCreateNoteSuccess();
-          this.alertScreenReader(this.isBatchFeature ? `Note created for ${this.targetStudentCount} students.` : "New note saved.");
-          this.exit();
-        });
       }
+      this.invokeIfAuthenticated(ifAuthenticated, () => {
+        this.setIsSaving(false)
+      })
     },
     createTemplate(title) {
-      this.showCreateTemplateModal = false;
-      this.setIsSaving(true);
-      this.setFocusLockDisabled(false);
-      if (this.model.attachments.length) {
+      const ifAuthenticated = () => {
+        this.showCreateTemplateModal = false
+        this.setIsSaving(true)
+        this.setFocusLockDisabled(false)
         // File upload might take time; alert will be overwritten when API call is done.
-        this.showAlert('Creating template...', 60);
+        this.showAlert('Creating template...', 60)
+        createNoteTemplate(title, this.model.subject, this.model.body, this.model.topics, this.model.attachments).then(template => {
+          this.showAlert(`Template '${title}' created.`)
+          this.setIsSaving(false)
+          this.setModel({
+            id: undefined,
+            subject: template.subject,
+            body: template.body,
+            topics: template.topics,
+            attachments: template.attachments,
+            deleteAttachmentIds: []
+          })
+          this.setMode(this.isBatchFeature ? 'batch' : 'create')
+          this.putFocusNextTick('create-note-subject')
+        })
       }
-      createNoteTemplate(title, this.model.subject, this.model.body, this.model.topics, this.model.attachments).then(template => {
-        this.showAlert(`Template '${title}' created.`);
-        this.setIsSaving(false);
-        this.setModel({
-          id: undefined,
-          subject: template.subject,
-          body: template.body,
-          topics: template.topics,
-          attachments: template.attachments,
-          deleteAttachmentIds: []
-        });
-        this.setMode(this.isBatchFeature ? 'batch' : 'create');
-        this.putFocusNextTick('create-note-subject');
-      });
+      this.invokeIfAuthenticated(ifAuthenticated, () => {
+        this.showCreateTemplateModal = false
+        this.setIsSaving(false)
+      })
     },
     discardNote() {
-      this.showDiscardNoteModal = false;
-      this.setFocusLockDisabled(false);
-      this.isModalOpen = false;
-      this.dismissAlertSeconds = 0;
-      this.alertScreenReader('Cancelled create new note');
-      this.exit();
+      this.showDiscardNoteModal = false
+      this.setFocusLockDisabled(false)
+      this.dismissAlertSeconds = 0
+      this.alertScreenReader('Cancelled create new note')
+      this.exit()
     },
     discardTemplate() {
-      this.showDiscardTemplateModal = false;
-      this.setFocusLockDisabled(false);
-      this.resetModel();
-      this.setMode(this.isBatchFeature ? 'batch' : 'create');
-      this.putFocusNextTick('create-note-subject');
-      this.alertScreenReader('Cancelled create template.');
+      this.showDiscardTemplateModal = false
+      this.setFocusLockDisabled(false)
+      this.resetModel()
+      this.setMode(this.isBatchFeature ? 'batch' : 'create')
+      this.alertScreenReader('Cancelled create template.')
+      this.putFocusNextTick('create-note-subject')
     },
     dismissAlert(seconds) {
-      this.dismissAlertSeconds = seconds;
+      this.dismissAlertSeconds = seconds
       if (seconds === 0) {
-        this.alert = undefined;
+        this.alert = undefined
       }
     },
-    exit() {
-      this.alert = this.dismissAlertSeconds = undefined;
-      this.isModalOpen = this.showCreateTemplateModal = this.showDiscardNoteModal = this.showDiscardTemplateModal = this.showErrorPopover = false;
-      this.exitSession();
+    exit(note=undefined) {
+      this.alert = this.dismissAlertSeconds = undefined
+      this.showCreateTemplateModal = this.showDiscardNoteModal = this.showDiscardTemplateModal = this.showErrorPopover = false
+      this.exitSession()
+      this.onClose(note)
     },
-    openNoteModal() {
-      this.resetModel();
-      const sid = this.get(this.student, 'sid');
-      if (sid) {
-        this.addSid(sid);
-      }
-      this.setMode(this.isBatchFeature ? 'batch' : 'create');
-      this.isModalOpen = true;
-      this.putFocusNextTick(this.isBatchFeature ? 'create-note-add-student-input' : 'create-note-subject');
-      this.alertScreenReader(this.isBatchFeature ? 'Create batch note form is open.' : 'Create note form is open');
+    invokeIfAuthenticated(callback, onReject = () => {}) {
+      getUserProfile().then(data => {
+        if (data.isAuthenticated) {
+          callback()
+        } else {
+          this.onBoaSessionExpires()
+          onReject()
+        }
+      })
     },
     saveAsTemplate() {
-      this.showCreateTemplateModal = true;
-      this.setFocusLockDisabled(true);
-      this.putFocusNextTick('template-title-input');
+      const ifAuthenticated = () => {
+        this.showCreateTemplateModal = true
+        this.setFocusLockDisabled(true)
+        this.putFocusNextTick('template-title-input')
+      }
+      this.invokeIfAuthenticated(ifAuthenticated)
     },
     showAlert(alert, seconds=3) {
-      this.alert = alert;
-      this.dismissAlertSeconds = seconds;
+      this.alert = alert
+      this.dismissAlertSeconds = seconds
     },
     submitForm() {
       if (this.mode === 'editTemplate') {
-        this.updateTemplate();
+        this.updateTemplate()
       } else {
-        this.createNote();
+        this.createNote()
       }
     },
     toggleShowCreateTemplateModal(show) {
-      this.showCreateTemplateModal = show;
-      this.setFocusLockDisabled(show);
+      this.showCreateTemplateModal = show
+      this.setFocusLockDisabled(show)
     },
     updateTemplate() {
-      this.setIsSaving(true);
-      const newAttachments = this.filterList(this.model.attachments, a => !a.id);
+      this.setIsSaving(true)
+      const newAttachments = this.$_.filter(this.model.attachments, a => !a.id)
       if (newAttachments.length) {
         // File upload might take time; alert will be overwritten when API call is done.
-        this.showAlert('Updating template...', 60);
+        this.showAlert('Updating template...', 60)
       }
       updateNoteTemplate(
         this.model.id,
@@ -348,7 +359,7 @@ export default {
         newAttachments,
         this.model.deleteAttachmentIds
       ).then(template => {
-        this.setIsSaving(false);
+        this.setIsSaving(false)
         this.setModel({
           id: undefined,
           subject: template.subject,
@@ -356,10 +367,10 @@ export default {
           topics: template.topics,
           attachments: template.attachments,
           deleteAttachmentIds: []
-        });
-        this.setMode(this.isBatchFeature ? 'batch' : 'create');
-        this.showAlert(`Template '${template.title}' updated`);
-      });
+        })
+        this.setMode(this.isBatchFeature ? 'batch' : 'create')
+        this.showAlert(`Template '${template.title}' updated`)
+      })
     }
   }
 }

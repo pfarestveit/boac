@@ -1,14 +1,17 @@
 <template>
   <div>
     <div class="mt-3 w-75">
-      <div v-if="error || warning" :class="{'error': error, 'warning': warning}" class="alert-box p-3 mt-2 mb-3 w-100">
-        <span aria-live="polite" role="alert" v-html="error || warning"></span>
-      </div>
+      <div
+        v-if="error || warning"
+        :class="{'error': error, 'warning': warning}"
+        class="alert-box p-3 mt-2 mb-3 w-100"
+        v-html="error || warning"
+      />
       <div>
         <b-form-textarea
           id="curated-group-bulk-add-sids"
           v-model="textarea"
-          :disabled="isUpdating"
+          :disabled="isValidating || isSaving"
           aria-label="Type or paste student SID numbers here"
           rows="8"
           max-rows="30"
@@ -18,23 +21,20 @@
       <div class="d-flex justify-content-end mt-3">
         <b-btn
           id="btn-curated-group-bulk-add-sids"
-          :aria-label="curatedGroupId ? 'Add SIDs to current group' : 'Next, create curated group'"
-          :disabled="!trim(textarea) || (curatedGroupId && isUpdating)"
           class="pl-2"
+          :disabled="!$_.trim(textarea) || isValidating || isSaving"
           variant="primary"
-          @click="submitSids">
-          <span v-if="curatedGroupId">
-            <span v-if="isUpdating"><font-awesome icon="spinner" spin /> <span class="pl-1">Adding</span></span>
-            <span v-if="!isUpdating">Add</span>
-          </span>
-          <span v-if="!curatedGroupId">Next</span>
+          @click="submitSids"
+        >
+          <span v-if="isValidating || isSaving"><font-awesome icon="spinner" spin /> <span class="pl-1">Adding</span></span>
+          <span v-if="!isValidating && !isSaving">{{ curatedGroupId ? 'Add' : 'Next' }}</span>
         </b-btn>
         <b-btn
           v-if="curatedGroupId"
           id="btn-cancel-bulk-add-sids"
-          :aria-label="curatedGroupId ? 'Add SIDs to current group' : 'Next, create curated group'"
           variant="link"
-          @click="cancel">
+          @click="cancel"
+        >
           Cancel
         </b-btn>
       </div>
@@ -43,18 +43,18 @@
 </template>
 
 <script>
-import Util from '@/mixins/Util';
-import { validateSids } from '@/api/student';
+import Context from '@/mixins/Context'
+import Util from '@/mixins/Util'
+import { validateSids } from '@/api/student'
 
 export default {
   name: 'CuratedGroupBulkAdd',
-  mixins: [Util],
+  mixins: [Context, Util],
   props: {
     bulkAddSids: Function,
     curatedGroupId: Number,
     isSaving: {
-      type: Boolean,
-      default: false
+      type: Boolean
     }
   },
   data: () => ({
@@ -64,69 +64,63 @@ export default {
     textarea: undefined,
     warning: undefined
   }),
-  computed: {
-    isUpdating() {
-      return this.isValidating || this.isSaving;
-    }
-  },
   created() {
-    this.putFocusNextTick('curated-group-bulk-add-sids');
+    this.putFocusNextTick('curated-group-bulk-add-sids')
   },
   methods: {
     cancel() {
       if (this.curatedGroupId) {
         // Cancel is only supported in the add-students-to-existing-group case.
-        this.clearErrors();
-        this.bulkAddSids(null);
+        this.clearErrors()
+        this.bulkAddSids(null)
       }
     },
     clearErrors() {
-      this.error = null;
-      this.warning = null;
-    },
-    describeNotFound(sidList) {
-      if (sidList.length === 1) {
-        return `<strong>Uh oh!</strong> Student ${sidList[0]} not found. Please fix.`;
-      } else {
-        return `<strong>Uh oh!</strong> ${sidList.length} students not found: <ul class="mt-1 mb-0"><li>${this.join(sidList, '</li><li>')}</li></ul>`;
-      }
+      this.error = null
+      this.warning = null
     },
     submitSids() {
-      this.sids = [];
-      this.clearErrors();
-      const trimmed = this.trim(this.textarea, ' ,\n\t');
+      this.sids = []
+      this.clearErrors()
+      const trimmed = this.$_.trim(this.textarea, ' ,\n\t')
       if (trimmed) {
-        const split = this.split(trimmed, /[,\r\n\t ]+/);
-        const notNumeric = this.partition(split, sid => /^\d+$/.test(this.trim(sid)))[1];
+        const split = this.$_.split(trimmed, /[,\r\n\t ]+/)
+        const notNumeric = this.$_.partition(split, sid => /^\d+$/.test(this.$_.trim(sid)))[1]
         if (notNumeric.length) {
-          this.error = '<strong>Error!</strong> SIDs must be separated by commas, line breaks, or tabs.';
-          this.putFocusNextTick('curated-group-bulk-add-sids');
+          this.error = 'SIDs must be separated by commas, line breaks, or tabs.'
+          this.alertScreenReader(this.error)
+          this.putFocusNextTick('curated-group-bulk-add-sids')
         } else {
-          this.isValidating = true;
+          this.isValidating = true
           validateSids(split).then(data => {
-            const notFound = [];
-            this.each(data, entry => {
+            const notFound = []
+            this.$_.each(data, entry => {
               switch(entry.status) {
-                case 200:
-                case 401:
-                  this.sids.push(entry.sid);
-                  break;
-                default:
-                  notFound.push(entry.sid);
+              case 200:
+              case 401:
+                this.sids.push(entry.sid)
+                break
+              default:
+                notFound.push(entry.sid)
               }
-            });
-            this.isValidating = false;
-            if (notFound.length) {
-              this.warning = this.describeNotFound(notFound);
+            })
+            this.isValidating = false
+            if (notFound.length === 1) {
+              this.warning = `Student ${notFound[0]} not found.`
+              this.alertScreenReader(this.warning)
+            } else if (notFound.length > 1) {
+              this.warning = `${notFound.length} students not found: <ul class="mt-1 mb-0"><li>${this.$_.join(notFound, '</li><li>')}</li></ul>`
+              this.alertScreenReader(`Student IDs not found: ${this.oxfordJoin(notFound)}`)
             } else {
-              this.clearErrors();
-              this.bulkAddSids(this.sids);
+              this.clearErrors()
+              this.bulkAddSids(this.sids)
             }
-          });
+          })
         }
       } else {
-        this.warning = 'Please provide one or more SIDs.';
-        this.putFocusNextTick('curated-group-bulk-add-sids');
+        this.warning = 'Please provide one or more SIDs.'
+        this.alertScreenReader(this.warning)
+        this.putFocusNextTick('curated-group-bulk-add-sids')
       }
     }
   }

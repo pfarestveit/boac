@@ -1,172 +1,203 @@
 <template>
-  <highcharts
-    id="student-chart-units-container"
-    ref="studentUnitsChart"
-    :options="unitsChartOptions"
-    class="student-chart-container student-chart-units-container"
-    aria-hidden="true">
-  </highcharts>
+  <div v-if="options">
+    <highcharts
+      id="student-chart-units-container"
+      class="student-chart-units-container"
+      :options="options"
+    />
+  </div>
 </template>
 
 <script>
 export default {
   name: 'StudentUnitsChart',
   props: {
-    cumulativeUnits: Number,
-    currentEnrolledUnits: Number
+    cumulativeUnits: {
+      required: true,
+      type: Number
+    },
+    currentEnrolledUnits: {
+      required: true,
+      type: Number
+    },
+    student: {
+      required: true,
+      type: Object
+    }
   },
   data: () => ({
-    unitsChartOptions: {
-      chart: {
-        backgroundColor: 'transparent',
-        height: 40,
-        inverted: true,
-        spacingLeft: 5,
-        spacingTop: 5,
-        spacingBottom: 5,
-        type: 'column'
-      },
-      colors: ['#d6e4f9', '#aec9eb'],
-      credits: {
-        enabled: false
-      },
-      legend: {
-        enabled: false
-      },
-      navigation: {
-        buttonOptions: {
-          enabled: false
-        }
-      },
-      plotOptions: {
-        column: {
-          stacking: 'normal',
-          groupPadding: 0,
-          pointPadding: 0
-        },
-        series: {
-          states: {
-            hover: {
-              enabled: false
-            }
-          }
-        }
-      },
-      series: [],
-      title: {
-        text: ''
-      },
-      tooltip: {
-        borderColor: '#666',
-        headerFormat: '',
-        hideDelay: 0,
-        pointFormat: '',
-        positioner: function() {
-          return {
-            x: -35,
-            y: 35
-          };
-        },
-        width: 240,
-        shadow: false,
-        useHTML: true
-      },
-      xAxis: {
-        labels: {
-          enabled: false
-        },
-        lineWidth: 0,
-        startOnTick: false,
-        tickLength: 0
-      },
-      yAxis: {
-        min: 0,
-        max: 120,
-        gridLineColor: '#000000',
-        tickInterval: 30,
-        labels: {
-          align: 'center',
-          overflow: true,
-          padding: 0,
-          style: {
-            color: '#999999',
-            fontFamily: 'Helvetica, Arial, sans',
-            fontSize: '11px',
-            fontWeight: 'bold'
-          },
-          y: 12
-        },
-        stackLabels: {
-          enabled: false
-        },
-        title: {
-          enabled: false
-        },
-        gridZIndex: 1000
-      }
-    }
+    options: undefined
   }),
   mounted() {
-    this.renderUnitsToChart();
+    this.options = this.getOptions()
   },
   methods: {
-    renderUnitsToChart() {
-      this.unitsChartOptions.series = [
-        {
-          name: 'Term units',
-          data: [this.currentEnrolledUnits]
+    getOptions() {
+      const description = `${this.student.firstName} ${this.student.lastName} is currently enrolled in ${this.currentEnrolledUnits || 'zero'} units and has completed ${this.cumulativeUnits || '0'} units.`
+      const yMax = this.$_.max([120, this.currentEnrolledUnits + this.cumulativeUnits])
+      return {
+        accessibility: {
+          description,
+          enabled: true,
+          keyboardNavigation: {
+            enabled: true
+          }
         },
-        {
-          name: 'Cumulative units',
-          data: [this.cumulativeUnits]
+        chart: {
+          backgroundColor: 'transparent',
+          height: 40,
+          inverted: true,
+          spacingLeft: 5,
+          spacingTop: 5,
+          spacingBottom: 5,
+          type: 'column'
+        },
+        colors: ['#d6e4f9', '#aec9eb'],
+        credits: {
+          enabled: false
+        },
+        legend: {
+          enabled: false
+        },
+        navigation: {
+          buttonOptions: {
+            enabled: false
+          }
+        },
+        plotOptions: {
+          accessibility: {
+            description,
+            enabled: true,
+            exposeAsGroupOnly: true,
+            keyboardNavigation: {
+              enabled: true
+            }
+          },
+          column: {
+            stacking: 'normal',
+            groupPadding: 0,
+            pointPadding: 0
+          },
+          enableMouseTracking: false,
+          series: {
+            states: {
+              hover: {
+                enabled: false
+              }
+            }
+          }
+        },
+        series: [
+          {
+            accessibility: {
+              description: `${this.currentEnrolledUnits} currently enrolled units`,
+              enabled: true
+            },
+            name: 'Term units',
+            data: [this.currentEnrolledUnits]
+          },
+          {
+            accessibility: {
+              description: `${this.cumulativeUnits} cumulative units`,
+              enabled: true
+            },
+            name: 'Cumulative units',
+            data: [this.cumulativeUnits]
+          }
+        ],
+        title: {
+          text: ''
+        },
+        tooltip: {
+          animation: false,
+          backgroundColor: '#fff',
+          borderColor: '#eee',
+          borderRadius: 8,
+          distance: 16,
+          headerFormat: '',
+          hideDelay: 0,
+          outside: false,
+          pointFormat: `
+            <div class="units-chart-font-family w-100">
+              <div class="align-items-center d-flex">
+                <div><div style="background-color: #aec9eb; height: 12px; width: 12px;"></div></div>
+                <div class="pl-1 text-left text-nowrap">Units Completed</div>
+                <div class="font-weight-bold pl-2 text-right w-100">${this.cumulativeUnits || '0'}</div>
+              </div>
+              <div class="align-items-center d-flex w-100">
+                <div><div style="background-color: #d6e4f9; height: 12px; width: 12px;"></div></div>
+                <div class="pl-1 text-left text-nowrap">Currently Enrolled Units</div>
+                <div class="font-weight-bold pl-2 text-right w-100">${this.currentEnrolledUnits || '0'}</div>
+              </div>
+            </div>
+          `,
+          positioner: (w, h, point) => {
+            return {
+              x: point.plotX - 35,
+              y: point.plotY + 35
+            }
+          },
+          style: {
+            fontSize: '14px',
+            whiteSpace: 'nowrap',
+            width: 600
+          },
+          useHTML: true
+        },
+        xAxis: {
+          accessibility: {
+            description: 'Time',
+            enabled: true
+          },
+          labels: {
+            enabled: false
+          },
+          lineWidth: 0,
+          startOnTick: false,
+          tickLength: 0
+        },
+        yAxis: {
+          accessibility: {
+            description: 'Units',
+            enabled: true
+          },
+          min: 0,
+          max: yMax,
+          gridLineColor: '#000000',
+          tickInterval: 30,
+          labels: {
+            align: 'center',
+            overflow: true,
+            padding: 0,
+            style: {
+              color: '#999999',
+              fontFamily: 'Helvetica, Arial, sans',
+              fontSize: '11px',
+              fontWeight: 'bold'
+            },
+            y: 12
+          },
+          stackLabels: {
+            enabled: false
+          },
+          title: {
+            enabled: false
+          },
+          gridZIndex: 1000
         }
-      ];
-      this.unitsChartOptions.tooltip.pointFormat = this.generateTooltipHtml();
-      this.unitsChartOptions.width = this.$refs.studentUnitsChart.$el.parentNode.clientWidth;
-    },
-    generateTooltipHtml() {
-      return `
-        <div class="student-chart-tooltip-content">
-          <div class="student-chart-tooltip-row">
-            <div class="student-chart-tooltip-swatch swatch-blue-medium"></div>
-            <div class="student-chart-tooltip-label">Units Completed</div>
-            <div class="student-chart-tooltip-value">${
-              this.cumulativeUnits || '0'
-            }</div>
-          </div>
-          <div class="student-chart-tooltip-row">
-            <div class="student-chart-tooltip-swatch swatch-blue-light"></div>
-            <div class="student-chart-tooltip-label">Currently Enrolled Units</div>
-            <div class="student-chart-tooltip-value">${this
-              .currentEnrolledUnits || '0'}</div>
-          </div>
-        </div>`;
+      }
     }
   }
-};
+}
 </script>
 
-<style src="./student-chart.css">
-</style>
-
 <style>
-.student-chart-units-container .highcharts-tooltip::after {
-  background: #fff;
-  border: 1px solid #aaa;
-  border-width: 0 0 1px 1px;
-  content: '';
-  display: block;
-  height: 10px;
-  position: absolute;
-  top: -6px;
-  left: 40px;
-  transform: rotate(135deg);
-  width: 10px;
+.student-chart-units-container,
+.student-chart-units-container .highcharts-container,
+.student-chart-units-container .highcharts-root {
+  overflow: visible !important;
 }
-.student-chart-units-container .swatch-blue-medium {
-  background-color: #aec9eb;
-}
-.student-chart-units-container .swatch-blue-light {
-  background-color: #d6e4f9;
+.units-chart-font-family {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 </style>

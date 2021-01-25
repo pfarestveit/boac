@@ -9,10 +9,10 @@
 </template>
 
 <script>
-import Util from '@/mixins/Util';
+import Util from '@/mixins/Util'
 
 export default {
-  name: "StudentWithdrawalCancel",
+  name: 'StudentWithdrawalCancel',
   mixins: [Util],
   props: {
     termId: {

@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -43,6 +43,7 @@ def register_routes(app):
     # Register API routes.
     import boac.api.appointments_controller
     import boac.api.admin_controller
+    import boac.api.admit_controller
     import boac.api.alerts_controller
     import boac.api.auth_controller
     import boac.api.cohort_controller
@@ -51,6 +52,7 @@ def register_routes(app):
     import boac.api.curated_group_controller
     import boac.api.note_templates_controller
     import boac.api.notes_controller
+    import boac.api.reports_controller
     import boac.api.search_controller
     import boac.api.student_controller
     import boac.api.status_controller

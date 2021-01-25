@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,6 +27,7 @@ from boac import db, std_commit
 from boac.externals.data_loch import query_historical_sids
 from boac.merged.student import query_students
 from boac.models.base import Base
+from boac.models.cohort_filter import CohortFilter
 from boac.models.manually_added_advisee import ManuallyAddedAdvisee
 from sqlalchemy import text
 
@@ -58,7 +59,7 @@ class CuratedGroup(Base):
 
     @classmethod
     def get_groups_owned_by_uids(cls, uids):
-        query = text(f"""
+        query = text("""
             SELECT sg.id, sg.name, count(sgm.sid) AS student_count, au.uid AS owner_uid
             FROM student_groups sg
             LEFT JOIN student_group_members sgm ON sg.id = sgm.student_group_id
@@ -79,7 +80,7 @@ class CuratedGroup(Base):
 
     @classmethod
     def curated_group_ids_per_sid(cls, user_id, sid):
-        query = text(f"""SELECT
+        query = text("""SELECT
             student_group_id as id
             FROM student_group_members m
             JOIN student_groups g ON g.id = m.student_group_id
@@ -103,6 +104,7 @@ class CuratedGroup(Base):
         curated_group = cls.query.filter_by(id=curated_group_id).first()
         if curated_group:
             CuratedGroupStudent.add_student(curated_group_id=curated_group_id, sid=sid)
+            _refresh_related_cohorts(curated_group)
 
     @classmethod
     def add_students(cls, curated_group_id, sids):
@@ -110,11 +112,14 @@ class CuratedGroup(Base):
         if curated_group:
             CuratedGroupStudent.add_students(curated_group_id=curated_group_id, sids=sids)
             std_commit()
+            _refresh_related_cohorts(curated_group)
 
     @classmethod
     def remove_student(cls, curated_group_id, sid):
-        if cls.find_by_id(curated_group_id):
+        curated_group = cls.find_by_id(curated_group_id)
+        if curated_group:
             CuratedGroupStudent.remove_student(curated_group_id, sid)
+            _refresh_related_cohorts(curated_group)
 
     @classmethod
     def rename(cls, curated_group_id, name):
@@ -128,6 +133,22 @@ class CuratedGroup(Base):
         if curated_group:
             db.session.delete(curated_group)
             std_commit()
+            # Delete all cohorts that reference the deleted group
+            for cohort_filter_id in curated_group.get_referencing_cohort_ids():
+                CohortFilter.delete(cohort_filter_id)
+                std_commit()
+
+    def get_referencing_cohort_ids(self):
+        query = text("""SELECT
+            c.id, c.filter_criteria
+            FROM cohort_filters c
+            WHERE filter_criteria->>'curatedGroupIds' IS NOT NULL AND owner_id = :user_id""")
+        results = db.session.execute(query, {'user_id': self.owner_id})
+        cohort_filter_ids = []
+        for row in results:
+            if self.id in row['filter_criteria'].get('curatedGroupIds', []):
+                cohort_filter_ids.append(row['id'])
+        return cohort_filter_ids
 
     def to_api_json(self, order_by='last_name', offset=0, limit=50, include_students=True):
         feed = {
@@ -189,3 +210,11 @@ class CuratedGroupStudent(db.Model):
         if row:
             db.session.delete(row)
             std_commit()
+
+
+def _refresh_related_cohorts(curated_group):
+    for cohort_id in curated_group.get_referencing_cohort_ids():
+        cohort = CohortFilter.query.filter_by(id=cohort_id).first()
+        cohort.clear_sids_and_student_count()
+        cohort.update_alert_count(None)
+        cohort.to_api_json(include_students=False, include_alerts_for_user_id=cohort.owner_id)

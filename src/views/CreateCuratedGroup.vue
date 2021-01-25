@@ -6,27 +6,27 @@
     </div>
     <CuratedGroupBulkAdd :bulk-add-sids="bulkAddSids" :is-saving="isSaving" />
     <b-modal
-      id="modal"
       v-model="showCreateModal"
       body-class="pl-0 pr-0"
       hide-footer
-      hide-header-close
-      title="Name Your Curated Group"
-      @shown="focusModalById('create-input')">
+      hide-header
+      @shown="putFocusNextTick('modal-header')"
+    >
       <CreateCuratedGroupModal
         :sids="sids"
         :create="create"
-        :cancel="cancel" />
+        :cancel="cancel"
+      />
     </b-modal>
   </div>
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal';
-import CuratedGroupBulkAdd from '@/components/curated/CuratedGroupBulkAdd.vue';
-import Util from '@/mixins/Util';
-import { createCuratedGroup } from '@/api/curated';
+import Context from '@/mixins/Context'
+import CreateCuratedGroupModal from '@/components/curated/CreateCuratedGroupModal'
+import CuratedGroupBulkAdd from '@/components/curated/CuratedGroupBulkAdd.vue'
+import Util from '@/mixins/Util'
+import { createCuratedGroup } from '@/api/curated'
 
 export default {
   name: 'CreateCuratedGroup',
@@ -39,30 +39,26 @@ export default {
   }),
   methods: {
     bulkAddSids(sids) {
-      this.isSaving = true;
-      this.sids = sids;
-      this.showCreateModal = true;
+      this.isSaving = true
+      this.sids = sids
+      this.showCreateModal = true
     },
     cancel() {
-      this.showCreateModal = false;
-      this.isSaving = false;
-      this.alertScreenReader(`You have cancelled the operation to create a new curated group.`);
-      this.putFocusNextTick('curated-group-bulk-add-sids');
+      this.showCreateModal = false
+      this.isSaving = false
+      this.alertScreenReader('You have cancelled the operation to create a new curated group.')
+      this.putFocusNextTick('curated-group-bulk-add-sids')
     },
     create(name) {
-      this.showCreateModal = false;
+      this.showCreateModal = false
       createCuratedGroup(name, this.sids)
         .then(group => {
-          this.$ga.curatedEvent( group.id, group.name, 'Create curated group with bulk SIDs');
-          this.alertScreenReader(`Curated group '${name}' created. It has ${this.sids.length} students.`);
-          this.isSaving = false;
-          this.$router.push(`/curated/${group.id}`);
-        });
+          this.$ga.curatedEvent( group.id, group.name, 'Create curated group with bulk SIDs')
+          this.alertScreenReader(`Curated group '${name}' created. It has ${this.sids.length} students.`)
+          this.isSaving = false
+          this.$router.push(`/curated/${group.id}`)
+        })
     }
   }
 }
 </script>
-
-<style scoped>
-
-</style>

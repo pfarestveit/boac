@@ -1,18 +1,19 @@
 <template>
   <b-modal
-    v-if="!isNil(dropInAdvisors)"
-    id="advising-appointment-assign"
+    v-if="!$_.isNil(dropInAdvisors)"
     v-model="showAppointmentAssignModal"
     :no-close-on-backdrop="true"
     body-class="pl-0 pr-0"
     hide-footer
     hide-header
     @cancel.prevent="close"
-    @hide.prevent="close">
+    @hide.prevent="close"
+    @shown="putFocusNextTick('modal-header')"
+  >
     <div>
-      <div class="modal-header">
-        <h3>{{ appointment.student.name }}</h3>
-      </div>
+      <ModalHeader>
+        <span :class="{'demo-mode-blur': $currentUser.inDemoMode}">{{ appointment.student.name }}</span>
+      </ModalHeader>
       <div class="modal-body w-100">
         <div v-if="dropInAdvisors.length" class="pb-3 pt-3">
           <label for="assign-modal-advisor-select" class="font-weight-bolder">
@@ -20,15 +21,17 @@
           </label>
           <b-form-select
             id="assign-modal-advisor-select"
-            v-model="selectedAdvisorUid">
+            v-model="selectedAdvisorUid"
+          >
             <template v-slot:first>
               <option :value="null">Select...</option>
             </template>
             <option
               v-for="advisor in dropInAdvisors"
               :key="advisor.uid"
-              :value="advisor.uid">
-              {{ `${advisor.name}${isSupervisorOnCall(advisor, appointment.deptCode) ? ' (Supervisor On Call)' : ''}` }}
+              :value="advisor.uid"
+            >
+              {{ advisor.name }}
             </option>
           </b-form-select>
         </div>
@@ -41,18 +44,19 @@
           <b-btn
             v-if="dropInAdvisors.length"
             id="btn-appointment-assign"
-            aria-label="Assign appointment"
             :disabled="!selectedAdvisorUid"
             class="btn-primary-color-override"
             variant="primary"
-            @click.prevent="assign">
+            @click.prevent="assign"
+          >
             Assign
           </b-btn>
           <b-btn
             id="btn-appointment-close"
             class="pl-2"
             variant="link"
-            @click.stop="close">
+            @click.stop="close"
+          >
             Close
           </b-btn>
         </form>
@@ -62,13 +66,15 @@
 </template>
 
 <script>
-import Berkeley from '@/mixins/Berkeley';
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { getDropInAdvisorsForDept } from '@/api/user';
+import Berkeley from '@/mixins/Berkeley'
+import Context from '@/mixins/Context'
+import ModalHeader from '@/components/util/ModalHeader'
+import Util from '@/mixins/Util'
+import { getDropInAdvisorsForDept } from '@/api/user'
 
 export default {
   name: 'AppointmentAssignModal',
+  components: {ModalHeader},
   mixins: [Berkeley, Context, Util],
   props: {
     appointment: {
@@ -95,23 +101,25 @@ export default {
   }),
   watch: {
     showModal(value) {
-      this.showAppointmentAssignModal = value;
+      this.showAppointmentAssignModal = value
     }
   },
   created() {
-    this.showAppointmentAssignModal = this.showModal;
+    this.showAppointmentAssignModal = this.showModal
     getDropInAdvisorsForDept(this.appointment.deptCode).then(dropInAdvisors => {
-      this.dropInAdvisors = this.filterList(dropInAdvisors, 'available');
-    });
+      this.dropInAdvisors = this.$_.filter(dropInAdvisors, a => {
+        return a.available || a.uid === this.$currentUser.uid
+      })
+    })
   },
   methods: {
     assign() {
-      const advisor = this.find(this.dropInAdvisors, {'uid': this.selectedAdvisorUid});
+      const advisor = this.$_.find(this.dropInAdvisors, {'uid': this.selectedAdvisorUid})
       if (advisor) {
-        this.appointmentAssign(advisor);
+        this.appointmentAssign(advisor)
       }
-      this.alertScreenReader(`Assigned to ${advisor.name}`);
-      this.showAppointmentAssignModal = false;
+      this.alertScreenReader(`Assigned to ${advisor.name}`)
+      this.showAppointmentAssignModal = false
     }
   }
 }

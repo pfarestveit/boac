@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -84,6 +84,7 @@ class TestCourseController:
         assert section['title'] == 'Introductory Burmese'
         assert section['units'] == 4
         assert section['meetings'][0]['days'] == 'Mon, Tue, Wed, Thu, Fri'
+        assert section['meetings'][0]['instructionMode'] == 'P'
         assert section['meetings'][0]['instructors'] == ['George Orwell']
         assert section['meetings'][0]['time'] == '12:00 pm - 12:59 pm'
         assert section['meetings'][0]['location'] == 'Wheeler 999'
@@ -98,6 +99,7 @@ class TestCourseController:
         assert students[0]['sid'] == student_sid
         assert students[0]['firstName'] == 'Deborah'
         assert students[0]['lastName'] == 'Davies'
+        assert students[0]['academicStanding']['2182'] == 'GST'
         assert students[0]['cumulativeGPA'] == 3.8
         assert students[0]['cumulativeUnits'] == 101.3
         assert students[0]['level'] == 'Junior'
@@ -161,4 +163,4 @@ class TestCourseController:
     def test_section_student_alert_count(self, create_alerts, coe_advisor, client):
         """Includes alert count of COE student."""
         response = client.get(f'/api/section/{term_id}/{section_id}')
-        assert response.json['students'][0].get('alertCount') == 3
+        assert response.json['students'][0].get('alertCount') == 4

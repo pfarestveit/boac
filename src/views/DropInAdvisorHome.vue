@@ -2,17 +2,19 @@
   <div class="ml-3 mt-4 w-100">
     <h1 class="sr-only">Welcome to BOA</h1>
 
-    <Spinner alert-prefix="Drop-in Advisor homepage" />
+    <Spinner />
 
     <b-container v-if="!loading" fluid>
       <b-row no-gutters>
         <b-col cols="7" sm>
           <div class="mb-4 mr-3">
             <DropInWaitlist
+              :advisors="advisors"
               :dept-code="deptCode"
               :is-homepage="true"
               :on-appointment-status-change="onAppointmentStatusChange"
-              :waitlist="waitlist" />
+              :waitlist="waitlist"
+            />
           </div>
         </b-col>
         <b-col cols="5" sm>
@@ -35,7 +37,8 @@
                   :key="cohort.id"
                   :compact="true"
                   :group="cohort"
-                  :is-cohort="true" />
+                  :is-cohort="true"
+                />
               </div>
               <div v-if="!myCohorts.length">
                 <div>
@@ -46,7 +49,7 @@
                   automatically by your filtering preferences, such as GPA or units.
                 </div>
               </div>
-              <div v-if="size(myCuratedGroups)" class="mt-4">
+              <div v-if="$_.size(myCuratedGroups)" class="mt-4">
                 <div class="d-flex justify-content-between mr-3">
                   <div>
                     <h3 class="color-grey font-size-14 font-weight-bold text-uppercase">Curated Groups</h3>
@@ -60,7 +63,8 @@
                   :key="curatedGroup.id"
                   :group="curatedGroup"
                   :is-cohort="false"
-                  :compact="true" />
+                  :compact="true"
+                />
               </div>
             </div>
           </div>
@@ -71,15 +75,15 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import CurrentUserExtras from '@/mixins/CurrentUserExtras';
-import DropInWaitlist from '@/components/appointment/DropInWaitlist';
-import Loading from '@/mixins/Loading';
-import SortableGroup from '@/components/search/SortableGroup';
-import Spinner from '@/components/util/Spinner';
-import store from '@/store';
-import Util from '@/mixins/Util';
-import { getDropInAppointmentWaitlist } from '@/api/appointments';
+import Context from '@/mixins/Context'
+import CurrentUserExtras from '@/mixins/CurrentUserExtras'
+import DropInWaitlist from '@/components/appointment/DropInWaitlist'
+import Loading from '@/mixins/Loading'
+import SortableGroup from '@/components/search/SortableGroup'
+import Spinner from '@/components/util/Spinner'
+import store from '@/store'
+import Util from '@/mixins/Util'
+import { getDropInAppointmentWaitlist } from '@/api/appointments'
 
 export default {
   name: 'DropInAdvisorHome',
@@ -90,66 +94,86 @@ export default {
   },
   mixins: [Context, CurrentUserExtras, Loading, Util],
   data: () => ({
+    advisors: undefined,
     deptCode: undefined,
     loadingWaitlist: false,
+    refreshJob: undefined,
     waitlist: undefined
   }),
   mounted() {
-    this.deptCode = this.get(this.$route, 'params.deptCode').toUpperCase();
-    this.loadDropInWaitlist();
+    this.deptCode = this.$_.get(this.$route, 'params.deptCode').toUpperCase()
+    this.loadDropInWaitlist()
+  },
+  destroyed() {
+    clearTimeout(this.refreshJob)
   },
   methods: {
     loadDropInWaitlist(scheduleFutureRefresh=true) {
       return new Promise(resolve => {
         if (this.loadingWaitlist) {
-          resolve();
-          if (scheduleFutureRefresh) {
-            setTimeout(this.loadDropInWaitlist, this.$config.apptDeskRefreshInterval);
+          resolve()
+          if (this.showWaitlist && scheduleFutureRefresh) {
+            this.scheduleRefreshJob()
           }
-          return;
+          return
         }
-        this.loadingWaitlist = true;
+        this.loadingWaitlist = true
         getDropInAppointmentWaitlist(this.deptCode).then(response => {
-          const waitlist = response.waitlist;
-          let announceLoad = false;
-          let announceUpdate = false;
+          const waitlist = response.waitlist
+          let announceLoad = false
+          let announceUpdate = false
 
-          if (!this.isEqual(waitlist, this.waitlist)) {
-            if (this.waitlist) {
-              announceUpdate = true;
-            } else {
-              announceLoad = true;
+          if (!this.$_.isEqual(response.advisors, this.advisors)) {
+            if (this.advisors) {
+              announceUpdate = true
             }
-            this.waitlist = waitlist;
+            this.advisors = response.advisors
+          }
+          if (!this.$_.isEqual(waitlist, this.waitlist)) {
+            if (this.waitlist) {
+              announceUpdate = true
+            } else {
+              announceLoad = true
+            }
+            this.waitlist = waitlist
           }
 
-          const currentDropInStatus = this.find(this.$currentUser.dropInAdvisorStatus, {'deptCode': this.deptCode});
-          const newDropInStatus = this.find(response.advisors, {'uid': this.$currentUser.uid});
-          if (currentDropInStatus && newDropInStatus && currentDropInStatus.available !== newDropInStatus.available) {
+          const currentDropInStatus = this.$_.find(this.$currentUser.dropInAdvisorStatus, {'deptCode': this.deptCode})
+          const newDropInStatus = this.$_.find(response.advisors, {'uid': this.$currentUser.uid})
+          if (
+            currentDropInStatus && newDropInStatus &&
+            (currentDropInStatus.available !== newDropInStatus.available || currentDropInStatus.status !== newDropInStatus.status)
+          ) {
             store.commit('currentUserExtras/setDropInStatus', {
+              available: newDropInStatus.available,
               deptCode: this.deptCode,
-              available: newDropInStatus.available
-            });
+              status: newDropInStatus.status,
+            })
           }
 
-          this.loadingWaitlist = false;
-          resolve();
+          this.loadingWaitlist = false
+          resolve()
           if (scheduleFutureRefresh) {
-            setTimeout(this.loadDropInWaitlist, this.$config.apptDeskRefreshInterval);
+            this.scheduleRefreshJob()
           }
 
           if (announceLoad) {
-            this.loaded('Appointment waitlist');
+            this.loaded('Drop-in Advisor homepage has loaded')
           }
           if (announceUpdate) {
-            this.alertScreenReader('The appointment waitlist has been updated');
+            this.alertScreenReader('The appointment waitlist has been updated')
           }
-        });
-      });
+        })
+      })
     },
     onAppointmentStatusChange() {
       // We return a Promise.
-      return this.loadDropInWaitlist(false);
+      return this.loadDropInWaitlist(false)
+    },
+    scheduleRefreshJob() {
+      // Clear previous job, if pending. The following is null-safe.
+      clearTimeout(this.refreshJob)
+      this.refreshJob = setTimeout(this.loadDropInWaitlist, this.$config.apptDeskRefreshInterval)
     }
   }
 }

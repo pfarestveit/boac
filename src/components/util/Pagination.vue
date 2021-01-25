@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div id="pagination-widget-outer" role="navigation" aria-label="Pages of list">
     <span class="sr-only"><span id="total-rows">{{ totalPages }}</span>
       pages of search results</span>
     <b-pagination
@@ -15,7 +15,8 @@
       last-text="Last"
       hide-ellipsis
       size="md"
-      @change="onClick">
+      @change="onClick"
+    >
     </b-pagination>
   </div>
 </template>
@@ -39,16 +40,16 @@ export default {
   }),
   computed: {
     totalPages() {
-      return (this.totalRows / this.perPage) | this.ceil;
+      return Math.ceil(this.totalRows / this.perPage)
     }
   },
   created() {
-    this.currentPage = this.initPageNumber;
+    this.currentPage = this.initPageNumber
   },
   methods: {
     onClick(page) {
-      this.clickHandler(page);
+      this.clickHandler(page)
     }
   }
-};
+}
 </script>

@@ -9,17 +9,17 @@
           Problem? Question? Suggestion?
           Email <a :href="`mailto:${$config.supportEmailAddress}`" target="_blank">{{ $config.supportEmailAddress }}<span class="sr-only"> (new browser tab will open)</span></a>
         </div>
-        &copy; 2020 The Regents of the University of California
+        &copy; 2021 The Regents of the University of California
       </b-col>
     </b-row>
   </b-container>
 </template>
 
 <script>
-import Context from '@/mixins/Context';
+import Context from '@/mixins/Context'
 
 export default {
   name: 'Footer',
   mixins: [Context]
-};
+}
 </script>

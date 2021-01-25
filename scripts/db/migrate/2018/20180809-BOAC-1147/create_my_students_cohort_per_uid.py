@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -48,7 +48,7 @@ def main(app):
         )
         print(f'Cohort created: {cohort}')
     else:
-        print(f'ERROR: Failed to create cohort')
+        print('ERROR: Failed to create cohort')
 
     print('\nDone.\n')
 

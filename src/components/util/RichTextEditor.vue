@@ -1,27 +1,42 @@
 <template>
-  <div :id="ckElementId">
-    <ckeditor
-      :value="initialValue"
-      :disabled="disabled"
-      :editor="editor"
-      :config="editorConfig"
-      @input="onUpdate"></ckeditor>
+  <div>
+    <div>
+      <label
+        :id="`${ckElementId}-label`"
+        :for="ckElementId"
+        class="font-size-14 font-weight-bolder mt-3 mb-1"
+      >
+        {{ label }}
+      </label>
+    </div>
+    <div
+      :id="ckElementId"
+      :aria-labelledby="`${ckElementId}-label`"
+      role="textbox"
+    >
+      <ckeditor
+        :value="initialValue"
+        :disabled="disabled"
+        :editor="editor"
+        :config="editorConfig"
+        @input="onUpdate"
+      ></ckeditor>
+    </div>
   </div>
 </template>
 
 <script>
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
-import Util from '@/mixins/Util';
+import ClassicEditor from '@ckeditor/ckeditor5-build-classic'
+import Util from '@/mixins/Util'
 
-require('@/assets/styles/ckeditor-custom.css');
+require('@/assets/styles/ckeditor-custom.css')
 
 export default {
-  name: "RichTextEditor",
+  name: 'RichTextEditor',
   mixins: [ Util ],
   props: {
     disabled: {
       required: false,
-      default: false,
       type: Boolean
     },
     editorConfig: {
@@ -37,8 +52,11 @@ export default {
     },
     isInModal: {
       required: false,
-      default: false,
       type: Boolean
+    },
+    label: {
+      required: true,
+      type: String
     },
     onValueUpdate: {
       required: true,
@@ -53,42 +71,42 @@ export default {
   }),
   watch: {
     isInModal() {
-      this.initDomFixer();
+      this.initDomFixer()
     }
   },
   mounted() {
-    this.ckElementId = `rich-text-editor-${new Date().getTime()}`;
-    this.initDomFixer();
+    this.ckElementId = `rich-text-editor-${new Date().getTime()}`
+    this.initDomFixer()
   },
   methods: {
     correctTheDOM() {
       if (this.domFixAttemptCount === 10) {
         // Abort after N tries.
-        clearInterval(this.domFixer);
+        clearInterval(this.domFixer)
       } else if (this.isInModal) {
         // When embedded in a modal, the CKEditor toolbar elements are unreachable because they are attached to
         // the end of the DOM and outside the modal. We must move these "ck" elements. The user should not notice.
-        const ckEditorTool = 'ck ck-reset_all ck-body ck-rounded-corners';
-        const elements = document.getElementsByClassName(ckEditorTool);
+        const ckEditorTool = 'ck ck-reset_all ck-body ck-rounded-corners'
+        const elements = document.getElementsByClassName(ckEditorTool)
         if (elements.length > 0) {
-          this.each(elements, element => {
-            document.getElementById(this.ckElementId).appendChild(element);
-          });
-          clearInterval(this.domFixer);
+          this.$_.each(elements, element => {
+            document.getElementById(this.ckElementId).appendChild(element)
+          })
+          clearInterval(this.domFixer)
         } else {
-          this.domFixAttemptCount++;
+          this.domFixAttemptCount++
         }
       } else {
         // We're not in a modal.
-        clearInterval(this.domFixer);
+        clearInterval(this.domFixer)
       }
     },
     initDomFixer() {
-      this.domFixAttemptCount = 0;
-      this.domFixer = setInterval(this.correctTheDOM, 500);
+      this.domFixAttemptCount = 0
+      this.domFixer = setInterval(this.correctTheDOM, 500)
     },
     onUpdate(event) {
-      this.onValueUpdate(this.isString(event) ? event : event.target.value);
+      this.onValueUpdate(this.$_.isString(event) ? event : event.target.value)
     }
   }
 }

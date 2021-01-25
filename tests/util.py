@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -30,6 +30,17 @@ import moto
 
 
 @contextmanager
+def mock_legacy_appointment_attachment(app):
+    with moto.mock_s3():
+        bucket = app.config['DATA_LOCH_S3_ADVISING_NOTE_BUCKET']
+        s3 = boto3.resource('s3', app.config['DATA_LOCH_S3_REGION'])
+        s3.create_bucket(Bucket=bucket)
+        key = f"{app.config['DATA_LOCH_S3_ADVISING_NOTE_ATTACHMENT_PATH']}/9100000000/9100000000_00010_1.pdf"
+        s3.Object(bucket, key).put(Body='01001000 01100101 01101100 01101100 01101111 00100000 01010111 01101111 01110010 01101100 01100100')
+        yield s3
+
+
+@contextmanager
 def mock_legacy_note_attachment(app):
     with moto.mock_s3():
         bucket = app.config['DATA_LOCH_S3_ADVISING_NOTE_BUCKET']
@@ -54,13 +65,17 @@ def override_config(app, key, value):
     """Temporarily override an app config value."""
     old_value = app.config[key]
     app.config[key] = value
-    yield
-    app.config[key] = old_value
+    try:
+        yield
+    finally:
+        app.config[key] = old_value
 
 
 @contextmanager
 def pause_mock_sts():
     """Temporarily pause moto's mock STS, which can get in the way of tests incorporating other external services, such as CAS."""
     moto.mock_sts().stop()
-    yield
-    moto.mock_sts().start()
+    try:
+        yield
+    finally:
+        moto.mock_sts().start()

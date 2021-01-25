@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -23,6 +23,7 @@ SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY, PROVIDED HEREUNDER IS PROVIDED
 ENHANCEMENTS, OR MODIFICATIONS.
 """
 
+from boac import std_commit
 from boac.api.errors import InternalServerError
 from boac.models.authorized_user import AuthorizedUser
 from boac.models.cohort_filter import CohortFilter
@@ -31,6 +32,7 @@ from tests.test_api.api_test_utils import all_cohorts_owned_by
 
 asc_advisor_uid = '2040'
 coe_advisor_uid = '1133399'
+ce3_advisor_uid = '2525'
 
 
 @pytest.mark.usefixtures('db_session')
@@ -43,8 +45,10 @@ class TestCohortFilter:
             {'min': 2, 'max': 2.499},
         ]
         group_codes = ['MFB-DB', 'MFB-DL']
+        intended_majors = ['Public Health BA']
         levels = ['Junior']
         majors = ['Environmental Economics & Policy', 'Gender and Women\'s Studies']
+        minors = ['Physics UG']
         unit_ranges = [
             'numrange(0, 5, \'[]\')',
             'numrange(30, NULL, \'[)\')',
@@ -56,8 +60,10 @@ class TestCohortFilter:
                 'gpaRanges': gpa_ranges,
                 'groupCodes': group_codes,
                 'inIntensiveCohort': None,
+                'intendedMajors': intended_majors,
                 'levels': levels,
                 'majors': majors,
+                'minors': minors,
                 'unitRanges': unit_ranges,
             },
         )
@@ -67,13 +73,47 @@ class TestCohortFilter:
             'gpaRanges': gpa_ranges,
             'groupCodes': group_codes,
             'inIntensiveCohort': None,
+            'intendedMajors': intended_majors,
             'levels': levels,
             'majors': majors,
+            'minors': minors,
             'unitRanges': unit_ranges,
         }
         for key, value in expected.items():
             assert cohort['criteria'][key] == expected[key]
         assert cohort['totalStudentCount'] == len(CohortFilter.get_sids(cohort_id))
+
+    def test_ce3_filter_criteria(self):
+        colleges = ['College of Letters and Science', 'College of Engineering']
+        family_dependent_ranges = [
+            {'min': 0, 'max': 2},
+            {'min': 5, 'max': 5},
+        ]
+        freshman_or_transfer = ['Transfer']
+        has_fee_waiver = True
+        cohort = CohortFilter.create(
+            uid=ce3_advisor_uid,
+            name='All my admits',
+            filter_criteria={
+                'colleges': colleges,
+                'familyDependentRanges': family_dependent_ranges,
+                'freshmanOrTransfer': freshman_or_transfer,
+                'hasFeeWaiver': has_fee_waiver,
+            },
+            domain='admitted_students',
+        )
+        cohort_id = cohort['id']
+        cohort = CohortFilter.find_by_id(cohort_id)
+        expected = {
+            'colleges': colleges,
+            'familyDependentRanges': family_dependent_ranges,
+            'freshmanOrTransfer': freshman_or_transfer,
+            'hasFeeWaiver': has_fee_waiver,
+        }
+        for key, value in expected.items():
+            assert cohort['criteria'][key] == expected[key]
+        assert cohort['totalStudentCount'] == len(CohortFilter.get_sids(cohort_id))
+        assert cohort['students']
 
     def test_undefined_filter_criteria(self):
         with pytest.raises(InternalServerError):
@@ -89,12 +129,10 @@ class TestCohortFilter:
     def test_create_and_delete_cohort(self):
         """Cohort_filter record to Flask-Login for recognized UID."""
         owner = AuthorizedUser.find_by_uid(asc_advisor_uid).uid
-        shared_with = AuthorizedUser.find_by_uid(coe_advisor_uid).uid
-        # Check validity of UIDs
+        # Check validity of UID
         assert owner
-        assert shared_with
 
-        # Create and share cohort
+        # Create cohort
         group_codes = ['MFB-DB', 'MFB-DL', 'MFB-MLB', 'MFB-OLB']
         cohort = CohortFilter.create(
             uid=owner,
@@ -104,24 +142,30 @@ class TestCohortFilter:
             },
         )
         cohort_id = cohort['id']
-        CohortFilter.share(cohort_id, shared_with)
-        owners = CohortFilter.find_by_id(cohort_id)['owners']
-        assert len(owners) == 2
-        assert owner, shared_with in [user['uid'] for user in owners]
+        assert CohortFilter.find_by_id(cohort_id)['owner']['uid'] == owner
         assert cohort['totalStudentCount'] == len(CohortFilter.get_sids(cohort_id))
 
         # Delete cohort and verify
         previous_owner_count = cohort_count(owner)
-        previous_shared_count = cohort_count(shared_with)
         CohortFilter.delete(cohort_id)
+        std_commit(allow_test_environment=True)
         assert cohort_count(owner) == previous_owner_count - 1
-        assert cohort_count(shared_with) == previous_shared_count - 1
 
     def test_jsonify_cohort(self):
         """Can be JSONified."""
         cohorts = AuthorizedUser.find_by_uid(coe_advisor_uid).cohort_filters
-        assert len(cohorts) == 2
-        assert cohorts[0].to_api_json()['name'] == 'Roberta\'s Students'
+        assert len(cohorts)
+        expected_name = 'Roberta\'s Students'
+        cohort = next((c for c in cohorts if c.name == expected_name), None)
+        assert cohort
+        assert cohort.to_api_json()['name'] == expected_name
+
+        admit_cohorts = AuthorizedUser.find_by_uid(ce3_advisor_uid).cohort_filters
+        assert len(admit_cohorts)
+        expected_name = 'First Generation Students'
+        admit_cohort = next((c for c in admit_cohorts if c.name == expected_name), None)
+        assert admit_cohort
+        assert admit_cohort.to_api_json()['name'] == expected_name
 
 
 def cohort_count(user_uid):

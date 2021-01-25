@@ -1,15 +1,15 @@
 <template>
   <b-modal
-    id="rename-note-template"
     v-model="showModalProxy"
     aria-label="Rename Your Template"
     body-class="pl-0 pr-0"
     hide-footer
-    hide-header-close
-    title="Rename Your Template"
-    @shown="focusModalById('rename-template-input')">
+    hide-header
+    @shown="putFocusNextTick('modal-header')"
+  >
     <div>
-      <form @submit.prevent="renameTemplate()">
+      <ModalHeader text="Rename Your Template" />
+      <form @submit.prevent="renameTemplate">
         <div class="ml-3 mr-3">
           <div>
             <label for="rename-template-input" class="pb-2">Template name:</label>
@@ -19,7 +19,8 @@
               class="cohort-create-input-name"
               type="text"
               maxlength="255"
-              required>
+              required
+            >
           </div>
           <div class="faint-text mb-3"><span class="sr-only">Template name has a </span>255 character limit <span v-if="title.length">({{ 255 - title.length }} left)</span></div>
           <div
@@ -27,13 +28,15 @@
             id="rename-template-error"
             aria-live="polite"
             role="alert"
-            class="has-error">
+            class="has-error"
+          >
             {{ error }}
           </div>
           <div
             v-if="title.length === 255"
             class="sr-only"
-            aria-live="polite">
+            aria-live="polite"
+          >
             Template name cannot exceed 255 characters.
           </div>
         </div>
@@ -43,13 +46,15 @@
             :disabled="!title.length"
             class="btn-primary-color-override"
             variant="primary"
-            @click.prevent="renameTemplate()">
+            @click.prevent="renameTemplate"
+          >
             Rename
           </b-btn>
           <b-btn
             id="cancel-rename-template"
             variant="link"
-            @click="cancelModal()">
+            @click="cancelModal"
+          >
             Cancel
           </b-btn>
         </div>
@@ -59,12 +64,14 @@
 </template>
 
 <script>
-import Util from '@/mixins/Util';
-import Validator from '@/mixins/Validator';
+import ModalHeader from '@/components/util/ModalHeader'
+import Util from '@/mixins/Util'
+import Validator from '@/mixins/Validator'
 
 export default {
   name: 'RenameTemplateModal',
   mixins: [Util, Validator],
+  components: {ModalHeader},
   props: {
     cancel: {
       type: Function,
@@ -94,30 +101,30 @@ export default {
   computed: {
     showModalProxy: {
       get() {
-        return this.showModal;
+        return this.showModal
       },
       set(value) {
-        this.toggleShow(value);
+        this.toggleShow(value)
       }
     }
   },
   watch: {
     title() {
-      this.error = undefined;
+      this.error = undefined
     }
   },
   mounted() {
-    this.title = this.template.title;
+    this.title = this.template.title
   },
   methods: {
     cancelModal() {
-      this.error = undefined;
-      this.cancel();
+      this.error = undefined
+      this.cancel()
     },
     renameTemplate: function() {
-      this.error = this.validateTemplateTitle({ id: this.template.id, title: this.title });
+      this.error = this.validateTemplateTitle({ id: this.template.id, title: this.title })
       if (!this.error) {
-        this.rename(this.title);
+        this.rename(this.title)
       }
     }
   }

@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -93,3 +93,16 @@ class TestBerkeleyDepartmentCodes:
     def test_unique_department_names(self):
         """We must have unique dept codes and unique names."""
         assert len(BERKELEY_DEPT_CODE_TO_NAME) == len(BERKELEY_DEPT_NAME_TO_CODE)
+
+
+class TestAcademicYearForTermName:
+    """Matches a term name to its academic year."""
+
+    def test_academic_year_for_term_name(self):
+        assert berkeley.academic_year_for_term_name('Fall 1990') == '1991'
+        assert berkeley.academic_year_for_term_name('Winter 1971') is None
+        assert berkeley.academic_year_for_term_name('Spring 2025') == '2025'
+        assert berkeley.academic_year_for_term_name('Summer 2007') == '2007'
+        assert berkeley.academic_year_for_term_name('') is None
+        assert berkeley.academic_year_for_term_name('Septober 2007') is None
+        assert berkeley.academic_year_for_term_name('Fall2007') is None

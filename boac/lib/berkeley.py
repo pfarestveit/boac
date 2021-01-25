@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,6 +27,13 @@ import re
 
 
 """A utility module collecting logic specific to the Berkeley campus."""
+
+ACADEMIC_STANDING_DESCRIPTIONS = {
+    'DIS': 'Dismissed',
+    'GST': 'Good Standing',
+    'PRO': 'Probation',
+    'SUB': 'Subject to Dismissal',
+}
 
 # This is not a complete mapping:
 #  - Not all SIS-defined academic plans map to a single Degree Programs page.
@@ -396,6 +403,16 @@ BERKELEY_DEPT_CODE_TO_PROGRAM_AFFILIATIONS = {
 }
 
 
+def academic_year_for_term_name(term_name):
+    if term_name:
+        match = re.match(r'\A(Spring|Summer|Fall) (\d{4})\Z', term_name)
+        if not match or len(match.groups()) != 2:
+            return None
+        if match.group(1) == 'Fall':
+            return str(int(match.group(2)) + 1)
+        return match.group(2)
+
+
 def previous_term_id(term_id):
     term_id = int(term_id)
     previous = term_id - (4 if (term_id % 10 == 2) else 3)
@@ -454,14 +471,10 @@ def get_dept_codes(user):
 
 def dept_codes_where_advising(user):
     if user:
-        dept_where_advising = list(filter(lambda d: d.get('isAdvisor') or d.get('isDirector'), user.departments))
+        dept_where_advising = list(filter(lambda d: d.get('role') in ('advisor', 'director'), user.departments))
         return list(map(lambda d: d['code'], dept_where_advising))
     else:
         return None
-
-
-def get_dept_role(department_membership):
-    return 'Director' if department_membership.is_director else ('Advisor' if department_membership.is_advisor else None)
 
 
 def section_is_eligible_for_alerts(enrollment, section):

@@ -1,17 +1,18 @@
 <template>
   <transition name="drawer">
-    <div v-show="isOpen" class="drawer">
+    <div v-show="isOpen" :aria-expanded="isOpen" class="drawer">
       <div class="ml-4 mr-4 pb-4 pt-4 row">
         <div class="col-sm mr-2 pr-2">
           <h3 class="student-profile-section-header">
             Advisor(s)
           </h3>
-          <div v-if="size(student.advisors)" id="student-profile-advisors">
+          <div v-if="$_.size(student.advisors)" id="student-profile-advisors">
             <div
-              v-for="(advisor, index) in student.advisors"
+              v-for="(advisor, index) in advisorsSorted"
               :id="`student-profile-advisor-${index}`"
               :key="index"
-              class="mb-2">
+              class="mb-2"
+            >
               <div :id="`student-profile-advisor-${index}-role`">
                 <strong>{{ advisor.role }}</strong>
               </div>
@@ -19,14 +20,14 @@
                 {{ advisor.plan }}
               </div>
               <div :id="`student-profile-advisor-${index}-name`" class="text-muted">
-                {{ advisor.firstName }} {{ advisor.lastName }}
+                {{ advisorName(advisor) }}
               </div>
               <div :id="`student-profile-advisor-${index}-email`" class="text-muted">
                 {{ advisor.email }}
               </div>
             </div>
           </div>
-          <div v-if="!size(student.advisors)" id="student-profile-advisors-none">
+          <div v-if="!$_.size(student.advisors)" id="student-profile-advisors-none">
             None assigned.
           </div>
         </div>
@@ -39,19 +40,18 @@
               <div>
                 <strong>Other Email (preferred)</strong>
               </div>
-              <div id="student-profile-other-email">
+              <div id="student-profile-other-email" :class="{'demo-mode-blur': $currentUser.inDemoMode}">
                 {{ student.sisProfile.emailAddressAlternate }}
               </div>
             </div>
             <div v-if="student.sisProfile.phoneNumber" id="student-profile-phone-number-outer" class="mb-2">
-              <div>
-                <strong>Phone</strong>
-              </div>
+              <div class="font-weight-bold">Phone</div>
               <a
                 id="student-phone-number"
-                :href="`tel:${student.sisProfile.phoneNumber}`"
+                :aria-label="`Link to student phone number ${student.sisProfile.phoneNumber}`"
                 :class="{'demo-mode-blur': $currentUser.inDemoMode}"
-                tabindex="0">
+                :href="`tel:${student.sisProfile.phoneNumber}`"
+              >
                 {{ student.sisProfile.phoneNumber }}</a>
             </div>
           </div>
@@ -65,23 +65,20 @@
               </div>
               <div
                 v-if="student.sisProfile.matriculation"
-                id="student-bio-matriculation">
+                id="student-bio-matriculation"
+              >
                 Entered {{ student.sisProfile.matriculation }}
               </div>
               <div v-if="visaDescription" id="student-profile-visa">
                 {{ visaDescription }}
-              </div>
-              <div v-if="student.athleticsProfile" id="student-bio-athletics">
-                <div v-for="membership in student.athleticsProfile.athletics" :key="membership.groupName">
-                  {{ membership.groupName }}
-                </div>
               </div>
               <div class="no-wrap mt-1">
                 <a
                   id="link-to-calcentral"
                   :href="`https://calcentral.berkeley.edu/user/overview/${student.uid}`"
                   target="_blank"
-                  aria-label="Open CalCentral in new window">Student profile in CalCentral <font-awesome icon="external-link-alt" class="pr-1" /></a>
+                  aria-label="Open CalCentral in new window"
+                >Student profile in CalCentral <font-awesome icon="external-link-alt" class="pr-1" /></a>
               </div>
             </div>
           </div>
@@ -99,7 +96,8 @@
                     v-if="plan.degreeProgramUrl"
                     :href="plan.degreeProgramUrl"
                     :aria-label="`Open ${plan.description} program page in new window`"
-                    target="_blank">
+                    target="_blank"
+                  >
                     {{ plan.description }}</a>
                 </div>
               </div>
@@ -110,23 +108,12 @@
               Discontinued Major(s)
             </h3>
             <div id="student-details-discontinued-majors">
-              <div v-for="plan in inactiveMajors" :key="plan.description" class="mb-2">
-                <div class="font-weight-bolder">
-                  <span v-if="!plan.degreeProgramUrl" class="no-wrap">{{ plan.description }}</span>
-                  <a
-                    v-if="plan.degreeProgramUrl"
-                    :href="plan.degreeProgramUrl"
-                    :aria-label="`Open ${plan.description} program page in new window`"
-                    target="_blank">
-                    {{ plan.description }}</a>
-                </div>
-                <div v-if="plan.program" class="text-muted">
-                  {{ plan.program }}
-                </div>
-                <div class="font-weight-bolder has-error small text-uppercase">
-                  {{ plan.status }}
-                </div>
-              </div>
+              <StudentProfilePlan
+                v-for="plan in inactiveMajors"
+                :key="plan.description"
+                :plan="plan"
+                :active="false"
+              />
             </div>
           </div>
           <div v-if="inactiveMinors.length" id="student-details-discontinued-minors-outer" class="mb-3">
@@ -134,23 +121,12 @@
               Discontinued Minor(s)
             </h3>
             <div id="student-details-discontinued-minors">
-              <div v-for="plan in inactiveMinors" :key="plan.description" class="mb-2">
-                <div class="font-weight-bolder">
-                  <span v-if="!plan.degreeProgramUrl" class="no-wrap">{{ plan.description }}</span>
-                  <a
-                    v-if="plan.degreeProgramUrl"
-                    :href="plan.degreeProgramUrl"
-                    :aria-label="`Open ${plan.description} program page in new window`"
-                    target="_blank">
-                    {{ plan.description }}</a>
-                </div>
-                <div v-if="plan.program" class="text-muted">
-                  {{ plan.program }}
-                </div>
-                <div class="font-weight-bolder has-error small text-uppercase">
-                  {{ plan.status }}
-                </div>
-              </div>
+              <StudentProfilePlan
+                v-for="plan in inactiveMinors"
+                :key="plan.description"
+                :plan="plan"
+                :active="false"
+              />
             </div>
           </div>
         </div>
@@ -160,11 +136,16 @@
 </template>
 
 <script>
-import Util from '@/mixins/Util';
+import Berkeley from '@/mixins/Berkeley'
+import StudentProfilePlan from '@/components/student/profile/StudentProfilePlan'
+import Util from '@/mixins/Util'
 
 export default {
   name: 'StudentPersonalDetails',
-  mixins: [Util],
+  components: {
+    StudentProfilePlan
+  },
+  mixins: [Berkeley, Util],
   props: {
     inactiveMajors: {
       required: true,
@@ -184,21 +165,29 @@ export default {
     }
   },
   computed: {
+    advisorsSorted() {
+      return this.$_.orderBy(this.student.advisors, this.getAdvisorSortOrder)
+    },
     visaDescription() {
-      if (this.get(this.student, 'demographics.visa.status') !== 'G') {
-        return null;
+      if (this.$_.get(this.student, 'demographics.visa.status') !== 'G') {
+        return null
       }
       switch (this.student.demographics.visa.type) {
-        case 'F1':
-          return 'F-1 International Student';
-        case 'J1':
-          return 'J-1 International Student';
-        case 'PR':
-          return 'PR Verified International Student';
-        default:
-          return 'Other Verified International Student';
+      case 'F1':
+        return 'F-1 International Student'
+      case 'J1':
+        return 'J-1 International Student'
+      case 'PR':
+        return 'PR Verified International Student'
+      default:
+        return 'Other Verified International Student'
       }
     }
+  },
+  methods: {
+    advisorName(advisor) {
+      return this.$_.join(this.$_.remove([advisor.firstName, advisor.lastName]), ' ')
+    },
   }
 }
 </script>
@@ -206,25 +195,5 @@ export default {
 <style scoped>
 .drawer {
   background-color: #f5fbff;
-}
-.drawer-enter-active {
-   -webkit-transition-duration: 0.3s;
-   transition-duration: 0.3s;
-   -webkit-transition-timing-function: ease-in;
-   transition-timing-function: ease-in;
-}
-.drawer-leave-active {
-   -webkit-transition-duration: 0.3s;
-   transition-duration: 0.5s;
-   -webkit-transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
-   transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
-}
-.drawer-enter-to, .drawer-leave {
-  max-height: 280px;
-  overflow: hidden;
-}
-.drawer-enter, .drawer-leave-to {
-  overflow: hidden;
-  max-height: 0;
 }
 </style>

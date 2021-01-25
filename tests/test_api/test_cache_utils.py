@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -35,6 +35,9 @@ import pytest
 from tests.test_api.api_test_utils import all_cohorts_owned_by
 
 
+coe_advisor_uid = '1022796'
+
+
 @pytest.mark.usefixtures('db_session')
 class TestCacheUtils:
     """Test cache utils."""
@@ -43,11 +46,11 @@ class TestCacheUtils:
         from boac.api.cache_utils import refresh_alerts
         refresh_alerts(2178)
         alerts = Alert.current_alerts_for_sid(sid='11667051', viewer_id='2040')
-        assert 1 == len(alerts)
-        assert 0 < alerts[0]['id']
-        assert 'midterm' == alerts[0]['alertType']
-        assert '2178_90100' == alerts[0]['key']
-        assert 'BURMESE 1A midpoint deficient grade of D+.' == alerts[0]['message']
+        alert = next((a for a in alerts if a['alertType'] == 'midterm'), None)
+        assert alert
+        assert 'midterm' == alert['alertType']
+        assert '2178_90100' == alert['key']
+        assert 'BURMESE 1A midpoint deficient grade of D+.' == alert['message']
 
     def test_update_curated_group_lists(self, app):
         from boac.api.cache_utils import update_curated_group_lists
@@ -88,7 +91,7 @@ class TestRefreshCalnetAttributes:
         from boac.api.cache_utils import refresh_calnet_attributes
         from boac.models import json_cache
         from boac.models.json_cache import JsonCache
-        removed_advisor = '1022796'
+        removed_advisor = coe_advisor_uid
         removed_ldap_record = '2040'
         all_active_uids = {u.uid for u in AuthorizedUser.get_all_active_users()}
         assert {removed_advisor, removed_ldap_record}.issubset(all_active_uids)
@@ -130,46 +133,50 @@ class TestRefreshDepartmentMemberships:
 
     def test_adds_coe_advisors(self, app):
         """Adds COE advisors newly found in the loch."""
-        AuthorizedUser.query.filter_by(uid='1022796').delete()
+        AuthorizedUser.query.filter_by(uid=coe_advisor_uid).delete()
         std_commit(allow_test_environment=True)
 
         dept_coe = UniversityDept.query.filter_by(dept_code='COENG').first()
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 4
-        assert next((u for u in coe_users if u.uid == '1022796'), None) is None
+        assert len(coe_users) == 5
+        assert next((u for u in coe_users if u.uid == coe_advisor_uid), None) is None
 
         from boac.api.cache_utils import refresh_department_memberships
         refresh_department_memberships()
         std_commit(allow_test_environment=True)
 
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 5
-        assert next(u for u in coe_users if u.uid == '1022796')
-        user = AuthorizedUser.query.filter_by(uid='1022796').first()
+        assert len(coe_users) == 6
+        assert next(u for u in coe_users if u.uid == coe_advisor_uid)
+        user = AuthorizedUser.query.filter_by(uid=coe_advisor_uid).first()
+        assert user.can_access_canvas_data is False
+        assert user.can_access_advising_data is False
         assert user.deleted_at is None
         assert user.created_by == '0'
         assert user.department_memberships[0].automate_membership is True
 
     def test_restores_coe_advisors(self, app):
         """Restores previously deleted COE advisors found in the loch."""
-        deleted_user = AuthorizedUser.query.filter_by(uid='1022796').first()
+        deleted_user = AuthorizedUser.query.filter_by(uid=coe_advisor_uid).first()
         deleted_user.deleted_at = datetime.datetime.now()
         UniversityDeptMember.query.filter_by(authorized_user_id=deleted_user.id).delete()
         std_commit(allow_test_environment=True)
 
         dept_coe = UniversityDept.query.filter_by(dept_code='COENG').first()
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 4
-        assert next((u for u in coe_users if u.uid == '1022796'), None) is None
+        assert len(coe_users) == 5
+        assert next((u for u in coe_users if u.uid == coe_advisor_uid), None) is None
 
         from boac.api.cache_utils import refresh_department_memberships
         refresh_department_memberships()
         std_commit(allow_test_environment=True)
 
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 5
-        assert next(u for u in coe_users if u.uid == '1022796')
-        user = AuthorizedUser.query.filter_by(uid='1022796').first()
+        assert len(coe_users) == 6
+        assert next(u for u in coe_users if u.uid == coe_advisor_uid)
+        user = AuthorizedUser.query.filter_by(uid=coe_advisor_uid).first()
+        assert user.can_access_canvas_data is False
+        assert user.can_access_advising_data is False
         assert user.deleted_at is None
         assert user.created_by == '0'
         assert user.department_memberships[0].automate_membership is True
@@ -181,14 +188,12 @@ class TestRefreshDepartmentMemberships:
         UniversityDeptMember.create_or_update_membership(
             dept_coe.id,
             bad_user.id,
-            is_advisor=True,
-            is_director=False,
-            is_scheduler=False,
+            role='advisor',
         )
         std_commit(allow_test_environment=True)
 
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 6
+        assert len(coe_users) == 7
         assert next(u for u in coe_users if u.uid == '666')
         assert AuthorizedUser.query.filter_by(uid='666').first().deleted_at is None
 
@@ -197,7 +202,7 @@ class TestRefreshDepartmentMemberships:
         std_commit(allow_test_environment=True)
 
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 5
+        assert len(coe_users) == 6
         assert next((u for u in coe_users if u.uid == '666'), None) is None
         assert AuthorizedUser.query.filter_by(uid='666').first().deleted_at
 
@@ -207,9 +212,7 @@ class TestRefreshDepartmentMemberships:
         manual_membership = UniversityDeptMember.create_or_update_membership(
             dept_coe.id,
             manually_added_user.id,
-            is_advisor=True,
-            is_director=False,
-            is_scheduler=False,
+            role='advisor',
             automate_membership=False,
         )
 
@@ -218,7 +221,7 @@ class TestRefreshDepartmentMemberships:
         std_commit(allow_test_environment=True)
 
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 6
+        assert len(coe_users) == 7
         assert next(u for u in coe_users if u.uid == '1024')
         assert AuthorizedUser.query.filter_by(uid='1024').first().deleted_at is None
 
@@ -230,7 +233,7 @@ class TestRefreshDepartmentMemberships:
         std_commit(allow_test_environment=True)
 
         coe_users = [au.authorized_user for au in dept_coe.authorized_users]
-        assert len(coe_users) == 5
+        assert len(coe_users) == 6
         assert next((u for u in coe_users if u.uid == '1024'), None) is None
         assert AuthorizedUser.query.filter_by(uid='1024').first().deleted_at
 
@@ -258,7 +261,7 @@ class TestRefreshDepartmentMemberships:
 
         dept_ucls = UniversityDept.query.filter_by(dept_code='QCADVMAJ').first()
         ucls_users = [au.authorized_user for au in dept_ucls.authorized_users]
-        assert len(ucls_users) == 1
+        assert len(ucls_users) == 2
         assert next((u for u in ucls_users if u.uid == '1133397'), None) is None
 
         from boac.api.cache_utils import refresh_department_memberships
@@ -266,7 +269,7 @@ class TestRefreshDepartmentMemberships:
         std_commit(allow_test_environment=True)
 
         ucls_users = [au.authorized_user for au in dept_ucls.authorized_users]
-        assert len(ucls_users) == 2
+        assert len(ucls_users) == 3
         assert next(u for u in ucls_users if u.uid == '1133397')
         assert AuthorizedUser.query.filter_by(uid='1133397').first().deleted_at is None
 
@@ -286,23 +289,21 @@ class TestRefreshDepartmentMemberships:
         UniversityDeptMember.create_or_update_membership(
             dept_coe.id,
             user.id,
-            is_advisor=True,
-            is_director=False,
-            is_scheduler=False,
+            role='advisor',
         )
         dept_ucls = UniversityDept.query.filter_by(dept_code='QCADVMAJ').first()
         UniversityDeptMember.delete_membership(dept_ucls.id, user.id)
         std_commit(allow_test_environment=True)
 
         ucls_users = [au.authorized_user for au in dept_ucls.authorized_users]
-        assert len(ucls_users) == 1
+        assert len(ucls_users) == 2
 
         from boac.api.cache_utils import refresh_department_memberships
         refresh_department_memberships()
         std_commit(allow_test_environment=True)
 
         ucls_users = [au.authorized_user for au in dept_ucls.authorized_users]
-        assert len(ucls_users) == 2
+        assert len(ucls_users) == 3
         assert next(u for u in ucls_users if u.uid == '242881')
         updated_user = AuthorizedUser.query.filter_by(uid='242881').first()
         assert updated_user.deleted_at is None
@@ -311,26 +312,24 @@ class TestRefreshDepartmentMemberships:
 
     def test_deletes_drop_in_advisor_orphans(self):
         """Cleans up drop-in advisor record for a department membership that no longer exists."""
-        from boac.models.drop_in_advisor import DropInAdvisor
+        from boac.models.authorized_user_extension import DropInAdvisor
         dept_ucls = UniversityDept.query.filter_by(dept_code='QCADVMAJ').first()
         bad_user = AuthorizedUser.create_or_restore(uid='666', created_by='2040')
         UniversityDeptMember.create_or_update_membership(
             dept_ucls.id,
             bad_user.id,
-            is_advisor=True,
-            is_director=False,
-            is_scheduler=False,
+            role='advisor',
         )
-        DropInAdvisor.create_or_update_status(dept_ucls, bad_user.id)
+        DropInAdvisor.create_or_update_membership(dept_ucls.dept_code, bad_user.id)
         std_commit(allow_test_environment=True)
 
         ucls_drop_in_advisors = DropInAdvisor.advisors_for_dept_code(dept_ucls.dept_code)
-        assert len(ucls_drop_in_advisors) == 1
-        assert ucls_drop_in_advisors[0].authorized_user_id == bad_user.id
+        assert len(ucls_drop_in_advisors) == 2
+        assert bad_user.id in [d.authorized_user_id for d in ucls_drop_in_advisors]
 
         from boac.api.cache_utils import refresh_department_memberships
         refresh_department_memberships()
         std_commit(allow_test_environment=True)
 
         ucls_drop_in_advisors = DropInAdvisor.advisors_for_dept_code(dept_ucls.dept_code)
-        assert len(ucls_drop_in_advisors) == 0
+        assert len(ucls_drop_in_advisors) == 1

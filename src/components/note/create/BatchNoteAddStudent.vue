@@ -2,24 +2,27 @@
   <div>
     <div>
       <label
-        for="create-note-add-student"
-        class="font-size-14 input-label text mt-2">
+        for="create-note-add-student-input"
+        class="font-size-14 input-label text mt-2"
+      >
         <span class="sr-only">Add a </span><span class="font-weight-bolder">Student</span> (name or SID)
         <span class="sr-only">(expect auto-suggest based on what you enter)</span>
       </label>
     </div>
     <div class="mb-2">
+      <span id="create-note-add-student-label" class="sr-only">Select student for note. Expect auto-suggest as you type name or SID.</span>
       <Autocomplete
         id="create-note-add-student"
         :key="resetAutoCompleteKey"
-        :disabled="disabled"
+        class="w-75"
         :demo-mode-blur="true"
+        :disabled="disabled"
+        input-labelled-by="create-note-add-student-label"
         :on-esc-form-input="onEscFormInput"
         :show-add-button="true"
         :source="studentsByNameOrSid"
-        class="w-75"
-        @input="addStudent">
-      </Autocomplete>
+        @input="addStudent"
+      />
     </div>
     <div>
       <div v-for="(addedStudent, index) in addedStudents" :key="addedStudent.sid" class="mb-1">
@@ -29,7 +32,8 @@
             :id="`remove-student-from-batch-${index}`"
             variant="link"
             class="p-0"
-            @click.prevent="removeStudent(addedStudent)">
+            @click.prevent="removeStudent(addedStudent)"
+          >
             <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
             <span class="sr-only">Remove {{ addedStudent.label }} from batch note</span>
           </b-btn>
@@ -40,10 +44,10 @@
 </template>
 
 <script>
-import Autocomplete from '@/components/util/Autocomplete';
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { findStudentsByNameOrSid } from '@/api/student';
+import Autocomplete from '@/components/util/Autocomplete'
+import Context from '@/mixins/Context'
+import Util from '@/mixins/Util'
+import { findStudentsByNameOrSid } from '@/api/student'
 
 export default {
   name: 'BatchNoteAddStudent',
@@ -57,7 +61,6 @@ export default {
       type: Function
     },
     disabled: {
-      default: false,
       required: false,
       type: Boolean
     },
@@ -78,26 +81,26 @@ export default {
   methods: {
     addStudent(student) {
       if (student) {
-        this.addedStudents.push(student);
-        this.addSid(student.sid);
-        this.resetAutoCompleteKey = new Date().getTime();
-        this.alertScreenReader(`${student.label} added to batch note`);
+        this.addedStudents.push(student)
+        this.addSid(student.sid)
+        this.resetAutoCompleteKey = new Date().getTime()
+        this.alertScreenReader(`${student.label} added to batch note`)
       }
     },
     removeStudent(student) {
       if (student) {
-        this.addedStudents = this.filterList(this.addedStudents, a => a.sid !== student.sid);
-        this.removeSid(student.sid);
-        this.alertScreenReader(`${student.label} removed from batch note`);
+        this.addedStudents = this.$_.filter(this.addedStudents, a => a.sid !== student.sid)
+        this.removeSid(student.sid)
+        this.alertScreenReader(`${student.label} removed from batch note`)
       }
     },
     studentsByNameOrSid(query, limit) {
-      const sids = this.map(this.addedStudents, 'sid');
+      const sids = this.$_.map(this.addedStudents, 'sid')
       return new Promise(resolve => {
         findStudentsByNameOrSid(query, limit).then(students => {
-          resolve(this.filterList(students, s => !this.includes(sids, s.sid)));
-        });
-      });
+          resolve(this.$_.filter(students, s => !this.$_.includes(sids, s.sid)))
+        })
+      })
     }
   }
 }

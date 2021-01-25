@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -126,13 +126,13 @@ def load_term(term_id=current_term_id(use_cache=False)):
     refresh_alerts(term_id)
 
     if term_id == current_term_id():
-        JobProgress().update(f'About to refresh department memberships')
+        JobProgress().update('About to refresh department memberships')
         refresh_department_memberships()
-        JobProgress().update(f'About to refresh CalNet attributes for active users')
+        JobProgress().update('About to refresh CalNet attributes for active users')
         refresh_calnet_attributes()
-        JobProgress().update(f'About to load filtered cohort counts')
+        JobProgress().update('About to load filtered cohort counts')
         load_filtered_cohort_counts()
-        JobProgress().update(f'About to update curated group memberships')
+        JobProgress().update('About to update curated group memberships')
         update_curated_group_lists()
 
 
@@ -161,7 +161,7 @@ def refresh_current_term_index():
 
 def refresh_department_memberships():
     from boac.models.authorized_user import AuthorizedUser
-    from boac.models.drop_in_advisor import DropInAdvisor
+    from boac.models.authorized_user_extension import DropInAdvisor, SameDayAdvisor, Scheduler
     from boac.models.university_dept import UniversityDept
     from boac.models.university_dept_member import UniversityDeptMember
     depts = UniversityDept.query.all()
@@ -176,29 +176,28 @@ def refresh_department_memberships():
             user = AuthorizedUser.create_or_restore(
                 uid=membership['uid'],
                 created_by='0',
+                can_access_advising_data=membership['can_access_advising_data'],
                 can_access_canvas_data=membership['can_access_canvas_data'],
             )
             if user:
                 UniversityDeptMember.create_or_update_membership(
                     university_dept_id=dept.id,
                     authorized_user_id=user.id,
-                    is_advisor=True,
-                    is_director=False,
-                    is_scheduler=False,
+                    role='advisor',
                 )
     DropInAdvisor.delete_orphans()
+    SameDayAdvisor.delete_orphans()
+    Scheduler.delete_orphans()
 
 
 def load_filtered_cohort_counts():
     from boac.models.cohort_filter import CohortFilter
     for cohort in CohortFilter.query.all():
         # Remove!
-        cohort.update_sids_and_student_count(None, None)
+        cohort.clear_sids_and_student_count()
         cohort.update_alert_count(None)
-        # The db schema supports multiple cohort owners but in the real world it is one owner per cohort.
-        owner_id = cohort.owners[0].id if len(cohort.owners) else None
         # Reload!
-        cohort.to_api_json(include_students=False, include_alerts_for_user_id=owner_id)
+        cohort.to_api_json(include_students=False, include_alerts_for_user_id=cohort.owner_id)
 
 
 def update_curated_group_lists():

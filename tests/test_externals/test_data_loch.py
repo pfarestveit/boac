@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -33,6 +33,21 @@ import pytest
 
 @pytest.mark.usefixtures('db_session')
 class TestDataLoch:
+
+    def test_get_advisor_uids_for_affiliations(self, app):
+        """Returns one or more rows for each advisor in the program."""
+        advisors = data_loch.get_advisor_uids_for_affiliations('UCOE', None)
+        assert len(advisors) == 6
+
+        uids = [a['uid'] for a in advisors]
+        advisors_by_uid = {uid: [a for a in advisors if a['uid'] == uid] for uid in uids}
+        assert advisors_by_uid['13'] == [{'uid': '13', 'can_access_advising_data': True, 'can_access_canvas_data': False}]
+        assert advisors_by_uid['90412'] == [
+            {'uid': '90412', 'can_access_advising_data': False, 'can_access_canvas_data': False},
+            {'uid': '90412', 'can_access_advising_data': True, 'can_access_canvas_data': True},
+        ]
+        assert advisors_by_uid['211159'] == [{'uid': '211159', 'can_access_advising_data': True, 'can_access_canvas_data': True}]
+        assert advisors_by_uid['1022796'] == [{'uid': '1022796', 'can_access_advising_data': False, 'can_access_canvas_data': False}]
 
     def test_get_current_term_index(self):
         index = data_loch.get_current_term_index()
@@ -81,6 +96,20 @@ class TestDataLoch:
         assert notes[0]['created_at']
         assert notes[0]['updated_at']
 
+    def test_get_data_science_advising_notes(self):
+        notes = data_loch.get_data_science_advising_notes('11667051')
+        assert len(notes) == 2
+        assert notes[0]['id'] == '11667051-20181003051208'
+        assert notes[1]['id'] == '11667051-20190801112456'
+        assert notes[1]['sid'] == '11667051'
+        assert notes[1]['author_uid'] == '1133399'
+        assert notes[1]['author_sid'] == '800700600'
+        assert notes[1]['author_name'] == 'Joni Mitchell'
+        assert notes[1]['advisor_email'] == 'joni@berkeley.edu'
+        assert notes[1]['reason_for_appointment'] == 'Degree Check'
+        assert notes[1]['note_body']
+        assert notes[1]['created_at']
+
     def test_get_e_i_advising_notes(self, app):
         """Excludes notes with author name 'Reception Front Desk'."""
         notes = data_loch.get_e_i_advising_notes('11667051')
@@ -98,6 +127,10 @@ class TestDataLoch:
         assert topics[0]['id'] == '11667051-151620'
         assert topics[0]['topic'] == 'Course Planning'
 
+    def test_get_admitted_student_by_sid(self, app):
+        admit = data_loch.get_admitted_student_by_sid('00005852')
+        assert admit['sid'] == '00005852'
+
     def test_get_sis_advising_note_attachment(self, app):
         attachment = data_loch.get_sis_advising_note_attachment('11667051', '11667051_00001_1.pdf')
         assert len(attachment) == 1
@@ -106,6 +139,69 @@ class TestDataLoch:
         assert attachment[0]['sis_file_name'] == '11667051_00001_1.pdf'
         assert attachment[0]['user_file_name'] == 'efac7b10-c3f2-11e4-9bbd-ab6a6597d26f.pdf'
         assert attachment[0]['is_historical'] is True
+
+    def test_get_sis_advising_appointments(self, app):
+        appointments = data_loch.get_sis_advising_appointments('11667051')
+        assert len(appointments) == 3
+        assert appointments[0]['id'] == '11667051-00010'
+        assert appointments[1]['id'] == '11667051-00011'
+        assert appointments[2]['id'] == '11667051-00012'
+
+    def test_get_students_ordering_default(self):
+        o, o_secondary, o_tertiary, o_direction, supplemental_query_tables = data_loch.get_students_ordering(
+            '2202',
+        )
+        assert o == "UPPER(regexp_replace(sas.last_name, '\\\\W', ''))"
+        assert o_secondary == "UPPER(regexp_replace(sas.last_name, '\\\\W', ''))"
+        assert o_tertiary == "UPPER(regexp_replace(sas.first_name, '\\\\W', ''))"
+        assert o_direction == 'asc'
+        assert supplemental_query_tables is None
+
+    def test_get_students_ordering_gpa_ascending(self):
+        o, o_secondary, o_tertiary, o_direction, supplemental_query_tables = data_loch.get_students_ordering(
+            '2202',
+            'gpa',
+        )
+        assert o == 'sas.gpa'
+        assert o_secondary == "UPPER(regexp_replace(sas.last_name, '\\\\W', ''))"
+        assert o_tertiary == "UPPER(regexp_replace(sas.first_name, '\\\\W', ''))"
+        assert o_direction == 'asc'
+        assert supplemental_query_tables is None
+
+    def test_get_students_ordering_gpa_descending(self):
+        o, o_secondary, o_tertiary, o_direction, supplemental_query_tables = data_loch.get_students_ordering(
+            '2202',
+            order_by='gpa desc',
+        )
+        assert o == 'sas.gpa'
+        assert o_secondary == "UPPER(regexp_replace(sas.last_name, '\\\\W', ''))"
+        assert o_tertiary == "UPPER(regexp_replace(sas.first_name, '\\\\W', ''))"
+        assert o_direction == 'desc'
+        assert supplemental_query_tables is None
+
+    def test_get_students_ordering_units_in_progress_descending(self):
+        o, o_secondary, o_tertiary, o_direction, supplemental_query_tables = data_loch.get_students_ordering(
+            '2202',
+            order_by='enrolled_units desc',
+        )
+        assert o == 'set.enrolled_units'
+        assert o_secondary == "UPPER(regexp_replace(sas.last_name, '\\\\W', ''))"
+        assert o_tertiary == "UPPER(regexp_replace(sas.first_name, '\\\\W', ''))"
+        assert o_direction == 'desc'
+        assert 'LEFT JOIN student.student_enrollment_terms set' in supplemental_query_tables
+        assert 'ON set.sid = sas.sid AND set.term_id = \'2202\'' in supplemental_query_tables
+
+    def test_get_students_ordering_term_gpa_descending(self):
+        o, o_secondary, o_tertiary, o_direction, supplemental_query_tables = data_loch.get_students_ordering(
+            '2202',
+            order_by='term_gpa_2202 desc',
+        )
+        assert o == 'set.term_gpa'
+        assert o_secondary == "UPPER(regexp_replace(sas.last_name, '\\\\W', ''))"
+        assert o_tertiary == "UPPER(regexp_replace(sas.first_name, '\\\\W', ''))"
+        assert o_direction == 'desc'
+        assert 'LEFT JOIN student.student_enrollment_terms set' in supplemental_query_tables
+        assert 'ON set.sid = sas.sid AND set.term_id = \'2202\'' in supplemental_query_tables
 
     def test_override_fixture(self, app):
         mr = MockRows(io.StringIO('sid,first_name,last_name\n20000000,Martin,Van Buren'))

@@ -3,18 +3,19 @@
     <b-btn
       v-if="isExistingUser"
       :id="`edit-${profile.uid}`"
-      :title="`Edit profile of ${profile.name}`"
       class="pl-1 pr-1"
       variant="link"
-      @click="openEditUserModal()">
-      <font-awesome icon="edit" />
+      @click="openEditUserModal"
+    >
+      <font-awesome icon="edit" /><span class="sr-only"> Edit profile of {{ profile.name }}</span>
     </b-btn>
     <b-btn
       v-if="!isExistingUser"
       id="add-new-user-btn"
       class="pl-1 pr-1"
       variant="link"
-      @click="openEditUserModal()">
+      @click="openEditUserModal"
+    >
       <div class="d-flex">
         <div class="pr-1">
           <font-awesome icon="plus" />
@@ -30,17 +31,17 @@
       body-class="pl-0 pr-0"
       hide-footer
       hide-header
-      @shown="focusModalById('edit-modal-header')">
-      <div class="modal-header">
-        <h2 id="edit-modal-header" class="student-section-header">{{ isExistingUser ? profile.name : 'Create User' }}</h2>
-      </div>
+      @shown="putFocusNextTick('modal-header')"
+    >
+      <ModalHeader :text="isExistingUser ? profile.name : 'Create User'" />
       <div class="modal-body m-0 p-0">
         <div class="pt-2">
           <div
             v-if="error"
             class="align-items-center has-error mb-3 ml-4 mt-1"
             aria-live="polite"
-            role="alert">
+            role="alert"
+          >
             <span class="font-weight-bolder">Error:</span> {{ error }}
           </div>
           <div v-if="!isExistingUser" class="align-items-center mb-3 ml-4 mt-3">
@@ -51,9 +52,10 @@
               class="w-260px"
               maxlength="10"
               placeholder="UID"
-              size="lg"></b-form-input>
+              size="lg"
+            ></b-form-input>
           </div>
-          <b-container fluid class="ml-2 w-50">
+          <b-container fluid class="ml-2">
             <b-row>
               <b-col><label for="is-admin">Admin</label></b-col>
               <b-col><b-form-checkbox id="is-admin" v-model="userProfile.isAdmin"></b-form-checkbox></b-col>
@@ -66,6 +68,10 @@
               <b-col><label for="can-access-canvas-data">Canvas Data</label></b-col>
               <b-col><b-form-checkbox id="can-access-canvas-data" v-model="userProfile.canAccessCanvasData"></b-form-checkbox></b-col>
             </b-row>
+            <b-row>
+              <b-col><label for="can-access-advising-data">Notes and Appointments</label></b-col>
+              <b-col><b-form-checkbox id="can-access-advising-data" v-model="userProfile.canAccessAdvisingData"></b-form-checkbox></b-col>
+            </b-row>
             <b-row v-if="profile.id">
               <b-col><label for="is-deleted">Deleted</label></b-col>
               <b-col><b-form-checkbox id="is-deleted" v-model="isDeleted"></b-form-checkbox></b-col>
@@ -76,9 +82,10 @@
         <div class="ml-3 mr-2 pt-2">
           <h3 class="color-grey font-size-18 mb-1">Departments</h3>
           <div
-            v-for="dept in rolesPerDeptCode"
+            v-for="dept in memberships"
             :key="dept.code"
-            class="ml-2 mt-2">
+            class="ml-2 mt-2"
+          >
             <div class="align-items-center d-flex">
               <div>
                 <h4 class="font-size-16">
@@ -90,7 +97,8 @@
                   :id="`remove-department-${dept.code}`"
                   variant="link"
                   class="p-0"
-                  @click.prevent="removeDepartment(dept.code)">
+                  @click.prevent="removeDepartment(dept.code)"
+                >
                   <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
                   <span class="sr-only">Remove department '{{ dept.name }}'</span>
                 </b-btn>
@@ -105,14 +113,13 @@
                   :id="`select-department-${dept.code}-role`"
                   v-model="dept.role"
                   :options="[
-                    { text: 'Advisor', value: 'advisor' },
-                    { text: 'Advisor + Drop-In', value: 'dropInAdvisor' },
-                    { text: 'Advisor + Drop-In Supervisor', value: 'supervisorOnCall' },
-                    { text: 'Director', value: 'director' },
-                    { text: 'Scheduler', value: 'scheduler' },
+                    {text: 'Advisor', value: 'advisor'},
+                    {text: 'Director', value: 'director'},
+                    {text: 'Scheduler', value: 'scheduler'}
                   ]"
                   :aria-label="`User's role in department ${dept.name}`"
-                  class="w-260px">
+                  class="w-260px"
+                >
                   <template v-slot:first>
                     <option :value="undefined">Select...</option>
                   </template>
@@ -128,17 +135,18 @@
               </div>
             </div>
           </div>
-          <div v-if="rolesPerDeptCode.length >= 3" class="m-3">
+          <div v-if="memberships.length >= 3" class="m-3">
             <span class="text-info"><font-awesome icon="check" /> Three departments is enough!</span>
           </div>
-          <div v-if="rolesPerDeptCode.length < 3" class="mb-3 ml-0 mr-2 p-2">
+          <div v-if="memberships.length < 3" class="mb-3 ml-0 mr-2 p-2">
             <b-form-select
               id="department-select-list"
               v-model="deptCode"
               :options="departmentOptions"
               class="w-auto"
               aria-label="Use up and down arrows to review departments. Hit enter to select a department."
-              @change="addDepartment">
+              @change="addDepartment"
+            >
               <template v-slot:first>
                 <option :value="undefined">Add department...</option>
               </template>
@@ -151,15 +159,17 @@
           id="save-changes-to-user-profile"
           class="btn-primary-color-override"
           variant="primary"
-          @click="save()">
+          @click="save"
+        >
           Save
         </b-btn>
         <b-btn
           id="delete-cancel"
           class="pl-2"
           variant="link"
-          @click="cancel()"
-          @keyup.enter="cancel()">
+          @click="cancel"
+          @keyup.enter="cancel"
+        >
           Cancel
         </b-btn>
       </div>
@@ -168,13 +178,15 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { createOrUpdateUser } from '@/api/user';
+import Context from '@/mixins/Context'
+import ModalHeader from '@/components/util/ModalHeader'
+import Util from '@/mixins/Util'
+import { createOrUpdateUser } from '@/api/user'
 
 export default {
   name: 'EditUserProfileModal',
   mixins: [Context, Util],
+  components: {ModalHeader},
   props: {
     afterUpdateUser: {
       required: true,
@@ -186,6 +198,7 @@ export default {
     },
     profile: {
       default: () => ({
+        canAccessAdvisingData: true,
         canAccessCanvasData: true,
         departments: [],
         isAdmin: false,
@@ -199,107 +212,96 @@ export default {
     deptCode: undefined,
     error: undefined,
     isDeleted: undefined,
-    rolesPerDeptCode: undefined,
+    memberships: undefined,
     showEditUserModal: false,
     userProfile: undefined
   }),
   computed: {
     isExistingUser() {
-      return !!this.profile.id;
+      return !!this.profile.id
     }
   },
   methods: {
     addDepartment() {
       if (this.deptCode) {
-        const dept = this.find(this.departments, ['code', this.deptCode]);
-        this.rolesPerDeptCode.push({
+        const dept = this.$_.find(this.departments, ['code', this.deptCode])
+        this.memberships.push({
           code: dept.code,
           name: dept.name,
           role: undefined,
           automateMembership: true
-        });
-        const option = this.find(this.departmentOptions, ['value', this.deptCode]);
-        option.disabled = true;
-        this.deptCode = undefined;
+        })
+        const option = this.$_.find(this.departmentOptions, ['value', this.deptCode])
+        option.disabled = true
+        this.deptCode = undefined
       }
     },
     cancel() {
-      this.closeModal();
+      this.closeModal()
     },
     closeModal() {
-      this.error = undefined;
-      this.userProfile = undefined;
-      this.rolesPerDeptCode = undefined;
-      this.showEditUserModal = false;
+      this.error = undefined
+      this.userProfile = undefined
+      this.memberships = undefined
+      this.showEditUserModal = false
     },
     openEditUserModal() {
-      this.putFocusNextTick(this.profile.id ? 'edit-modal-header' : 'uid-input');
       this.userProfile = {
         id: this.profile.id,
         uid: this.profile.uid,
         name: this.profile.name,
+        canAccessAdvisingData: this.profile.canAccessAdvisingData,
         canAccessCanvasData: this.profile.canAccessCanvasData,
         departments: [],
         isAdmin: this.profile.isAdmin,
         isBlocked: this.profile.isBlocked
-      };
-      this.isDeleted = !!this.profile.deletedAt;
-      this.rolesPerDeptCode = [];
-      this.each(this.profile.departments, d => {
-        let role = undefined;
-        const dropInAdvisorStatus = this.find(this.profile.dropInAdvisorStatus, ['deptCode', d.code]);
-        if (dropInAdvisorStatus) {
-          role = dropInAdvisorStatus.supervisorOnCall ? 'supervisorOnCall' : 'dropInAdvisor';
-        } else if (d.isAdvisor) {
-          role = 'advisor';
-        } else if (d.isDirector) {
-          role = 'director';
-        } else if (d.isScheduler) {
-          role = 'scheduler';
-        }
-        if (role) {
-          this.rolesPerDeptCode.push({
+      }
+      this.isDeleted = !!this.profile.deletedAt
+      this.memberships = []
+      this.$_.each(this.profile.departments, d => {
+        if (d.role) {
+          this.memberships.push({
             automateMembership: d.automateMembership,
             code: d.code,
             name: d.name,
-            role,
-          });
+            role: d.role,
+          })
         }
-      });
-      this.departmentOptions = [];
-      this.each(this.departments, d => {
+      })
+      this.departmentOptions = []
+      this.$_.each(this.departments, d => {
         this.departmentOptions.push({
-          disabled: !!this.find(this.rolesPerDeptCode, ['code', d.code]),
+          disabled: !!this.$_.find(this.memberships, ['code', d.code]),
           value: d.code,
           text: d.name
-        });
-      });
-      this.showEditUserModal = true;
+        })
+      })
+      this.showEditUserModal = true
     },
     removeDepartment(deptCode) {
-      let indexOf = this.rolesPerDeptCode.findIndex(d => d.code === deptCode);
-      this.rolesPerDeptCode.splice(indexOf, 1);
-      const option = this.find(this.departmentOptions, ['value', deptCode]);
-      option.disabled = false;
+      let indexOf = this.memberships.findIndex(d => d.code === deptCode)
+      this.memberships.splice(indexOf, 1)
+      const option = this.$_.find(this.departmentOptions, ['value', deptCode])
+      option.disabled = false
     },
     save() {
-      const undefinedRoles = this.filterList(this.rolesPerDeptCode, r => this.isNil(r.role));
+      const undefinedRoles = this.$_.filter(this.memberships, r => this.$_.isNil(r.role))
       if (undefinedRoles.length) {
-        const deptNames = this.map(undefinedRoles, 'name');
-        this.error = `Please specify role for ${this.oxfordJoin(deptNames)}`;
+        const deptNames = this.$_.map(undefinedRoles, 'name')
+        this.error = `Please specify role for ${this.oxfordJoin(deptNames)}`
       } else {
         // If no change in deleted status then do not update 'deleted_at' in the database.
-        const deleteAction = this.isDeleted === !!this.profile.deletedAt ? null : this.isDeleted;
-        createOrUpdateUser(this.userProfile, this.rolesPerDeptCode, deleteAction).then(() => {
-          this.afterUpdateUser(this.profile);
-          this.closeModal();
+        const deleteAction = this.isDeleted === !!this.profile.deletedAt ? null : this.isDeleted
+        createOrUpdateUser(this.userProfile, this.memberships, deleteAction).then(() => {
+          this.afterUpdateUser(this.profile)
+          this.closeModal()
         }).catch(error => {
-          this.error = this.get(error, 'response.data.message') || error;
-        });
+          this.error = this.$_.get(error, 'response.data.message') || error
+        })
       }
     }
   }
-};
+}
 </script>
 
 <style scoped>

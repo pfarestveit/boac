@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -24,24 +24,30 @@ ENHANCEMENTS, OR MODIFICATIONS.
 """
 
 from boac import db, std_commit
-from boac.lib.util import utc_now
+from boac.lib.util import utc_now, vacuum_whitespace
 from boac.models.base import Base
-from boac.models.db_relationships import cohort_filter_owners
+from flask import current_app as app
 from sqlalchemy import and_, text
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm import deferred
 
 
 class AuthorizedUser(Base):
     __tablename__ = 'authorized_users'
 
+    SEARCH_HISTORY_ITEM_MAX_LENGTH = 256
+
     id = db.Column(db.Integer, nullable=False, primary_key=True)  # noqa: A003
     uid = db.Column(db.String(255), nullable=False, unique=True)
     is_admin = db.Column(db.Boolean)
     in_demo_mode = db.Column(db.Boolean, nullable=False)
+    can_access_advising_data = db.Column(db.Boolean, nullable=False)
     can_access_canvas_data = db.Column(db.Boolean, nullable=False)
     created_by = db.Column(db.String(255), nullable=False)
     deleted_at = db.Column(db.DateTime, nullable=True)
     # When True, is_blocked prevents a deleted user from being revived by the automated refresh.
     is_blocked = db.Column(db.Boolean, nullable=False, default=False)
+    search_history = deferred(db.Column(ARRAY(db.String), nullable=True))
     department_memberships = db.relationship(
         'UniversityDeptMember',
         back_populates='authorized_user',
@@ -49,12 +55,22 @@ class AuthorizedUser(Base):
     )
     drop_in_departments = db.relationship(
         'DropInAdvisor',
-        primaryjoin='and_(AuthorizedUser.id==DropInAdvisor.authorized_user_id, DropInAdvisor.deleted_at==None)',
+        back_populates='authorized_user',
+        lazy='joined',
+    )
+    same_day_departments = db.relationship(
+        'SameDayAdvisor',
+        back_populates='authorized_user',
+        lazy='joined',
+    )
+    scheduler_departments = db.relationship(
+        'Scheduler',
+        back_populates='authorized_user',
+        lazy='joined',
     )
     cohort_filters = db.relationship(
         'CohortFilter',
-        secondary=cohort_filter_owners,
-        back_populates='owners',
+        back_populates='owner',
         lazy='joined',
     )
     alert_views = db.relationship(
@@ -63,25 +79,47 @@ class AuthorizedUser(Base):
         lazy='joined',
     )
 
-    def __init__(self, uid, created_by, is_admin=False, is_blocked=False, in_demo_mode=False, can_access_canvas_data=True):
+    def __init__(
+            self,
+            uid,
+            created_by,
+            is_admin=False,
+            is_blocked=False,
+            in_demo_mode=False,
+            can_access_advising_data=True,
+            can_access_canvas_data=True,
+            search_history=(),
+    ):
         self.uid = uid
         self.created_by = created_by
         self.is_admin = is_admin
         self.is_blocked = is_blocked
         self.in_demo_mode = in_demo_mode
+        self.can_access_advising_data = can_access_advising_data
         self.can_access_canvas_data = can_access_canvas_data
+        self.search_history = search_history
 
     def __repr__(self):
         return f"""<AuthorizedUser {self.uid},
                     is_admin={self.is_admin},
                     in_demo_mode={self.in_demo_mode},
+                    can_access_advising_data={self.can_access_advising_data},
                     can_access_canvas_data={self.can_access_canvas_data},
+                    search_history={self.search_history},
                     created={self.created_at},
                     created_by={self.created_by},
                     updated={self.updated_at},
                     deleted={self.deleted_at},
                     is_blocked={self.is_blocked}>
                 """
+
+    @classmethod
+    def delete(cls, uid):
+        now = utc_now()
+        user = cls.query.filter_by(uid=uid).first()
+        user.deleted_at = now
+        std_commit()
+        return user
 
     @classmethod
     def delete_and_block(cls, uid):
@@ -106,6 +144,7 @@ class AuthorizedUser(Base):
             created_by,
             is_admin=False,
             is_blocked=False,
+            can_access_advising_data=True,
             can_access_canvas_data=True,
     ):
         existing_user = cls.query.filter_by(uid=uid).first()
@@ -116,12 +155,15 @@ class AuthorizedUser(Base):
             if existing_user.deleted_at:
                 existing_user.is_admin = is_admin
                 existing_user.is_blocked = is_blocked
+                existing_user.can_access_advising_data = can_access_advising_data
                 existing_user.can_access_canvas_data = can_access_canvas_data
                 existing_user.created_by = created_by
                 existing_user.deleted_at = None
             # If the user currently exists in a non-deleted state, attributes passed in as True
             # should replace existing attributes set to False, but not vice versa.
             else:
+                if can_access_advising_data and not existing_user.can_access_advising_data:
+                    existing_user.can_access_advising_data = True
                 if can_access_canvas_data and not existing_user.can_access_canvas_data:
                     existing_user.can_access_canvas_data = True
                 if is_admin and not existing_user.is_admin:
@@ -137,6 +179,7 @@ class AuthorizedUser(Base):
                 is_admin=is_admin,
                 is_blocked=is_blocked,
                 in_demo_mode=False,
+                can_access_advising_data=can_access_advising_data,
                 can_access_canvas_data=can_access_canvas_data,
             )
             db.session.add(user)
@@ -154,7 +197,7 @@ class AuthorizedUser(Base):
 
     @classmethod
     def get_uid_per_id(cls, user_id):
-        query = text(f'SELECT uid FROM authorized_users WHERE id = :user_id AND deleted_at IS NULL')
+        query = text('SELECT uid FROM authorized_users WHERE id = :user_id AND deleted_at IS NULL')
         result = db.session.execute(query, {'user_id': user_id}).first()
         return result and result['uid']
 
@@ -185,6 +228,39 @@ class AuthorizedUser(Base):
         else:
             query = cls.query.filter(cls.is_admin)
         return query.all()
+
+    @classmethod
+    def add_to_search_history(cls, user_id, search_phrase):
+        search_phrase = vacuum_whitespace(search_phrase)
+        query = text('SELECT search_history FROM authorized_users WHERE id = :user_id')
+        result = db.session.execute(query, {'user_id': user_id}).first()
+        if result:
+            search_history = result['search_history'] or []
+            if len(search_phrase) > cls.SEARCH_HISTORY_ITEM_MAX_LENGTH:
+                if ' ' in search_phrase:
+                    search_phrase = search_phrase[:cls.SEARCH_HISTORY_ITEM_MAX_LENGTH + 1]
+                    search_phrase = search_phrase[:search_phrase.rindex(' ') + 1].strip()
+                else:
+                    search_phrase = search_phrase[:cls.SEARCH_HISTORY_ITEM_MAX_LENGTH]
+            if search_phrase.lower() in [s.lower() for s in search_history]:
+                search_history.remove(search_phrase)
+            search_history.insert(0, search_phrase)
+
+            max_size = app.config['USER_SEARCH_HISTORY_MAX_SIZE']
+            if len(search_history) > max_size:
+                del search_history[max_size:]
+
+            sql_text = text('UPDATE authorized_users SET search_history = :history WHERE id = :id')
+            db.session.execute(sql_text, {'history': search_history, 'id': user_id})
+            return cls.get_search_history(user_id)
+        else:
+            return None
+
+    @classmethod
+    def get_search_history(cls, user_id):
+        query = text('SELECT search_history FROM authorized_users WHERE id = :id')
+        result = db.session.execute(query, {'id': user_id}).first()
+        return result and result['search_history']
 
     @classmethod
     def get_users(
@@ -228,8 +304,17 @@ class AuthorizedUser(Base):
         return [row['uid'] for row in results]
 
     @classmethod
-    def update_user(cls, user_id, can_access_canvas_data=False, is_admin=False, is_blocked=False, include_deleted=False):
+    def update_user(
+        cls,
+        user_id,
+        can_access_advising_data=False,
+        can_access_canvas_data=False,
+        is_admin=False,
+        is_blocked=False,
+        include_deleted=False,
+    ):
         user = AuthorizedUser.find_by_id(user_id, include_deleted)
+        user.can_access_advising_data = can_access_advising_data
         user.can_access_canvas_data = can_access_canvas_data
         user.is_admin = is_admin
         user.is_blocked = is_blocked
@@ -253,44 +338,40 @@ def _users_sql(
                 JOIN drop_in_advisors a ON
                     a.dept_code = :dept_code
                     AND a.authorized_user_id = u.id
-                    AND a.deleted_at IS NULL
             """
-        elif role == 'noCanvasDataAccess':
-            query_filter += 'AND u.can_access_canvas_data IS FALSE '
-            query_tables += f"""
+        else:
+            query_tables += """
                 JOIN university_depts d ON
                     d.dept_code = :dept_code
                 JOIN university_dept_members m ON
                     m.university_dept_id = d.id
                     AND m.authorized_user_id = u.id
             """
-        elif role in ['advisor', 'director', 'scheduler']:
-            query_tables += f"""
-                JOIN university_depts d ON
-                    d.dept_code = :dept_code
-                JOIN university_dept_members m ON
-                    m.university_dept_id = d.id
-                    AND m.authorized_user_id = u.id
-                    AND m.is_{role} IS TRUE
-            """
+            if role == 'noCanvasDataAccess':
+                query_filter += 'AND u.can_access_canvas_data IS FALSE '
+            elif role == 'noAdvisingDataAccess':
+                query_filter += 'AND u.can_access_advising_data IS FALSE '
+            elif role in ['advisor', 'director', 'scheduler']:
+                query_tables += f"AND m.role = '{role}'"
         query_bindings['dept_code'] = dept_code
     elif not dept_code and role:
         if role == 'dropInAdvisor':
             query_tables += """
                 JOIN drop_in_advisors a ON
                     a.authorized_user_id = u.id
-                    AND a.deleted_at IS NULL
             """
         elif role == 'noCanvasDataAccess':
             query_filter += 'AND u.can_access_canvas_data IS FALSE '
+        elif role == 'noAdvisingDataAccess':
+            query_filter += 'AND u.can_access_advising_data IS FALSE '
         else:
             query_tables += f"""
                 JOIN university_dept_members m ON
                     m.authorized_user_id = u.id
-                    AND m.is_{role} IS TRUE
+                    AND m.role = '{role}'
             """
     elif dept_code and not role:
-        query_tables += f"""
+        query_tables += """
             JOIN university_depts d ON d.dept_code = :dept_code
             JOIN university_dept_members m ON
                 m.university_dept_id = d.id

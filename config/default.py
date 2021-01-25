@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -51,6 +51,9 @@ APPT_DESK_REFRESH_INTERVAL = 60000
 # BOAC-specific AWS credentials.
 AWS_APP_ROLE_ARN = 'aws:arn::<account>:role/<app_boa_role>'
 
+# Spawn asynchronous tasks (e.g., search reindexing) in background theads; disabled in test runs.
+BACKGROUND_TASKS = True
+
 # Base directory for the application (one level up from this config file).
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -76,7 +79,9 @@ DATA_LOCH_ADVISOR_SCHEMA = 'boac_advisor'
 DATA_LOCH_ASC_SCHEMA = 'boac_advising_asc'
 DATA_LOCH_BOAC_SCHEMA = 'boac_analytics'
 DATA_LOCH_COE_SCHEMA = 'boac_advising_coe'
+DATA_LOCH_DATA_SCIENCE_ADVISING_SCHEMA = 'boac_advising_data_science'
 DATA_LOCH_E_I_SCHEMA = 'boac_advising_e_i'
+DATA_LOCH_OUA_SCHEMA = 'boac_advising_oua'
 DATA_LOCH_INTERMEDIATE_SCHEMA = 'intermediate'
 
 # The Data Loch provides read-only Postgres access.
@@ -99,8 +104,13 @@ DISABLE_MATRIX_VIEW_THRESHOLD = 800
 # In demo mode, student profile pictures and sensitive data will be blurred.
 DEMO_MODE_AVAILABLE = False
 
+DEPARTMENTS_SUPPORTING_DROP_INS = []
+DEPARTMENTS_SUPPORTING_SAME_DAY_APPTS = []
+
 DEVELOPER_AUTH_ENABLED = False
 DEVELOPER_AUTH_PASSWORD = 'another secret'
+
+FEATURE_FLAG_ADMITTED_STUDENTS = False
 
 # Notify BOA users when they are accessing boa-dev, boa-qa, and boa-demo. Unlike service announcements, this
 # warning can only be unpublished by setting config to None.
@@ -138,13 +148,16 @@ LOGGING_PROPAGATION_LEVEL = logging.INFO
 MEANINGFUL_STATS_MINIMUM = 4
 
 NOTES_SEARCH_RESULT_SNIPPET_PADDING = 29
-NOTES_ATTACHMENTS_MAX_PER_NOTE = 5
+NOTES_ATTACHMENTS_MAX_PER_NOTE = 10
 
 # Default is 15 minutes
 PHOTO_SIGNED_URL_EXPIRES_IN_SECONDS = 15 * 60
 
 # Millisecond interval for request to keep session alive
 PING_FREQUENCY = 900000
+
+# In minutes.
+SCHEDULED_APPOINTMENT_LENGTH = 30
 
 # Used to encrypt session cookie.
 SECRET_KEY = 'secret'
@@ -162,6 +175,8 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 THREADS_PER_PAGE = 2
 
 TIMEZONE = 'America/Los_Angeles'
+
+USER_SEARCH_HISTORY_MAX_SIZE = 5
 
 # This base-URL config should only be non-None in the "local" env where the Vue front-end runs on port 8080.
 VUE_LOCALHOST_BASE_URL = None

@@ -35,7 +35,7 @@ legend {
   min-width: 160px !important;
   width: 160px !important;
 }
-.b-table th[aria-sort]::after {
+.b-table th[aria-sort] div::after {
   display: inline !important;
   font-family: "Font Awesome 5 Free";
   padding-left: 8px !important;
@@ -52,15 +52,16 @@ legend {
 .table.b-table>thead>tr>[aria-sort=descending]
 {
   background-image: none !important;
+  white-space: nowrap;
 }
-.b-table th[aria-sort="none"]::after {
+.b-table th[aria-sort="none"] div::after {
   color: transparent;
   content: '\25b2' !important;
 }
-.b-table th[aria-sort="ascending"]::after {
+.b-table th[aria-sort="ascending"] div::after {
   content: "\25b2" !important;
 }
-.b-table th[aria-sort="descending"]::after {
+.b-table th[aria-sort="descending"] div::after {
   content: "\25bc" !important;
 }
 .btn-primary-color-override {
@@ -77,6 +78,15 @@ legend {
   background-color: #7aa9d0 !important;
   border-color: #77a0c4 !important;
   opacity: 1 !important;
+}
+.btn-primary-color-outline-override {
+  background-color: #ffffff !important;
+  color: #286090 !important;
+}
+.btn-primary-color-outline-override:hover,
+.btn-primary-color-outline-override:focus,
+.btn-primary-color-outline-override:active {
+  color: #ffffff !important;
 }
 .btn-link:active,
 .btn-link:focus,

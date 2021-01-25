@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -30,40 +30,57 @@ from boac.api.errors import InternalServerError
 from boac.lib import util
 from boac.lib.util import get_benchmarker
 from boac.merged import athletics
+from boac.merged.admitted_student import query_admitted_students
 from boac.merged.calnet import get_csid_for_uid
+from boac.merged.cohort_filter_options import CohortFilterOptions
 from boac.merged.sis_terms import current_term_id
-from boac.merged.student import query_students
+from boac.merged.student import query_students, scope_for_criteria
 from boac.models.alert import Alert
 from boac.models.authorized_user import AuthorizedUser
-from boac.models.authorized_user import cohort_filter_owners
 from boac.models.base import Base
+from boac.models.cohort_filter_event import CohortFilterEvent
 from flask import current_app as app
 from flask_login import current_user
 from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import deferred, undefer
 
 
+cohort_domain_type = ENUM(
+    'default',
+    'admitted_students',
+    name='cohort_domain_types',
+    create_type=False,
+)
+
+
 class CohortFilter(Base):
+
     __tablename__ = 'cohort_filters'
+    __transient_sids = []
 
     id = db.Column(db.Integer, nullable=False, primary_key=True)  # noqa: A003
+    domain = db.Column(cohort_domain_type, nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey('authorized_users.id'), nullable=False)
     name = db.Column(db.String(255), nullable=False)
     filter_criteria = db.Column(JSONB, nullable=False)
     # Fetching a large array literal from Postgres can be expensive. We defer until invoking code demands it.
     sids = deferred(db.Column(ARRAY(db.String(80))))
     student_count = db.Column(db.Integer)
     alert_count = db.Column(db.Integer)
-    owners = db.relationship('AuthorizedUser', secondary=cohort_filter_owners, back_populates='cohort_filters')
 
-    def __init__(self, name, filter_criteria):
+    owner = db.relationship('AuthorizedUser', back_populates='cohort_filters')
+
+    def __init__(self, domain, name, filter_criteria):
+        self.domain = domain
         self.name = name
         self.filter_criteria = filter_criteria
 
     def __repr__(self):
         return f"""<CohortFilter {self.id},
+            domain={self.domain},
             name={self.name},
-            owners={self.owners},
+            owner_id={self.owner_id},
             filter_criteria={self.filter_criteria},
             sids={self.sids},
             student_count={self.student_count},
@@ -72,10 +89,10 @@ class CohortFilter(Base):
             created_at={self.created_at}>"""
 
     @classmethod
-    def create(cls, uid, name, filter_criteria, **kwargs):
+    def create(cls, uid, name, filter_criteria, domain='default', **kwargs):
         if all(not isinstance(value, bool) and not value for value in filter_criteria.values()):
             raise InternalServerError('Cohort creation requires at least one filter specification.')
-        cohort = cls(name=name, filter_criteria=filter_criteria)
+        cohort = cls(domain=domain, name=name, filter_criteria=filter_criteria)
         user = AuthorizedUser.find_by_uid(uid)
         user.cohort_filters.append(cohort)
         db.session.flush()
@@ -89,8 +106,7 @@ class CohortFilter(Base):
             cohort.name = name
         if filter_criteria:
             cohort.filter_criteria = filter_criteria
-        cohort.sids = None
-        cohort.student_count = None
+        cohort.clear_sids_and_student_count()
         if alert_count is not None:
             cohort.alert_count = alert_count
         else:
@@ -105,6 +121,16 @@ class CohortFilter(Base):
         cohort = query.filter_by(id=cohort_id).first()
         return cohort and cohort.sids
 
+    @classmethod
+    def get_domain_of_cohort(cls, cohort_id):
+        query = text('SELECT domain FROM cohort_filters WHERE id = :id')
+        result = db.session.execute(query, {'id': cohort_id}).first()
+        return result and result['domain']
+
+    def clear_sids_and_student_count(self):
+        self.__transient_sids = self.sids
+        self.update_sids_and_student_count(None, None)
+
     def update_sids_and_student_count(self, sids, student_count):
         self.sids = sids
         self.student_count = student_count
@@ -116,26 +142,30 @@ class CohortFilter(Base):
         std_commit()
         return self
 
-    @classmethod
-    def share(cls, cohort_id, user_id):
-        cohort = cls.query.filter_by(id=cohort_id).first()
-        user = AuthorizedUser.find_by_uid(user_id)
-        user.cohort_filters.append(cohort)
-        std_commit()
+    def track_membership_changes(self):
+        # Track membership changes only if the cohort has been saved and has an id.
+        if self.id:
+            old_sids = set(self.__transient_sids)
+            new_sids = set(self.sids)
+            removed_sids = old_sids - new_sids
+            added_sids = new_sids - old_sids
+            CohortFilterEvent.create_bulk(self.id, added_sids, removed_sids)
+        self.__transient_sids = []
 
     @classmethod
-    def get_cohorts_of_user_id(cls, user_id):
-        query = text(f"""
-            SELECT id, name, filter_criteria, alert_count, student_count FROM cohort_filters c
-            LEFT JOIN cohort_filter_owners o ON o.cohort_filter_id = c.id
-            WHERE o.user_id = :user_id
+    def get_cohorts_of_user_id(cls, user_id, domain='default'):
+        query = text("""
+            SELECT id, domain, name, filter_criteria, alert_count, student_count
+            FROM cohort_filters c
+            WHERE c.owner_id = :user_id AND c.domain = :domain
             ORDER BY c.name
         """)
-        results = db.session.execute(query, {'user_id': user_id})
+        results = db.session.execute(query, {'domain': domain, 'user_id': user_id})
 
         def transform(row):
             return {
                 'id': row['id'],
+                'domain': row['domain'],
                 'name': row['name'],
                 'criteria': row['filter_criteria'],
                 'alertCount': row['alert_count'],
@@ -144,23 +174,24 @@ class CohortFilter(Base):
         return [transform(row) for row in results]
 
     @classmethod
-    def get_cohorts_owned_by_uids(cls, uids):
-        query = text(f"""
-            SELECT c.id, c.name, c.filter_criteria, c.alert_count, c.student_count, ARRAY_AGG(uid) authorized_users
+    def get_cohorts_owned_by_uids(cls, uids, domain='default'):
+        query = text("""
+            SELECT
+            c.id, c.domain, c.name, c.filter_criteria, c.alert_count, c.student_count, u.uid
             FROM cohort_filters c
-            INNER JOIN cohort_filter_owners o ON c.id = o.cohort_filter_id
-            INNER JOIN authorized_users u ON o.user_id = u.id
-            WHERE u.uid = ANY(:uids)
-            GROUP BY c.id, c.name, c.filter_criteria, c.alert_count, c.student_count
+            INNER JOIN authorized_users u ON c.owner_id = u.id
+            WHERE u.uid = ANY(:uids) AND c.domain = :domain
+            GROUP BY c.id, c.name, c.filter_criteria, c.alert_count, c.student_count, u.uid
         """)
-        results = db.session.execute(query, {'uids': uids})
+        results = db.session.execute(query, {'domain': domain, 'uids': uids})
 
         def transform(row):
             return {
                 'id': row['id'],
+                'domain': row['domain'],
                 'name': row['name'],
                 'criteria': row['filter_criteria'],
-                'owners': row['authorized_users'],
+                'ownerUid': row['uid'],
                 'alertCount': row['alert_count'],
                 'totalStudentCount': row['student_count'],
             }
@@ -168,10 +199,9 @@ class CohortFilter(Base):
 
     @classmethod
     def is_cohort_owned_by(cls, cohort_id, user_id):
-        query = text(f"""
+        query = text("""
             SELECT count(*) FROM cohort_filters c
-            LEFT JOIN cohort_filter_owners o ON o.cohort_filter_id = c.id
-            WHERE o.user_id = :user_id AND c.id = :cohort_id
+            WHERE c.owner_id = :user_id AND c.id = :cohort_id
         """)
         results = db.session.execute(
             query, {
@@ -183,7 +213,7 @@ class CohortFilter(Base):
 
     @classmethod
     def refresh_alert_counts_for_owner(cls, owner_id):
-        query = text(f"""
+        query = text("""
             UPDATE cohort_filters
             SET alert_count = updated_cohort_counts.alert_count
             FROM
@@ -193,10 +223,8 @@ class CohortFilter(Base):
                 JOIN cohort_filters
                     ON alerts.sid = ANY(cohort_filters.sids)
                     AND alerts.key LIKE :key
-                    AND alerts.active IS TRUE
-                JOIN cohort_filter_owners
-                    ON cohort_filters.id = cohort_filter_owners.cohort_filter_id
-                    AND cohort_filter_owners.user_id = :owner_id
+                    AND alerts.deleted_at IS NULL
+                    AND cohort_filters.owner_id = :owner_id
                 LEFT JOIN alert_views
                     ON alert_views.alert_id = alerts.id
                     AND alert_views.viewer_id = :owner_id
@@ -220,6 +248,39 @@ class CohortFilter(Base):
         db.session.delete(cohort_filter)
         std_commit()
 
+    def to_base_json(self):
+        c = self.filter_criteria
+        c = c if isinstance(c, dict) else json.loads(c)
+        user_uid = self.owner.uid if self.owner else None
+        option_groups = CohortFilterOptions(user_uid, scope_for_criteria()).get_filter_option_groups()
+        for label, option_group in option_groups.items():
+            for option in option_group:
+                key = option['key']
+                if key in c:
+                    value = c.get(key)
+                    if option['type']['db'] == 'boolean':
+                        c[key] = util.to_bool_or_none(value)
+                    else:
+                        c[key] = value
+
+        def _owner_to_json(owner):
+            if not owner:
+                return None
+            return {
+                'uid': owner.uid,
+                'deptCodes': [m.university_dept.dept_code for m in owner.department_memberships],
+            }
+        return {
+            'id': self.id,
+            'domain': self.domain,
+            'name': self.name,
+            'code': self.id,
+            'criteria': c,
+            'owner': _owner_to_json(self.owner),
+            'teamGroups': athletics.get_team_groups(c.get('groupCodes')) if c.get('groupCodes') else [],
+            'alertCount': self.alert_count,
+        }
+
     def to_api_json(
         self,
         order_by=None,
@@ -234,79 +295,7 @@ class CohortFilter(Base):
     ):
         benchmark = get_benchmarker(f'CohortFilter {self.id} to_api_json')
         benchmark('begin')
-        c = self.filter_criteria
-        c = c if isinstance(c, dict) else json.loads(c)
-        coe_advisor_ldap_uids = util.get(c, 'coeAdvisorLdapUids')
-        if not isinstance(coe_advisor_ldap_uids, list):
-            coe_advisor_ldap_uids = [coe_advisor_ldap_uids] if coe_advisor_ldap_uids else None
-        cohort_name = self.name
-        cohort_json = {
-            'id': self.id,
-            'code': self.id,
-            'name': cohort_name,
-            'owners': [],
-            'alertCount': self.alert_count,
-        }
-        for owner in self.owners:
-            cohort_json['owners'].append({
-                'uid': owner.uid,
-                'deptCodes': [m.university_dept.dept_code for m in owner.department_memberships],
-            })
-        coe_ethnicities = c.get('coeEthnicities')
-        coe_genders = c.get('coeGenders')
-        coe_prep_statuses = c.get('coePrepStatuses')
-        coe_probation = util.to_bool_or_none(c.get('coeProbation'))
-        coe_underrepresented = util.to_bool_or_none(c.get('coeUnderrepresented'))
-        cohort_owner_academic_plans = util.get(c, 'cohortOwnerAcademicPlans')
-        entering_terms = c.get('enteringTerms')
-        ethnicities = c.get('ethnicities')
-        expected_grad_terms = c.get('expectedGradTerms')
-        genders = c.get('genders')
-        gpa_ranges = c.get('gpaRanges')
-        group_codes = c.get('groupCodes')
-        in_intensive_cohort = util.to_bool_or_none(c.get('inIntensiveCohort'))
-        is_inactive_asc = util.to_bool_or_none(c.get('isInactiveAsc'))
-        is_inactive_coe = util.to_bool_or_none(c.get('isInactiveCoe'))
-        last_name_ranges = c.get('lastNameRanges')
-        last_term_gpa_ranges = c.get('lastTermGpaRanges')
-        levels = c.get('levels')
-        majors = c.get('majors')
-        midpoint_deficient_grade = util.to_bool_or_none(c.get('midpointDeficient'))
-        team_groups = athletics.get_team_groups(group_codes) if group_codes else []
-        transfer = util.to_bool_or_none(c.get('transfer'))
-        underrepresented = util.to_bool_or_none(c.get('underrepresented'))
-        unit_ranges = c.get('unitRanges')
-        visa_types = c.get('visaTypes')
-        cohort_json.update({
-            'criteria': {
-                'coeAdvisorLdapUids': coe_advisor_ldap_uids,
-                'coeEthnicities': coe_ethnicities,
-                'coeGenders': coe_genders,
-                'coePrepStatuses': coe_prep_statuses,
-                'coeProbation': coe_probation,
-                'coeUnderrepresented': coe_underrepresented,
-                'cohortOwnerAcademicPlans': cohort_owner_academic_plans,
-                'enteringTerms': entering_terms,
-                'ethnicities': ethnicities,
-                'expectedGradTerms': expected_grad_terms,
-                'genders': genders,
-                'gpaRanges': gpa_ranges,
-                'groupCodes': group_codes,
-                'inIntensiveCohort': in_intensive_cohort,
-                'isInactiveAsc': is_inactive_asc,
-                'isInactiveCoe': is_inactive_coe,
-                'lastNameRanges': last_name_ranges,
-                'lastTermGpaRanges': last_term_gpa_ranges,
-                'levels': levels,
-                'majors': majors,
-                'midpointDeficient': midpoint_deficient_grade,
-                'transfer': transfer,
-                'unitRanges': unit_ranges,
-                'underrepresented': underrepresented,
-                'visaTypes': visa_types,
-            },
-            'teamGroups': team_groups,
-        })
+        cohort_json = self.to_base_json()
         if not include_students and not include_alerts_for_user_id and self.student_count is not None:
             # No need for a students query; return the database-stashed student count.
             cohort_json.update({
@@ -318,51 +307,26 @@ class CohortFilter(Base):
         benchmark('begin students query')
         sids_only = not include_students
 
-        # Translate the "My Students" filter, if present, into queryable criteria. Although our database relationships allow
-        # for multiple cohort owners, we assume a single owner here since the "My Students" filter makes no sense
-        # in any other scenario.
-        if cohort_owner_academic_plans:
-            if self.owners:
-                owner_sid = get_csid_for_uid(app, self.owners[0].uid)
-            else:
-                owner_sid = current_user.get_csid()
-            advisor_plan_mappings = [{'advisor_sid': owner_sid, 'academic_plan_code': plan} for plan in cohort_owner_academic_plans]
+        if self.domain == 'admitted_students':
+            results = _query_admitted_students(
+                benchmark=benchmark,
+                criteria=cohort_json['criteria'],
+                limit=limit,
+                offset=offset,
+                order_by=order_by,
+                sids_only=sids_only,
+            )
         else:
-            advisor_plan_mappings = None
-
-        results = query_students(
-            advisor_plan_mappings=advisor_plan_mappings,
-            coe_advisor_ldap_uids=coe_advisor_ldap_uids,
-            coe_ethnicities=coe_ethnicities,
-            coe_genders=coe_genders,
-            coe_prep_statuses=coe_prep_statuses,
-            coe_probation=coe_probation,
-            coe_underrepresented=coe_underrepresented,
-            entering_terms=entering_terms,
-            ethnicities=ethnicities,
-            expected_grad_terms=expected_grad_terms,
-            genders=genders,
-            gpa_ranges=gpa_ranges,
-            group_codes=group_codes,
-            in_intensive_cohort=in_intensive_cohort,
-            include_profiles=(include_students and include_profiles),
-            is_active_asc=None if is_inactive_asc is None else not is_inactive_asc,
-            is_active_coe=None if is_inactive_coe is None else not is_inactive_coe,
-            last_name_ranges=last_name_ranges,
-            last_term_gpa_ranges=last_term_gpa_ranges,
-            levels=levels,
-            limit=limit,
-            majors=majors,
-            midpoint_deficient_grade=midpoint_deficient_grade,
-            offset=offset,
-            order_by=order_by,
-            sids_only=sids_only,
-            transfer=transfer,
-            underrepresented=underrepresented,
-            unit_ranges=unit_ranges,
-            visa_types=visa_types,
-        )
-        benchmark('end students query')
+            results = _query_students(
+                benchmark=benchmark,
+                criteria=cohort_json['criteria'],
+                include_profiles=include_profiles,
+                limit=limit,
+                offset=offset,
+                order_by=order_by,
+                owner=self.owner,
+                sids_only=sids_only,
+            )
 
         if results:
             # Cohort might have tens of thousands of SIDs.
@@ -374,11 +338,13 @@ class CohortFilter(Base):
             # If the cohort is new or cache refresh is underway then store student_count and sids in the db.
             if self.student_count is None:
                 self.update_sids_and_student_count(results['sids'], results['totalStudentCount'])
+                if self.domain == 'default':
+                    self.track_membership_changes()
             if include_students:
                 cohort_json.update({
                     'students': results['students'],
                 })
-            if include_alerts_for_user_id:
+            if include_alerts_for_user_id and self.domain == 'default':
                 benchmark('begin alerts query')
                 alert_count_per_sid = Alert.include_alert_counts_for_students(
                     viewer_user_id=include_alerts_for_user_id,
@@ -398,3 +364,113 @@ class CohortFilter(Base):
                     })
         benchmark('end')
         return cohort_json
+
+
+def _query_students(
+        benchmark,
+        criteria,
+        include_profiles,
+        limit,
+        offset,
+        order_by,
+        owner,
+        sids_only,
+):
+    benchmark('begin students query')
+    # Translate the "My Students" filter, if present, into queryable criteria.
+    plans = criteria.get('cohortOwnerAcademicPlans')
+    if plans:
+        if owner:
+            owner_sid = get_csid_for_uid(app, owner.uid)
+        else:
+            owner_sid = current_user.get_csid()
+        advisor_plan_mappings = [{'advisor_sid': owner_sid, 'academic_plan_code': plan} for plan in plans]
+    else:
+        advisor_plan_mappings = None
+    coe_advisor_ldap_uids = util.get(criteria, 'coeAdvisorLdapUids')
+    if not isinstance(coe_advisor_ldap_uids, list):
+        coe_advisor_ldap_uids = [coe_advisor_ldap_uids] if coe_advisor_ldap_uids else None
+    results = query_students(
+        academic_standings=criteria.get('academicStandings'),
+        advisor_plan_mappings=advisor_plan_mappings,
+        coe_advisor_ldap_uids=coe_advisor_ldap_uids,
+        coe_epn=criteria.get('coeEpn'),
+        coe_ethnicities=criteria.get('coeEthnicities'),
+        coe_genders=criteria.get('coeGenders'),
+        coe_prep_statuses=criteria.get('coePrepStatuses'),
+        coe_probation=criteria.get('coeProbation'),
+        coe_underrepresented=criteria.get('coeUnderrepresented'),
+        colleges=criteria.get('colleges'),
+        curated_group_ids=criteria.get('curatedGroupIds'),
+        entering_terms=criteria.get('enteringTerms'),
+        ethnicities=criteria.get('ethnicities'),
+        expected_grad_terms=criteria.get('expectedGradTerms'),
+        genders=criteria.get('genders'),
+        gpa_ranges=criteria.get('gpaRanges'),
+        group_codes=criteria.get('groupCodes'),
+        in_intensive_cohort=criteria.get('inIntensiveCohort'),
+        include_profiles=include_profiles,
+        intended_majors=criteria.get('intendedMajors'),
+        is_active_asc=None if criteria.get('isInactiveAsc') is None else not criteria.get('isInactiveAsc'),
+        is_active_coe=None if criteria.get('isInactiveCoe') is None else not criteria.get('isInactiveCoe'),
+        last_name_ranges=criteria.get('lastNameRanges'),
+        last_term_gpa_ranges=criteria.get('lastTermGpaRanges'),
+        levels=criteria.get('levels'),
+        limit=limit,
+        majors=criteria.get('majors'),
+        midpoint_deficient_grade=criteria.get('midpointDeficient'),
+        minors=criteria.get('minors'),
+        offset=offset,
+        order_by=order_by,
+        sids_only=sids_only,
+        transfer=criteria.get('transfer'),
+        underrepresented=criteria.get('underrepresented'),
+        unit_ranges=criteria.get('unitRanges'),
+        visa_types=criteria.get('visaTypes'),
+        student_holds=criteria.get('studentHolds'),
+    )
+    benchmark('end students query')
+    return results
+
+
+def _query_admitted_students(
+        benchmark,
+        criteria,
+        limit,
+        offset,
+        order_by,
+        sids_only,
+):
+    benchmark('begin admitted_students query')
+    app.logger.info(f"""query_admitted_students:
+        criteria={criteria}
+        limit={limit}
+        offset={offset}
+        order_by={order_by}
+        sids_only={sids_only}
+    """)
+    results = query_admitted_students(
+        colleges=criteria.get('admitColleges'),
+        family_dependent_ranges=criteria.get('familyDependentRanges'),
+        freshman_or_transfer=criteria.get('freshmanOrTransfer'),
+        has_fee_waiver=criteria.get('hasFeeWaiver'),
+        in_foster_care=criteria.get('inFosterCare'),
+        is_family_single_parent=criteria.get('isFamilySingleParent'),
+        is_first_generation_college=criteria.get('isFirstGenerationCollege'),
+        is_hispanic=criteria.get('isHispanic'),
+        is_last_school_lcff=criteria.get('isLastSchoolLCFF'),
+        is_reentry=criteria.get('isReentry'),
+        is_student_single_parent=criteria.get('isStudentSingleParent'),
+        is_urem=criteria.get('isUrem'),
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
+        residency_categories=criteria.get('residencyCategories'),
+        sids_only=sids_only,
+        sir=criteria.get('sir'),
+        special_program_cep=criteria.get('specialProgramCep'),
+        student_dependent_ranges=criteria.get('studentDependentRanges'),
+        x_ethnicities=criteria.get('xEthnicities'),
+    )
+    benchmark('end admitted_students query')
+    return results

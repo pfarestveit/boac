@@ -15,8 +15,9 @@
             v-model="selected"
             :disabled="disabled"
             role="listbox"
-            aria-label="Use up and down arrows to review topics. Hit enter to select a topic."
-            @input="add">
+            aria-label="Use up and down arrows to review reasons. Hit enter to select a topic."
+            @input="add"
+          >
             <template v-slot:first>
               <option :value="null">Select...</option>
             </template>
@@ -24,7 +25,8 @@
               v-for="option in topicOptions"
               :key="option.value"
               :disabled="option.disabled"
-              :value="option.value">
+              :value="option.value"
+            >
               {{ option.text }}
             </option>
           </b-form-select>
@@ -34,11 +36,13 @@
         <ul
           id="appointment-topics-list"
           class="pill-list pl-0"
-          aria-labelledby="appointment-topics-label">
+          aria-labelledby="appointment-topics-label"
+        >
           <li
             v-for="(addedTopic, index) in topics"
             :id="`appointment-topic-${index}`"
-            :key="index">
+            :key="index"
+          >
             <div class="d-inline-block">
               <div class="d-flex pill pill-topic text-uppercase text-nowrap">
                 <div :id="`topic-label-${index}`" class="added-topic">
@@ -48,16 +52,13 @@
                   <b-btn
                     :id="`remove-appointment-topic-${index}`"
                     :disabled="disabled"
-                    :aria-labelledby="`remove-appointment-topic-${index}-label`"
                     variant="link"
                     class="m-0 p-0"
-                    tabindex="0"
-                    @click.prevent="remove(addedTopic)">
+                    @click.prevent="remove(addedTopic)"
+                  >
                     <font-awesome icon="times-circle" class="font-size-24 has-error pl-2" />
+                    <span class="sr-only">Remove topic "{{ topics[index] }}"</span>
                   </b-btn>
-                  <label :id="`remove-appointment-topic-${index}-label`" :for="`remove-appointment-topic-${index}`" class="sr-only">
-                    Remove topic "{{ topics[index] }}"
-                  </label>
                 </div>
               </div>
             </div>
@@ -72,20 +73,20 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context';
-import Util from '@/mixins/Util';
-import { getTopicsForAppointments } from '@/api/topics';
+import Context from '@/mixins/Context'
+import Util from '@/mixins/Util'
+import { getTopicsForAppointments } from '@/api/topics'
 
 export default {
   name: 'AppointmentTopics',
   mixins: [Context, Util],
   props: {
     appointmentId: {
+      default: undefined,
       type: Number,
       required: false
     },
     disabled: {
-      default: false,
       required: false,
       type: Boolean
     },
@@ -107,37 +108,39 @@ export default {
     topicOptions: []
   }),
   created() {
-    getTopicsForAppointments().then(topics => {
-      this.each(topics, topic => {
+    getTopicsForAppointments().then(rows => {
+      this.$_.each(rows, row => {
+        const topic = row['topic']
         this.topicOptions.push({
           text: topic,
           value: topic,
-          disabled: this.includes(this.topics, topic)
+          disabled: this.$_.includes(this.topics, topic)
         })
-      });
-    });
+      })
+    })
   },
   methods: {
     add(topic) {
       // Reset the dropdown
-      this.selected = null;
+      this.selected = null
       if (topic) {
-        this.setDisabled(topic, true);
-        this.functionAdd(topic);
-        this.topics.sort();
-        this.putFocusNextTick('add-topic-select-list');
-        this.alertScreenReader(`"${topic}" added.`);
+        this.setDisabled(topic, true)
+        this.functionAdd(topic)
+        // TODO: do not mutate prop
+        this.topics.sort() // eslint-disable-line vue/no-mutating-props
+        this.putFocusNextTick('add-topic-select-list')
+        this.alertScreenReader(`"${topic}" added.`)
       }
     },
     remove(topic) {
-      this.setDisabled(topic, false);
-      this.functionRemove(topic);
-      this.putFocusNextTick('add-topic-select-list');
-      this.alertScreenReader(`"${topic}" removed.`);
+      this.setDisabled(topic, false)
+      this.functionRemove(topic)
+      this.putFocusNextTick('add-topic-select-list')
+      this.alertScreenReader(`"${topic}" removed.`)
     },
     setDisabled(topic, disable) {
-      const option = this.find(this.topicOptions, ['value', topic]);
-      this.set(option, 'disabled', disable);
+      const option = this.$_.find(this.topicOptions, ['value', topic])
+      this.$_.set(option, 'disabled', disable)
     }
   }
 }

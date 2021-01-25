@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -48,9 +48,7 @@ class TestAuthorizedUser:
         assert loaded_user.is_admin
         assert len(loaded_user.cohort_filters) > 0
 
-        owners = loaded_user.cohort_filters[0].owners
-        assert len(owners) > 0
-        assert loaded_user in owners
+        assert loaded_user.cohort_filters[0].owner == loaded_user
 
     def test_delete_and_block(self):
         user = AuthorizedUser.find_by_uid(uid=coe_advisor_uid)
@@ -66,9 +64,16 @@ class TestAuthorizedUser:
         user = AuthorizedUser.find_by_uid(uid=coe_advisor_uid)
         user.created_by = '0'
         user.deleted_at = datetime.now()
+        assert user.can_access_advising_data is True
         assert user.can_access_canvas_data is True
 
-        restored_user = AuthorizedUser.create_or_restore(coe_advisor_uid, created_by=admin_uid, can_access_canvas_data=False)
+        restored_user = AuthorizedUser.create_or_restore(
+            coe_advisor_uid,
+            created_by=admin_uid,
+            can_access_advising_data=False,
+            can_access_canvas_data=False,
+        )
+        assert restored_user.can_access_advising_data is False
         assert restored_user.can_access_canvas_data is False
         assert restored_user.created_by == admin_uid
         assert restored_user.deleted_at is None
@@ -76,18 +81,33 @@ class TestAuthorizedUser:
     def test_create_or_restore_existing(self):
         """Updates an existing user, replacing existing attributes that are False with any attributes passed in as True."""
         user = AuthorizedUser.find_by_uid(uid=admin_uid)
+        user.can_access_advising_data = False
         user.can_access_canvas_data = False
         user.created_by = admin_uid
 
-        updated_user = AuthorizedUser.create_or_restore(admin_uid, created_by='0', is_admin=False, can_access_canvas_data=True)
+        updated_user = AuthorizedUser.create_or_restore(
+            admin_uid,
+            created_by='0',
+            is_admin=False,
+            can_access_advising_data=True,
+            can_access_canvas_data=True,
+        )
         assert updated_user.is_admin is True
+        assert updated_user.can_access_advising_data is True
         assert updated_user.can_access_canvas_data is True
         assert updated_user.created_by == '0'
 
     def test_create_or_restore_new(self):
         """Creates a new user if it doesn't already exist."""
-        new_user = AuthorizedUser.create_or_restore(unknown_uid, created_by='0', is_admin=False, can_access_canvas_data=False)
+        new_user = AuthorizedUser.create_or_restore(
+            unknown_uid,
+            created_by='0',
+            is_admin=False,
+            can_access_advising_data=True,
+            can_access_canvas_data=False,
+        )
         assert new_user.is_admin is False
+        assert new_user.can_access_advising_data is True
         assert new_user.can_access_canvas_data is False
         assert new_user.in_demo_mode is False
         assert new_user.created_by == '0'

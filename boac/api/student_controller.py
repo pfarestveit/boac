@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -27,7 +27,8 @@ from boac.api.errors import BadRequestError, ResourceNotFoundError
 from boac.api.util import advisor_required, put_notifications
 from boac.externals.data_loch import match_students_by_name_or_sid, query_historical_sids
 from boac.lib.http import tolerant_jsonify
-from boac.merged.student import get_student_and_terms_by_sid, get_student_and_terms_by_uid, query_students
+from boac.merged.student import get_distinct_sids, get_student_and_terms_by_sid, get_student_and_terms_by_uid, \
+    query_students
 from flask import current_app as app, request
 from flask_login import login_required
 
@@ -50,6 +51,19 @@ def get_student_by_uid(uid):
         raise ResourceNotFoundError('Unknown student')
     put_notifications(student)
     return tolerant_jsonify(student)
+
+
+@app.route('/api/students/distinct_sids', methods=['POST'])
+@login_required
+def distinct_student_count():
+    params = request.get_json()
+    sids = params.get('sids')
+    cohort_ids = params.get('cohortIds')
+    curated_group_ids = params.get('curatedGroupIds')
+    all_sids = get_distinct_sids(sids, cohort_ids, curated_group_ids) if cohort_ids or curated_group_ids else sids
+    return tolerant_jsonify({
+        'sids': list(all_sids),
+    })
 
 
 @app.route('/api/students/find_by_name_or_sid', methods=['GET'])
@@ -78,7 +92,7 @@ def validate_sids():
     sids = [sid.strip() for sid in list(params.get('sids'))]
     if sids:
         if next((sid for sid in sids if not sid.isnumeric()), None):
-            raise BadRequestError(f'Each SID must be numeric')
+            raise BadRequestError('Each SID must be numeric')
         else:
             summary = []
             available_sids = query_students(sids=sids, sids_only=True)['sids']

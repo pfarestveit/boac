@@ -1,5 +1,5 @@
 """
-Copyright ©2020. The Regents of the University of California (Regents). All Rights Reserved.
+Copyright ©2021. The Regents of the University of California (Regents). All Rights Reserved.
 
 Permission to use, copy, modify, and distribute this software and its documentation
 for educational, research, and not-for-profit purposes, without fee and without a
@@ -89,7 +89,7 @@ class TestGetManuallyAddedAdvisees:
 
     @classmethod
     def _api_get_all(cls, client, headers=None, expected_status_code=200):
-        response = client.get(f'/api/admin/manually_added_advisees', headers=headers)
+        response = client.get('/api/admin/manually_added_advisees', headers=headers)
         assert response.status_code == expected_status_code
         return response.json
 

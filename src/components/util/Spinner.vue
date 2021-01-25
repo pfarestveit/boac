@@ -5,39 +5,12 @@
 </template>
 
 <script>
-import Context from '@/mixins/Context.vue';
-import Loading from '@/mixins/Loading.vue';
+import Loading from '@/mixins/Loading.vue'
 
 export default {
-  mixins: [Context, Loading],
-  props: {
-    alertPrefix: {
-      type: String,
-      default: 'The page'
-    },
-    isPlural: {
-      type: Boolean,
-      default: false
-    }
-  },
-  watch: {
-    loading(value) {
-      this.alert(value, true);
-    }
-  },
-  created() {
-    this.alert(this.loading, false);
-  },
-  methods: {
-    alert(isLoading, voiceIfLoaded)  {
-      if (isLoading) {
-        this.alertScreenReader(`${this.alertPrefix} ${this.isPlural ? 'are' : 'is'} loading...`);
-      } else if (voiceIfLoaded) {
-        this.alertScreenReader(`${this.alertPrefix} ${this.isPlural ? 'have' : 'has'} loaded.`);
-      }
-    }
-  }
-};
+  name: 'Spinner',
+  mixins: [Loading],
+}
 </script>
 
 <style scoped>
